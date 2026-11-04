@@ -17,8 +17,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Camera, getCameraFormat, useCameraDevices, useCameraPermission, useFrameProcessor, type CameraRuntimeError } from 'react-native-vision-camera';
 import { useRunOnJS } from 'react-native-worklets-core';
 import { chooseScanCamera } from '@/led/camera';
-import { LedDecoder, type DecoderState } from '@/led/decoder';
-import { brightLuminance, centredRegion, frameTimestampMs } from '@/led/luminance';
 import { makeRecording, SampleRecorder, type CameraDetails } from '@/led/recording';
 import { saveRecording } from '@/led/recordingStore';
 import { fingerprint } from '@/protocol/keys';
@@ -27,11 +25,9 @@ import { Button } from '@/ui/Button';
 import { Progress } from '@/ui/Progress';
 import { colors, monospace, radius, space, type as typography } from '@/ui/theme';
 import { DIAGNOSTICS } from '@/util/diagnostics';
+import { hexToBytes } from '@/protocol/bytes';
+import { createLedReader, type LedReaderState } from '../../modules/led-reader';
 
-/** The sampled square, as a fraction of the frame's shorter side. */
-const REGION_FRACTION = 0.15;
-/** Every n-th pixel in each direction; the region is a blob of light. */
-const PIXEL_STEP = 2;
 const FPS = 30;
 /**
  * The viewfinder's share of the screen, fixed: when it took whatever the
@@ -41,12 +37,8 @@ const FPS = 30;
 const VIEWFINDER_FRACTION = 0.5;
 
 const PLATFORM = Platform.OS;
-// iOS's yuv frames are biplanar CVPixelBuffers, whose base address is not the
-// Y plane, so toArrayBuffer() there is not a luma plane: iOS runs BGRA.
-// Android's yuv buffer is the Y plane alone, rows bytesPerRow apart: measured
-// on a Blackview A85 (Android 12) at 1280x720, bytesPerRow 1280 and a buffer
-// of exactly 921600 bytes, with planesCount 3 (src/led/luminance.ts).
-const PIXEL_FORMAT = PLATFORM === 'ios' ? 'rgb' : 'yuv';
+// The reader takes the Y plane of a yuv frame.
+const PIXEL_FORMAT = 'yuv';
 const APP_VERSION = Constants.expoConfig?.version ?? 'unknown';
 
 export default function ScanScreen() {
@@ -71,63 +63,50 @@ export default function ScanScreen() {
   const camera = useRef<Camera>(null);
   const [view, setView] = useState({ width: 0, height: 0 });
 
-  const decoder = useRef(new LedDecoder());
+  // The native reader (modules/led-reader): it finds the LED anywhere in the frame and
+  // decodes it on the camera's thread; this screen only shows its state. One per visit.
+  const reader = useMemo(() => createLedReader(), []);
   const recorder = useRef(new SampleRecorder());
-  const [state, setState] = useState<DecoderState>(() => decoder.current.state());
+  const [state, setState] = useState<LedReaderState | undefined>(undefined);
+  const latest = useRef<LedReaderState | undefined>(undefined);
   const [active, setActive] = useState(true);
-  const [frameError, setFrameError] = useState<string | undefined>(undefined);
+  const [frameError, setFrameError] = useState<string | undefined>(
+    reader ? undefined : 'the LED reader is not built into this app on this platform',
+  );
   const [locked, setLocked] = useState<'no' | 'yes' | 'unsupported'>('no');
   const [torch, setTorch] = useState(false);
   const [saved, setSaved] = useState<string | undefined>(undefined);
-  const stats = useRef({ count: 0, firstRaw: 0, lastRaw: 0, lastLog: 0 });
+  const lastLog = useRef(0);
 
-  const onSample = useRunOnJS(
-    (timestamp: number, luminance: number, width: number, height: number, bytesPerRow: number, bufferLength: number, planes: number, pixelFormat: string) => {
-      const t = frameTimestampMs(timestamp, PLATFORM);
-      recorder.current.camera = { width, height, pixelFormat, regionFraction: REGION_FRACTION, pixelStep: PIXEL_STEP };
-      recorder.current.push({ t, y: luminance });
-      setState(decoder.current.push({ t, y: luminance }));
-      if (DIAGNOSTICS) {
-        // The frame path as this phone delivers it, every two seconds:
-        // `adb logcat -s ReactNativeJS` on Android.
-        const s = stats.current;
-        if (s.count === 0) s.firstRaw = timestamp;
-        const rawDelta = timestamp - s.lastRaw;
-        s.lastRaw = timestamp;
-        s.count += 1;
-        if (t - s.lastLog >= 2000) {
-          s.lastLog = t;
-          const elapsedMs = frameTimestampMs(timestamp - s.firstRaw, PLATFORM);
-          console.log(
-            `[frames] n=${s.count} fps=${elapsedMs > 0 ? (((s.count - 1) * 1000) / elapsedMs).toFixed(2) : '-'} raw=${timestamp} rawDelta=${rawDelta} ` +
-              `${width}x${height} bytesPerRow=${bytesPerRow} buffer=${bufferLength} (w*h=${width * height}, bpr*h=${bytesPerRow * height}) planes=${planes} ` +
-              `format=${pixelFormat} luma=${luminance.toFixed(1)}`,
-          );
-        }
-      }
-    },
-    [],
-  );
+  const onState = useRunOnJS((next: LedReaderState, width: number, height: number, pixelFormat: string) => {
+    latest.current = next;
+    recorder.current.camera = { width, height, pixelFormat, regionFraction: 0, pixelStep: 2 };
+    recorder.current.push({ t: next.t, y: next.sample });
+    setState(next);
+    if (DIAGNOSTICS && (next.t - lastLog.current >= 1000 || next.idHex)) {
+      // `adb logcat -s ReactNativeJS` on Android: what the reader measured, once a second.
+      lastLog.current = next.t;
+      console.log(
+        `[reader] t=${(next.t / 1000).toFixed(1)} s, LED seen ${next.ledSeen}, ${Math.floor(next.coverage * 100)}% seen, contrast ${next.contrast.toFixed(0)}, ` +
+          `${next.candidates} candidate tiles, tile ${next.tileX ?? '-'},${next.tileY ?? '-'} of ${next.planeWidth}x${next.planeHeight}, tries ${next.tries}, ` +
+          `${next.erasures} unsure${next.idHex ? ', read' : ''}`,
+      );
+    }
+  }, []);
   const onFrameError = useRunOnJS((message: string) => setFrameError(message), []);
 
   const frameProcessor = useFrameProcessor(
     (frame) => {
       'worklet';
-      let buffer: ArrayBuffer;
+      if (!reader) return;
       try {
-        buffer = frame.toArrayBuffer();
+        const next = reader.call(frame) as unknown as LedReaderState | undefined;
+        if (next) onState(next, frame.width, frame.height, frame.pixelFormat);
       } catch (error) {
-        // Android below 9 has no HardwareBuffer for VisionCamera to copy from.
         onFrameError(error instanceof Error ? error.message : String(error));
-        return;
       }
-      const layout = frame.pixelFormat === 'rgb' ? 'bgra' : 'y';
-      const plane = new Uint8Array(buffer);
-      const region = centredRegion(frame.width, frame.height, REGION_FRACTION);
-      const luminance = brightLuminance(plane, frame.width, frame.height, frame.bytesPerRow, region, layout, PIXEL_STEP);
-      onSample(frame.timestamp, luminance, frame.width, frame.height, frame.bytesPerRow, plane.length, frame.planesCount, frame.pixelFormat);
     },
-    [onSample, onFrameError],
+    [reader, onState, onFrameError],
   );
 
   const lockOnReticle = useCallback(async () => {
@@ -145,13 +124,13 @@ export default function ScanScreen() {
   }, [device, view]);
 
   const snapshot = useCallback(() => {
-    const result = decoder.current.state().result;
+    const last = latest.current;
     return makeRecording(recorder.current.snapshot(), {
       appVersion: APP_VERSION,
       platform: PLATFORM,
       fps: FPS,
       camera: recorder.current.camera as CameraDetails | undefined,
-      decoded: result ? { idHex: result.idHex, framesCombined: result.framesCombined } : null,
+      decoded: last?.idHex ? { idHex: last.idHex, framesCombined: last.framesCombined ?? 1 } : null,
     });
   }, []);
 
@@ -171,9 +150,15 @@ export default function ScanScreen() {
     [router, setMachineId],
   );
 
-  const result = state.result;
+  const idHex = state?.idHex;
+  const result = useMemo(
+    () => (idHex ? { idHex, idBytes: hexToBytes(idHex), errors: state?.errors ?? 0, erasures: state?.filled ?? 0 } : undefined),
+    // Only a new read makes a new result.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [idHex],
+  );
   useEffect(() => {
-    // One frame that passes magic, version and CRC is a read.
+    // One frame that passes the CRC is a read.
     if (result) accept(result.idBytes);
   }, [result, accept]);
 
@@ -208,12 +193,15 @@ export default function ScanScreen() {
     );
   }
 
-  const boxSide = Math.round(Math.min(window.width, window.height) * REGION_FRACTION * 1.6);
-  // Only what the decoder has measured: whether a protocol-like blink is in the
-  // square, and how much of the repeating code it has seen.
-  const seenPercent = Math.floor(state.coverage * 100);
-  const progressLabel = result ? 'Read' : state.ledSeen ? 'Reading the LED' : 'No blinking LED in the square';
-  const progressDetail = result ? '' : !state.ledSeen ? '' : seenPercent >= 100 ? 'All of the code seen; decoding' : `${seenPercent}% of the code seen`;
+  const boxSide = Math.round(Math.min(window.width, window.height) * 0.24);
+  // Only what the reader has measured: whether a protocol-like blink is in view,
+  // and how much of the repeating code it has seen.
+  const ledSeen = state?.ledSeen ?? false;
+  const coverage = state?.coverage ?? 0;
+  const seenPercent = Math.floor(coverage * 100);
+  const progressLabel = result ? 'Read' : ledSeen ? 'Reading the LED' : 'No blinking LED in view';
+  const progressDetail = result ? '' : !ledSeen ? '' : seenPercent >= 100 ? 'All of the code seen; decoding' : `${seenPercent}% of the code seen`;
+  const tileBox = state && view.width > 0 ? tileInView(state, view) : undefined;
 
   return (
     <View style={styles.root}>
@@ -241,6 +229,12 @@ export default function ScanScreen() {
           resizeMode="cover"
         />
         <Text style={[styles.instruction, { top: insets.top + space.md }]}>Point the camera at the Pi's blinking main LED and hold still.</Text>
+        {tileBox ? (
+          <View
+            pointerEvents="none"
+            style={[styles.tile, { left: tileBox.x, top: tileBox.y, width: tileBox.width, height: tileBox.height }, state?.level ? styles.tileLit : null]}
+          />
+        ) : null}
         {view.height > 0 ? (
           <Pressable
             accessibilityRole="button"
@@ -251,25 +245,25 @@ export default function ScanScreen() {
               { width: boxSide, height: boxSide, top: (view.height - boxSide) / 2, left: (view.width - boxSide) / 2 },
             ]}>
             {(['tl', 'tr', 'bl', 'br'] as const).map((corner) => (
-              <View key={corner} style={[styles.corner, styles[corner], state.level ? styles.cornerLit : null]} />
+              <View key={corner} style={[styles.corner, styles[corner], state?.level ? styles.cornerLit : null]} />
             ))}
-            <View style={[styles.centreDot, state.level ? styles.centreDotLit : null]} />
+            <View style={[styles.centreDot, state?.level ? styles.centreDotLit : null]} />
           </Pressable>
         ) : null}
       </View>
       <View style={[styles.overlay, { paddingBottom: insets.bottom + space.md }]}>
         <View style={styles.panel}>
-          <Progress value={result ? 1 : state.coverage} label={progressLabel} detail={progressDetail} />
+          <Progress value={result ? 1 : coverage} label={progressLabel} detail={progressDetail} />
           <Text style={styles.check} numberOfLines={2}>
             {result
               ? `Read, ${result.errors} wrong and ${result.erasures} unreadable bytes repaired.`
-              : state.ledSeen
+              : ledSeen
                 ? 'Hold still: the bar is how much of the code the camera has seen.'
-                : 'Bring the blinking LED inside the square.'}
+                : 'Bring the blinking LED into view; it is found anywhere in the picture.'}
           </Text>
           <View style={styles.counters}>
-            <Text style={styles.counter}>Frames failed {state.framesFailed}</Text>
-            <Text style={styles.counter}>Contrast {Math.round(state.contrast)}</Text>
+            <Text style={styles.counter}>Frames failed {state?.framesFailed ?? 0}</Text>
+            <Text style={styles.counter}>Contrast {Math.round(state?.contrast ?? 0)}</Text>
             <Text style={styles.counter}>{locked === 'yes' ? 'Locked' : locked === 'unsupported' ? 'No lock' : 'Auto'}</Text>
           </View>
           {frameError ? <Text style={styles.error}>The camera frames cannot be read on this phone: {frameError}</Text> : null}
@@ -302,6 +296,35 @@ export default function ScanScreen() {
       </View>
     </View>
   );
+}
+
+/**
+ * Where the tile being read lies in the viewfinder. The frame is the sensor's picture: on a
+ * phone held upright it is landscape and turned a quarter turn from the screen (VisionCamera's
+ * `orientation` says which way), and the preview covers the view, cropping the overflow.
+ */
+function tileInView(state: LedReaderState, view: { width: number; height: number }): { x: number; y: number; width: number; height: number } | undefined {
+  if (state.tileX === undefined || state.tileY === undefined || !state.tileWidth || !state.tileHeight || !state.planeWidth || !state.planeHeight) return undefined;
+  const turned = state.orientation === 'landscape-left' || state.orientation === 'landscape-right';
+  const frameW = turned ? state.planeHeight : state.planeWidth;
+  const frameH = turned ? state.planeWidth : state.planeHeight;
+  const scale = Math.max(view.width / frameW, view.height / frameH);
+  const offsetX = (view.width - frameW * scale) / 2;
+  const offsetY = (view.height - frameH * scale) / 2;
+  const cx = state.tileX + state.tileWidth / 2;
+  const cy = state.tileY + state.tileHeight / 2;
+  // A quarter turn clockwise for landscape-right, anticlockwise for landscape-left.
+  let x = cx;
+  let y = cy;
+  if (state.orientation === 'landscape-right') {
+    x = state.planeHeight - cy;
+    y = cx;
+  } else if (state.orientation === 'landscape-left') {
+    x = cy;
+    y = state.planeWidth - cx;
+  }
+  const side = state.tileWidth * scale;
+  return { x: offsetX + x * scale - side / 2, y: offsetY + y * scale - side / 2, width: side, height: side };
 }
 
 const CORNER = 22;
@@ -367,6 +390,15 @@ const styles = StyleSheet.create({
   tr: { top: 0, right: 0, borderTopWidth: 3, borderRightWidth: 3, borderTopRightRadius: radius.sm },
   bl: { bottom: 0, left: 0, borderBottomWidth: 3, borderLeftWidth: 3, borderBottomLeftRadius: radius.sm },
   br: { bottom: 0, right: 0, borderBottomWidth: 3, borderRightWidth: 3, borderBottomRightRadius: radius.sm },
+  tile: {
+    position: 'absolute',
+    borderWidth: 2,
+    borderColor: colors.text,
+    borderRadius: radius.sm,
+  },
+  tileLit: {
+    borderColor: colors.accent,
+  },
   centreDot: {
     width: 6,
     height: 6,

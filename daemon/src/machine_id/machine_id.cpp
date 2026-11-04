@@ -140,6 +140,17 @@ types::Result<MachineId> generate(const std::filesystem::path& state_dir) {
   // The mode again for a leftover temporary file that was there with another one.
   ::fchmod(fd, 0600);
 
+  // The state directory's owner, who is the service's user: `rpiledconfig --regenerate-id`
+  // is run as root, and a 0600 file left owned by root stopped every start after it.
+  struct stat dir{};
+  if (::stat(state_dir.c_str(), &dir) == 0 && (dir.st_uid != ::geteuid() || dir.st_gid != ::getegid())) {
+    if (::fchown(fd, dir.st_uid, dir.st_gid) != 0) {
+      const auto failure = fail("cannot give " + temporary.string() + " to the owner of " + state_dir.string());
+      ::close(fd);
+      return failure;
+    }
+  }
+
   if (::fsync(fd) != 0) {
     const auto failure = fail("cannot sync " + temporary.string());
     ::close(fd);

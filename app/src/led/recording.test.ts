@@ -12,7 +12,7 @@ import {
 } from './recording';
 import { synthesize } from './synth';
 
-const ID_HEX = '012345';
+const ID_HEX = '0123456789abcdef';
 
 describe('recordings', () => {
   const samples = synthesize(hexToBytes(ID_HEX), { fps: 30, seconds: 22, noise: 6, jitterMs: 3, seed: 7 }).map((s) => ({ ...s, t: s.t + 123_456.789 }));
@@ -45,7 +45,7 @@ describe('recordings', () => {
     expect(() => parseRecording({ ...good, kind: 'other' })).toThrow(/kind/);
     expect(() => parseRecording({ ...good, y: good.y.slice(1) })).toThrow(/same length/);
     expect(() => parseRecording({ ...good, t: [...good.t].reverse() })).toThrow(/backwards/);
-    expect(() => parseRecording({ ...good, expected: { idHex: 'ABC' } })).toThrow(/6 lowercase hex/);
+    expect(() => parseRecording({ ...good, expected: { idHex: 'ABC' } })).toThrow(/16 lowercase hex/);
     expect(parseRecording({ ...good, expected: { idHex: null } }).expected).toEqual({ idHex: null });
   });
 

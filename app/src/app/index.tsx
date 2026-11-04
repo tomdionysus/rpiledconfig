@@ -28,7 +28,7 @@ export default function HomeScreen() {
         <View style={styles.factorText}>
           <Text style={styles.factorTitle}>Line of sight</Text>
           <Text style={styles.factorBody}>
-            The Pi blinks its machine ID on its main LED. Point the camera at it for about fifteen seconds and the
+            The Pi blinks its machine ID on its main LED. Point the camera at it for up to twenty seconds and the
             app reads it.
           </Text>
         </View>

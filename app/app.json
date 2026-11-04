@@ -2,7 +2,7 @@
   "expo": {
     "name": "RPiLEDConfig",
     "slug": "rpiledconfig",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "orientation": "portrait",
     "scheme": "rpiledconfig",
     "userInterfaceStyle": "dark",
@@ -24,7 +24,7 @@
         "android.permission.ACCESS_FINE_LOCATION"
       ],
       "predictiveBackGestureEnabled": false,
-      "versionCode": 100
+      "versionCode": 200
     },
     "plugins": [
       "expo-router",
