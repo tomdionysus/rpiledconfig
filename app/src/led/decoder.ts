@@ -41,6 +41,21 @@ export interface Sample {
 
 export type DecoderPhase = 'dark' | 'seeking' | 'reading';
 
+export interface DecoderOptions {
+  /**
+   * At most this many milliseconds of matching per pushed sample: a try is
+   * then spread over as many camera frames as it needs, so the thread that
+   * pushes is never held for long. Unset, each try runs to its end inside the
+   * push that starts it, which keeps tests and replays deterministic.
+   */
+  sliceMs?: number;
+  /** The clock the slices are measured on; Date.now by default. */
+  now?: () => number;
+}
+
+/** A computation done a slice at a time: it yields where it may be paused. */
+type Steps<T> = Generator<void, T, void>;
+
 export interface DecodedId {
   idBytes: Uint8Array;
   idHex: string;
@@ -118,8 +133,8 @@ const FOLD_BINS = FRAME_T * BINS_PER_HALF_BIT;
  * the sync's 4T runs.
  */
 const COARSE_RATES = Array.from({ length: 21 }, (_, i) => 1 - PERIOD_TOLERANCE + i * 0.005);
-/** The coarse search tries half-bits starting at every this many bins (10 ms). */
-const COARSE_OFFSET_STEP = 2;
+/** The coarse search tries half-bits starting at every this many bins (20 ms), within the fine search's shifts. */
+const COARSE_OFFSET_STEP = 4;
 /** Coarse alignments refined, and refined alignments read out. */
 const REFINE_TOP = 4;
 const READ_TOP = 3;
@@ -150,15 +165,25 @@ const LED_SHORTEST_RUN_MS = 30;
 const LED_LONGEST_RUN_MS = 6 * T_MS + 40;
 const LED_MIN_RUNS = 4;
 /**
- * How far apart the window's two levels must be, in their own spread (see
- * levelSeparation), to find the LED and then to keep it. Measured over 1 s
- * windows: a Blackview A85 on a Pi 5's LED has a median of 14 and a 5th
- * percentile of 5.6, the synthetic fixtures 5.5 and 3.4 at worst; uniform or
- * Gaussian noise a median of 2 and at most 5.2 in 3000 windows. The lower
- * bar to keep it means one poor second does not throw away what was seen.
+ * Two measures of whether a window's brightnesses sit at two levels (see
+ * levelSeparation and nearExtremes), with bars to find the LED and lower
+ * ones to keep it. Measured over 1 s windows. A Blackview A85 on a Pi 5's
+ * LED: separation median 14, lowest 2.05; near the extremes median 0.65 to
+ * 0.74, lowest 0.45 (a third of its frames straddle an edge, at 30 fps and
+ * T = 50 ms, and fall between). Uniform and Gaussian noise: separation median
+ * 2, up to 5.2; near the extremes median 0.23 to 0.35, up to 0.58. Neither
+ * measure alone parts them; both to find and either to keep does: no real or
+ * synthetic LED window fails to keep, and noise passes the bar to find only
+ * in isolated windows, never for longer than 533 ms in 40 minutes of it,
+ * hence LED_FIND_HOLD_MS.
  */
 const LED_FIND_SEPARATION = 4;
+const LED_FIND_NEAR_EXTREMES = 0.5;
 const LED_KEEP_SEPARATION = 2.5;
+const LED_KEEP_NEAR_EXTREMES = 0.45;
+const LED_FIND_HOLD_MS = 800;
+/** nearExtremes: the levels are the 5th and 95th percentiles, and near is within this share of the distance between them. */
+const NEAR_EXTREMES_BAND = 0.12;
 /** A normalised cell score below this is too uncertain to guess: its byte is erased. */
 const ERASE_BELOW = 0.3;
 
@@ -218,6 +243,8 @@ export class LedDecoder {
   private runs: { end: number; length: number }[] = [];
   /** The last LED_WINDOW_MS of brightnesses, for telling an LED from noise. */
   private recent: Sample[] = [];
+  /** Since when, while not yet seen, it has looked like the LED without a break. */
+  private findingSince?: number;
   private ledSeen = false;
   /** Half-bit slots of the cycle with a sample taken while the LED was seen. */
   private slots = new Uint8Array(FRAME_T);
@@ -227,6 +254,16 @@ export class LedDecoder {
   private framesRead = 0;
   private framesFailed = 0;
   private result?: DecodedId;
+  /** The try in progress, run a slice at a time, and the frame periods that had passed when it began. */
+  private job?: Steps<boolean>;
+  private jobFailedBefore = 0;
+  private readonly sliceMs: number;
+  private readonly now: () => number;
+
+  constructor(options: DecoderOptions = {}) {
+    this.sliceMs = options.sliceMs ?? Infinity;
+    this.now = options.now ?? (() => Date.now());
+  }
 
   /** Feed one sample; the returned state is the decoder's after it. */
   push(sample: Sample): DecoderState {
@@ -271,14 +308,28 @@ export class LedDecoder {
     while (this.recent[0].t < t - LED_WINDOW_MS) this.recent.shift();
     // Judged over a full window only: a few samples fall into plausible runs and levels by chance.
     const wasSeen = this.ledSeen;
-    const bar = wasSeen ? LED_KEEP_SEPARATION : LED_FIND_SEPARATION;
-    this.ledSeen =
-      t - this.firstT >= LED_WINDOW_MS &&
-      blinksLikeTheProtocol(this.runs, t - this.runStart) &&
-      levelSeparation(this.recent.map((sample) => sample.y)) >= bar;
+    let blinking = t - this.firstT >= LED_WINDOW_MS && blinksLikeTheProtocol(this.runs, t - this.runStart);
+    if (blinking) {
+      const values = this.recent.map((sample) => sample.y);
+      const separation = levelSeparation(values);
+      const near = nearExtremes(values);
+      blinking = wasSeen
+        ? separation >= LED_KEEP_SEPARATION || near >= LED_KEEP_NEAR_EXTREMES
+        : separation >= LED_FIND_SEPARATION && near >= LED_FIND_NEAR_EXTREMES;
+    }
+    if (wasSeen) {
+      this.ledSeen = blinking;
+    } else {
+      // Found only once it has looked like the LED for LED_FIND_HOLD_MS on end.
+      if (!blinking) this.findingSince = undefined;
+      else if (this.findingSince === undefined) this.findingSince = t;
+      this.ledSeen = this.findingSince !== undefined && t - this.findingSince >= LED_FIND_HOLD_MS;
+    }
     if (this.ledSeen && !wasSeen) {
-      // The window that showed it is an LED was the LED: its samples are code seen.
-      for (const earlier of this.samples) if (earlier.t >= t - LED_WINDOW_MS) this.markSlot(earlier.t);
+      // The windows that showed it is an LED were the LED: their samples are code seen.
+      const from = (this.findingSince ?? t) - LED_WINDOW_MS;
+      for (const earlier of this.samples) if (earlier.t >= from) this.markSlot(earlier.t);
+      this.findingSince = undefined;
     }
     if (!this.ledSeen && this.slotsSeen > 0) {
       // Lost: what was seen may have been a different light or a moved phone.
@@ -291,14 +342,34 @@ export class LedDecoder {
     while (this.samples.length > 0 && this.samples[0].t < t - KEEP_MS) this.samples.shift();
 
     const span = t - this.samples[0].t;
-    if (!this.result && span >= FIRST_TRY_MS && t - this.lastTry >= TRY_EVERY_MS) {
-      this.lastTry = t;
-      this.phase = 'reading';
-      const failedBefore = Math.floor((t - this.firstT) / FRAME_MS);
-      if (!this.tryRead()) this.framesFailed = Math.max(this.framesFailed, failedBefore);
+    if (!this.result) {
+      if (!this.job && span >= FIRST_TRY_MS && t - this.lastTry >= TRY_EVERY_MS) {
+        this.lastTry = t;
+        this.phase = 'reading';
+        this.jobFailedBefore = Math.floor((t - this.firstT) / FRAME_MS);
+        // A copy: the samples move on while a sliced try runs.
+        this.job = this.tryRead(this.samples.slice());
+      }
+      if (this.job) this.runJob();
     }
 
     return this.state();
+  }
+
+  /** Runs the try in hand for up to one slice, or to its end. */
+  private runJob(): void {
+    const job = this.job;
+    if (!job) return;
+    const until = this.now() + this.sliceMs;
+    for (;;) {
+      const step = job.next();
+      if (step.done) {
+        this.job = undefined;
+        if (!step.value) this.framesFailed = Math.max(this.framesFailed, this.jobFailedBefore);
+        return;
+      }
+      if (this.now() >= until) return;
+    }
   }
 
   state(): DecoderState {
@@ -327,19 +398,20 @@ export class LedDecoder {
    * so that older samples from a bad moment cannot hold a read back, and
    * everything held, so that two partial looks can fill each other in.
    */
-  private tryRead(): boolean {
+  private *tryRead(samples: Deviation[]): Steps<boolean> {
     // Where the frame sits is a property of the LED, not of the window, so it
     // is found once, on everything held, where the most cycles agree.
-    const candidates = bestAlignments(this.samples, this.lockedRate);
+    const candidates = yield* alignmentSteps(samples, this.lockedRate);
     if (candidates.length === 0) return false;
     this.aligned = true;
     if ((candidates[0].agreement ?? 0) >= RATE_LOCK_AGREEMENT) this.lockedRate = candidates[0].halfBit / T_MS;
-    const last = this.samples[this.samples.length - 1].t;
-    const latest = this.samples.filter((sample) => sample.t >= last - FRAME_MS * (1 + PERIOD_TOLERANCE));
-    const windows = latest.length < this.samples.length ? [latest, this.samples] : [this.samples];
+    const last = samples[samples.length - 1].t;
+    const latest = samples.filter((sample) => sample.t >= last - FRAME_MS * (1 + PERIOD_TOLERANCE));
+    const windows = latest.length < samples.length ? [latest, samples] : [samples];
     let fewest = LED_CODEWORD_BYTES;
     let mostCovered = 0;
     for (const window of windows) {
+      yield;
       const read = this.readWindow(window, candidates);
       if (read.done) return true;
       fewest = Math.min(fewest, read.erasures);
@@ -397,6 +469,8 @@ export class LedDecoder {
     this.covered = 0;
     this.runs = [];
     this.recent = [];
+    this.findingSince = undefined;
+    this.job = undefined;
     this.ledSeen = false;
     this.slots.fill(0);
     this.slotsSeen = 0;
@@ -406,66 +480,93 @@ export class LedDecoder {
 }
 
 /**
- * The samples folded onto one cycle of the frame at half-bit `halfBit`:
- * BINS_PER_HALF_BIT bins per half-bit, each the sum of the deviations that
- * fall in it, from every cycle. Returned as prefix sums over two cycles, so
- * any run of bins is two lookups.
+ * The samples folded onto one cycle of the frame at half-bit `halfBit`, as
+ * half-bit sums for each of `offsets`: with half-bits starting `offset`
+ * tenths of a half-bit after `origin`, the sum of the deviations in each
+ * half-bit, leaving out a tenth at each edge, where bloom and blur put light
+ * that belongs to the neighbour. Each sum array holds the cycle twice, so a
+ * run from any half-bit needs no wrapping. Written into `out`, one array per
+ * offset, which must be 2 * FRAME_T long.
+ *
+ * Straight from the samples, with indexed loops and no allocation: this is
+ * the inner loop of every try, and Hermes interprets.
  */
-function fold(samples: Deviation[], origin: number, halfBit: number): Float64Array {
-  const bins = new Float64Array(FOLD_BINS);
-  for (const sample of samples) {
+function foldHalves(samples: Deviation[], origin: number, halfBit: number, offsets: ArrayLike<number>, out: Float64Array[]): void {
+  // Bins of a tenth of a half-bit first (one step per sample), then a running
+  // total over them, so each half-bit sum is two lookups: cheaper than adding
+  // every sample into every offset's sums once there are more than a few
+  // hundred samples.
+  const bins = FOLD_SCRATCH;
+  bins.fill(0);
+  const n = samples.length;
+  for (let i = 0; i < n; i += 1) {
+    const sample = samples[i];
     let position = (sample.t - origin) / halfBit;
     position -= Math.floor(position / FRAME_T) * FRAME_T;
-    bins[Math.min(FOLD_BINS - 1, Math.floor(position * BINS_PER_HALF_BIT))] += sample.d;
+    let bin = Math.floor(position * BINS_PER_HALF_BIT);
+    if (bin >= FOLD_BINS) bin = FOLD_BINS - 1;
+    bins[bin + 1] += sample.d;
   }
-  const prefix = new Float64Array(FOLD_BINS + 1);
-  for (let i = 0; i < FOLD_BINS; i += 1) prefix[i + 1] = prefix[i] + bins[i];
-  return prefix;
+  for (let i = 1; i <= FOLD_BINS; i += 1) bins[i] += bins[i - 1];
+  const inner = BINS_PER_HALF_BIT - 2 * EDGE_BINS;
+  for (let k = 0; k < offsets.length; k += 1) {
+    const sums = out[k];
+    const offset = offsets[k];
+    for (let h = 0; h < FRAME_T; h += 1) {
+      const from = offset + h * BINS_PER_HALF_BIT + EDGE_BINS;
+      const to = from + inner;
+      // The last half-bit of a cycle whose half-bits start past bin 0 runs on into the next cycle.
+      const sum = to <= FOLD_BINS ? bins[to] - bins[from] : bins[FOLD_BINS] - bins[from] + bins[to - FOLD_BINS];
+      sums[h] = sum;
+      sums[h + FRAME_T] = sum;
+    }
+  }
+}
+
+/** foldHalves' bins, as running totals: entry b is the sum of bins before b. Shared, as nothing else runs while it is used. */
+const FOLD_SCRATCH = new Float64Array(FOLD_BINS + 1);
+
+/** Fresh half-bit sum arrays for foldHalves. */
+function sumArrays(count: number): Float64Array[] {
+  return Array.from({ length: count }, () => new Float64Array(2 * FRAME_T));
+}
+
+/** The known half-bits (sync, start bit, idle), as offsets into the frame and signs, and as runs of one sign. */
+const KNOWN_H = Int16Array.from(Array.from(TEMPLATE.keys()).filter((h) => TEMPLATE[h] !== 0));
+const KNOWN_SIGN = Float64Array.from(KNOWN_H, (h) => TEMPLATE[h]);
+const KNOWN_RUNS: { from: number; to: number; sign: number }[] = [];
+for (let i = 0; i < KNOWN_H.length; i += 1) {
+  const run = KNOWN_RUNS[KNOWN_RUNS.length - 1];
+  if (run && run.to === KNOWN_H[i] && run.sign === KNOWN_SIGN[i]) run.to += 1;
+  else KNOWN_RUNS.push({ from: KNOWN_H[i], to: KNOWN_H[i] + 1, sign: KNOWN_SIGN[i] });
+}
+const RUN_COUNT = KNOWN_RUNS.length;
+const RUN_FROM = Int16Array.from(KNOWN_RUNS, (run) => run.from);
+const RUN_TO = Int16Array.from(KNOWN_RUNS, (run) => run.to);
+const RUN_SIGN = Float64Array.from(KNOWN_RUNS, (run) => run.sign);
+
+/** Running totals of half-bit sums into `totals` (one longer), so a run of half-bits is two lookups. */
+function cumulative(sums: Float64Array, totals: Float64Array): void {
+  totals[0] = 0;
+  for (let h = 0; h < sums.length; h += 1) totals[h + 1] = totals[h] + sums[h];
 }
 
 /**
- * The folded samples summed over each half-bit of a cycle whose half-bits
- * begin at bin `offset`, leaving out the edge bins, where bloom and blur put
- * light that belongs to the neighbour. Twice over, so a run from any
- * half-bit needs no wrapping.
+ * Running totals of every other cell's decisiveness |s[h] - s[h + 1]| into
+ * `alternate` (one longer): `alternate[b] - alternate[a]` is the sum over a,
+ * a + 2, ..., b - 2. With these and `cumulative`, the full score of any start
+ * is a handful of lookups, so every start at every coarse rate is scored in
+ * full.
  */
-function halfSums(prefix: Float64Array, offset: number): Float64Array {
-  const sums = new Float64Array(2 * FRAME_T);
-  const inner = BINS_PER_HALF_BIT - 2 * EDGE_BINS;
-  for (let h = 0; h < FRAME_T; h += 1) {
-    const from = offset + h * BINS_PER_HALF_BIT + EDGE_BINS;
-    const to = from + inner;
-    // The last half-bit of a cycle whose half-bits start past bin 0 runs on into the next cycle.
-    sums[h] = to <= FOLD_BINS ? prefix[to] - prefix[from] : prefix[FOLD_BINS] - prefix[from] + prefix[to - FOLD_BINS];
-    sums[h + FRAME_T] = sums[h];
-  }
-  return sums;
+function alternateDecisiveness(sums: Float64Array, alternate: Float64Array): void {
+  alternate[0] = 0;
+  alternate[1] = 0;
+  for (let h = 0; h + 1 < sums.length; h += 1) alternate[h + 2] = alternate[h] + Math.abs(sums[h] - sums[h + 1]);
 }
 
-/** The known half-bits (sync, start bit, idle), as offsets into the frame and signs. */
-const KNOWN_H = Int16Array.from(Array.from(TEMPLATE.keys()).filter((h) => TEMPLATE[h] !== 0));
-const KNOWN_SIGN = Float64Array.from(KNOWN_H, (h) => TEMPLATE[h]);
-/** The same as runs of one sign: [first half-bit, past the last, sign]. */
-const KNOWN_RUNS: [number, number, number][] = [];
-for (let i = 0; i < KNOWN_H.length; i += 1) {
-  const run = KNOWN_RUNS[KNOWN_RUNS.length - 1];
-  if (run && run[1] === KNOWN_H[i] && run[2] === KNOWN_SIGN[i]) run[1] += 1;
-  else KNOWN_RUNS.push([KNOWN_H[i], KNOWN_H[i] + 1, KNOWN_SIGN[i]]);
-}
-
-/** Running totals of half-bit sums, so a run of half-bits is two lookups. */
-function cumulative(sums: Float64Array): Float64Array {
-  const totals = new Float64Array(sums.length + 1);
-  for (let h = 0; h < sums.length; h += 1) totals[h + 1] = totals[h] + sums[h];
-  return totals;
-}
-
-/** How well the half-bits agree with the known ones of a frame starting at half-bit `j`, from their running totals. */
-function knownScoreFrom(totals: Float64Array, j: number): number {
-  let score = 0;
-  for (const [from, to, sign] of KNOWN_RUNS) score += sign * (totals[to + j] - totals[from + j]);
-  return score;
-}
+/** The first and past-the-last half-bit of the data cells' decisiveness in fullScore, at j = 0. */
+const DATA_FROM_H = FIRST_CELL_H + 2;
+const DATA_TO_H = FIRST_CELL_H + 2 * FRAME_BITS;
 
 /** How well the half-bits agree with the known ones of a frame starting at half-bit `j`. */
 function knownScore(sums: Float64Array, j: number): number {
@@ -477,32 +578,32 @@ function knownScore(sums: Float64Array, j: number): number {
 /** The known half-bits' agreement plus each data cell's decisiveness, for a frame starting at half-bit `j`. */
 function fullScore(sums: Float64Array, j: number): number {
   let score = knownScore(sums, j);
-  for (let h = FIRST_CELL_H + 2 + j; h < FIRST_CELL_H + 2 * FRAME_BITS + j; h += 2) score += Math.abs(sums[h] - sums[h + 1]);
+  for (let h = DATA_FROM_H + j; h < DATA_TO_H + j; h += 2) score += Math.abs(sums[h] - sums[h + 1]);
   return score;
 }
 
-/**
- * Running totals of every other cell's decisiveness |s[h] - s[h + 1]|:
- * `alternate[h + 2] - alternate[a]` is the sum over a, a + 2, ..., h. With
- * these and `cumulative`, the full score of any start is a handful of
- * lookups, so every start at every coarse rate is scored in full.
- */
-function alternateDecisiveness(sums: Float64Array): Float64Array {
-  const alternate = new Float64Array(sums.length + 1);
-  for (let h = 0; h + 1 < sums.length; h += 1) alternate[h + 2] = alternate[h] + Math.abs(sums[h] - sums[h + 1]);
-  return alternate;
+/** How far the known half-bits agree with the frame starting at half-bit `j`: 1 when every one has the right sign, 0 when none does. */
+function agreement(sums: Float64Array, j: number): number {
+  let magnitude = 0;
+  for (let i = 0; i < KNOWN_H.length; i += 1) magnitude += Math.abs(sums[KNOWN_H[i] + j]);
+  return magnitude > 0 ? (knownScore(sums, j) / magnitude + 1) / 2 : 0;
 }
 
-/** The first and past-the-last half-bit of the data cells' decisiveness in fullScore, at j = 0. */
-const DATA_FROM_H = FIRST_CELL_H + 2;
-const DATA_TO_H = FIRST_CELL_H + 2 * FRAME_BITS;
+/** The coarse search's offsets, and the fine search's shifts as offsets and starting half-bits. */
+const COARSE_OFFSETS = Int32Array.from({ length: Math.ceil(BINS_PER_HALF_BIT / COARSE_OFFSET_STEP) }, (_, i) => i * COARSE_OFFSET_STEP);
+const FINE_SHIFTS = Int32Array.from({ length: Math.floor((2 * FINE_SHIFT_BINS) / FINE_SHIFT_STEP) + 1 }, (_, i) => -FINE_SHIFT_BINS + i * FINE_SHIFT_STEP);
+// Plain arrays in between: Hermes' typed-array from() does not take a Set.
+const FINE_OFFSETS = Int32Array.from(
+  Array.from(new Set(Array.from(FINE_SHIFTS, (shift) => (((shift % FOLD_BINS) + FOLD_BINS) % FOLD_BINS) % BINS_PER_HALF_BIT))),
+);
 
 /**
  * The alignments the samples fit best, best first: every start at a spread of
  * clock rates scored on the known half-bits and the data cells'
  * decisiveness, then a finer rate and start searched around the leaders.
+ * Yields after each rate, where a sliced try may pause.
  */
-function bestAlignments(samples: Deviation[], nearRate?: number): Alignment[] {
+function* alignmentSteps(samples: Deviation[], nearRate?: number): Steps<Alignment[]> {
   if (samples.length === 0) return [];
   const origin = samples[0].t;
   // The best rate and offset for each half-bit the frame could start at.
@@ -510,21 +611,26 @@ function bestAlignments(samples: Deviation[], nearRate?: number): Alignment[] {
   const bestHalfBit = new Float64Array(FRAME_T);
   const bestOffset = new Uint8Array(FRAME_T);
   const rates = nearRate === undefined ? COARSE_RATES : COARSE_RATES.filter((rate) => Math.abs(rate - nearRate) <= RATE_LOCK_SPAN + 1e-9);
+  const halves = sumArrays(COARSE_OFFSETS.length);
+  const totals = new Float64Array(2 * FRAME_T + 1);
+  const alternate = new Float64Array(2 * FRAME_T + 1);
   for (const rate of rates) {
     const halfBit = T_MS * rate;
-    const prefix = fold(samples, origin, halfBit);
-    for (let offset = 0; offset < BINS_PER_HALF_BIT; offset += COARSE_OFFSET_STEP) {
-      const sums = halfSums(prefix, offset);
-      const totals = cumulative(sums);
-      const alternate = alternateDecisiveness(sums);
+    foldHalves(samples, origin, halfBit, COARSE_OFFSETS, halves);
+    for (let k = 0; k < COARSE_OFFSETS.length; k += 1) {
+      const sums = halves[k];
+      cumulative(sums, totals);
+      alternateDecisiveness(sums, alternate);
       for (let j = 0; j < FRAME_T; j += 1) {
-        const score = knownScoreFrom(totals, j) + alternate[DATA_TO_H + j] - alternate[DATA_FROM_H + j];
+        let score = alternate[DATA_TO_H + j] - alternate[DATA_FROM_H + j];
+        for (let r = 0; r < RUN_COUNT; r += 1) score += RUN_SIGN[r] * (totals[RUN_TO[r] + j] - totals[RUN_FROM[r] + j]);
         if (score <= bestScore[j]) continue;
         bestScore[j] = score;
         bestHalfBit[j] = halfBit;
-        bestOffset[j] = offset;
+        bestOffset[j] = COARSE_OFFSETS[k];
       }
     }
+    yield;
   }
   const coarse: Alignment[] = Array.from(bestScore, (score, j) => ({
     start: origin + (bestOffset[j] / BINS_PER_HALF_BIT + j) * bestHalfBit[j],
@@ -543,22 +649,26 @@ function bestAlignments(samples: Deviation[], nearRate?: number): Alignment[] {
   // The fine search, coarse to fine in rate: FINE_RATE_STEPS across the span,
   // then half a step either way of the best.
   const middle = (samples[0].t + samples[samples.length - 1].t) / 2;
+  const fine = sumArrays(FINE_OFFSETS.length);
   const refined: Alignment[] = [];
   for (const lead of leaders) {
     let best = lead;
     let bestRate = 0;
-    const tryRate = (rate: number): void => {
-      const found = refineAtRate(samples, lead, lead.halfBit * (1 + rate), middle);
-      if (found && found.score > best.score) {
-        best = found;
-        bestRate = rate;
+    const rateSteps: number[] = [];
+    for (let i = -FINE_RATE_STEPS; i <= FINE_RATE_STEPS; i += 1) rateSteps.push((i * FINE_RATE_SPAN) / FINE_RATE_STEPS);
+    for (let pass = 0; pass < 2; pass += 1) {
+      for (const rate of rateSteps) {
+        const found = refineAtRate(samples, lead, lead.halfBit * (1 + rate), middle, fine);
+        if (found && found.score > best.score) {
+          best = found;
+          bestRate = rate;
+        }
+        yield;
       }
-    };
-    for (let i = -FINE_RATE_STEPS; i <= FINE_RATE_STEPS; i += 1) tryRate((i * FINE_RATE_SPAN) / FINE_RATE_STEPS);
-    const centre = bestRate;
-    const half = FINE_RATE_SPAN / FINE_RATE_STEPS / 2;
-    tryRate(centre - half);
-    tryRate(centre + half);
+      const half = FINE_RATE_SPAN / FINE_RATE_STEPS / 2;
+      rateSteps.length = 0;
+      rateSteps.push(bestRate - half, bestRate + half);
+    }
     refined.push(best);
   }
   refined.sort((a, b) => b.score - a.score);
@@ -569,31 +679,23 @@ function bestAlignments(samples: Deviation[], nearRate?: number): Alignment[] {
  * The best start near `lead`'s at half-bit `halfBit`, within FINE_SHIFT_BINS
  * bins either way, or undefined if the rate is outside the tolerance. The
  * lead's start is carried to the new rate at `middle`, the window's middle,
- * where a rate change moves it least.
+ * where a rate change moves it least. `fine` is scratch for foldHalves.
  */
-function refineAtRate(samples: Deviation[], lead: Alignment, halfBit: number, middle: number): Alignment | undefined {
+function refineAtRate(samples: Deviation[], lead: Alignment, halfBit: number, middle: number, fine: Float64Array[]): Alignment | undefined {
   if (Math.abs(halfBit / T_MS - 1) > PERIOD_TOLERANCE + 1e-9) return undefined;
   const cycles = Math.round((middle - lead.start) / (FRAME_T * lead.halfBit));
   const anchored = middle - (middle - lead.start - cycles * FRAME_T * lead.halfBit) * (halfBit / lead.halfBit) - cycles * FRAME_T * halfBit;
-  const prefix = fold(samples, anchored, halfBit);
-  const byOffset: (Float64Array | undefined)[] = new Array(BINS_PER_HALF_BIT);
+  foldHalves(samples, anchored, halfBit, FINE_OFFSETS, fine);
   let best: Alignment | undefined;
-  for (let shift = -FINE_SHIFT_BINS; shift <= FINE_SHIFT_BINS; shift += FINE_SHIFT_STEP) {
+  for (let s = 0; s < FINE_SHIFTS.length; s += 1) {
+    const shift = FINE_SHIFTS[s];
     const bin = ((shift % FOLD_BINS) + FOLD_BINS) % FOLD_BINS;
-    const offset = bin % BINS_PER_HALF_BIT;
-    const sums = byOffset[offset] ?? (byOffset[offset] = halfSums(prefix, offset));
+    const sums = fine[FINE_OFFSETS.indexOf(bin % BINS_PER_HALF_BIT)];
     const j = Math.floor(bin / BINS_PER_HALF_BIT);
     const score = fullScore(sums, j);
     if (!best || score > best.score) best = { start: anchored + (shift / BINS_PER_HALF_BIT) * halfBit, halfBit, score, agreement: agreement(sums, j) };
   }
   return best;
-}
-
-/** How far the known half-bits agree with the frame starting at half-bit `j`: 1 when every one has the right sign, 0 when none does. */
-function agreement(sums: Float64Array, j: number): number {
-  let magnitude = 0;
-  for (let i = 0; i < KNOWN_H.length; i += 1) magnitude += Math.abs(sums[KNOWN_H[i] + j]);
-  return magnitude > 0 ? (knownScore(sums, j) / magnitude + 1) / 2 : 0;
 }
 
 /** The distance between two times on a cycle of `period`. */
@@ -606,7 +708,8 @@ function cyclicGap(a: number, b: number, period: number): number {
 function cellScores(samples: Deviation[], alignment: Alignment): Cells {
   const scores = new Float64Array(FRAME_BITS);
   const halves = new Uint8Array(FRAME_BITS);
-  for (const sample of samples) {
+  for (let i = 0; i < samples.length; i += 1) {
+    const sample = samples[i];
     let position = (sample.t - alignment.start) / alignment.halfBit;
     position -= Math.floor(position / FRAME_T) * FRAME_T;
     const h = Math.floor(position);
@@ -678,6 +781,25 @@ export function levelSeparation(values: readonly number[]): number {
   const highMedian = median(high);
   const spread = median(low.map((v) => Math.abs(v - lowMedian))) + median(high.map((v) => Math.abs(v - highMedian)));
   return spread > 0 ? (highMedian - lowMedian) / spread : Infinity;
+}
+
+/**
+ * The share of the brightnesses within NEAR_EXTREMES_BAND of either level, the
+ * levels being the 5th and 95th percentiles: an LED piles its samples onto
+ * its two levels however many frames catch an edge, where noise spreads them
+ * out. 1 when every value is the same.
+ */
+export function nearExtremes(values: readonly number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = values.slice().sort((a, b) => a - b);
+  const last = sorted.length - 1;
+  const lo = sorted[Math.floor(0.05 * last)];
+  const hi = sorted[Math.floor(0.95 * last)];
+  if (hi <= lo) return 1;
+  const band = NEAR_EXTREMES_BAND * (hi - lo);
+  let near = 0;
+  for (let i = 0; i < sorted.length; i += 1) if (Math.abs(sorted[i] - lo) <= band || Math.abs(sorted[i] - hi) <= band) near += 1;
+  return near / sorted.length;
 }
 
 function median(values: number[]): number {

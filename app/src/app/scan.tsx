@@ -33,6 +33,8 @@ const REGION_FRACTION = 0.15;
 /** Every n-th pixel in each direction; the region is a blob of light. */
 const PIXEL_STEP = 2;
 const FPS = 30;
+/** The most matching one camera frame may carry on the JS thread; about a quarter of a frame at 30 fps. */
+const SLICE_MS = 8;
 /**
  * The viewfinder's share of the screen, fixed: when it took whatever the
  * panel left, a status line wrapping resized it and moved the measured spot
@@ -71,7 +73,9 @@ export default function ScanScreen() {
   const camera = useRef<Camera>(null);
   const [view, setView] = useState({ width: 0, height: 0 });
 
-  const decoder = useRef(new LedDecoder());
+  // A try is spread over camera frames, at most SLICE_MS of matching each, so
+  // the JS thread, which also draws this screen, is never held for long.
+  const decoder = useRef(new LedDecoder({ sliceMs: SLICE_MS }));
   const recorder = useRef(new SampleRecorder());
   const [state, setState] = useState<DecoderState>(() => decoder.current.state());
   const [active, setActive] = useState(true);
@@ -86,7 +90,22 @@ export default function ScanScreen() {
       const t = frameTimestampMs(timestamp, PLATFORM);
       recorder.current.camera = { width, height, pixelFormat, regionFraction: REGION_FRACTION, pixelStep: PIXEL_STEP };
       recorder.current.push({ t, y: luminance });
-      setState(decoder.current.push({ t, y: luminance }));
+      const before = DIAGNOSTICS ? performance.now() : 0;
+      let next: DecoderState;
+      try {
+        next = decoder.current.push({ t, y: luminance });
+      } catch (error) {
+        // Thrown here, an error would vanish inside the camera's callback and the scan would
+        // stall without a word: say it, and carry on with the next frame.
+        console.warn(`[decode] error: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`);
+        return;
+      }
+      setState(next);
+      if (DIAGNOSTICS) {
+        // A push that ran a try: what it cost on this phone's JS thread.
+        const cost = performance.now() - before;
+        if (cost > 2) console.log(`[decode] push ${cost.toFixed(1)} ms at ${(t / 1000).toFixed(1)} s, LED seen ${next.ledSeen}, ${Math.floor(next.coverage * 100)}% seen, ${next.erasures} unsure${next.result ? ', read' : ''}`);
+      }
       if (DIAGNOSTICS) {
         // The frame path as this phone delivers it, every two seconds:
         // `adb logcat -s ReactNativeJS` on Android.
