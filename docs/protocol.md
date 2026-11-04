@@ -120,33 +120,47 @@ longer needed. A frame is 19.9 seconds.
 
 ### Decoding
 
-As the app does it: sample the mean luminance of a region around the LED on
-every frame with the frame's timestamp; threshold it adaptively (midway
-between a running minimum and maximum that decay towards the current sample
-over about 2 seconds, with 15% hysteresis, and "dark" below a minimum
-contrast); turn the level changes into runs; find an on run of at least 3T
-followed by an off run of at least 3T; the next rising edge is the start of
-the start bit and the timing reference. An edge's time is only known to half
-a frame interval, so the bits are not read edge by edge: the frame's samples
-are kept from the start bit, and once the next sync's on run ends, the
-half-bit grid (origin within 25 ms, period within 7% of T) with the greatest
-matched-filter energy is chosen and every bit is read from it, a bit being
-`1` when the first half of its cell is brighter than the second, with the
-difference as its confidence.
+As the app does it. Sample the mean luminance of a region around the LED on
+every camera frame, with the frame's timestamp, and subtract an adaptive
+threshold: midway between a running minimum and maximum that decay towards
+the current sample over about 2 seconds, "dark" below a minimum contrast.
+
+Whether the region holds this protocol's LED is judged over the last
+second, from the samples alone and whatever the frame length: the level
+(with 15% hysteresis) changes in runs of 1T to 5T with a camera frame's
+slack and none much longer, at least four of them; and the brightnesses sit
+at two levels, the distance between the medians of the samples above and
+below the middle of the range being at least 4 times the sum of their
+median absolute deviations (2.5 to keep an LED already found). Noise gives
+about 2.
+
+The frame repeats unchanged, so the stream is cyclic and every sample,
+wherever the camera came in, belongs to one known half-bit of the frame. The
+decoder does not look for edges or wait for a sync. Once it holds half a
+frame of samples, and then about once a second, it folds them onto one cycle
+at clock rates across the 5% tolerance and scores every start: the known
+half-bits (sync, start bit, idle) must agree, and each data cell adds how
+decisive it is. The best few starts are refined in rate and start and read
+out, a bit being `1` when the first half of its cell is brighter than the
+second, weighted towards the middle of each half, with the difference as its
+confidence. Every cycle's samples add together, and so do the samples
+before the first sync the camera saw, which are the tail of the same
+codeword; the latest frame period alone is read as well, so that older
+samples from a bad moment cannot hold a read back.
 
 Then:
 
-- A byte containing a bit whose confidence is below a threshold is marked
-  erased rather than guessed, which doubles what the code can repair.
-- Frames repeat unchanged, so the decoder may combine them: a bit seen in
-  several frames is decided by the sum of its signed confidences. It may
-  also use the samples before the first sync it sees, which are the tail of
-  the same codeword, so a read takes about one frame from whenever the
-  camera first sees the LED rather than waiting for a frame to start.
+- A byte containing a bit whose confidence is below a threshold, or a cell
+  not yet seen, is marked erased rather than guessed, which doubles what the
+  code can repair.
 - Decode with errors and erasures, then check magic, version and CRC.
 
-One frame that passes all three is a read. The fingerprint is shown so the
-user can see that it matches the Pi they are pointing at.
+One frame that passes all three is a read: in about half a frame from
+whenever the camera first sees the LED when the sync is among what it has
+seen, and at most about one frame. The progress shown is only what was
+measured: nothing until the LED is recognised, then the share of the
+frame's half-bit slots a sample has fallen in. The fingerprint is shown so
+the user can see that it matches the Pi they are pointing at.
 
 ## Keys
 
