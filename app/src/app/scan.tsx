@@ -1,6 +1,6 @@
-// The camera screen: VisionCamera frames go through a worklet that averages
-// the luminance of a centred square, and each (timestamp, luminance) sample
-// feeds the decoder on the JS thread. The decoder's state is the UI.
+// The camera screen: VisionCamera frames go to the native LED reader
+// (modules/led-reader), which finds and decodes the LED on the camera's
+// thread. Its state is the UI.
 //
 // Exposure and focus: VisionCamera 4 has no lock, only `exposure` (a bias
 // on top of auto-exposure) and `focus(point)`. focus() at the reticle is the
@@ -10,15 +10,13 @@
 // after about five seconds. It is run once the camera starts and whenever the
 // reticle is tapped.
 import { useRouter } from 'expo-router';
-import Constants from 'expo-constants';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Linking, Platform, Pressable, StyleSheet, Text, View, useWindowDimensions, type LayoutChangeEvent } from 'react-native';
+import { Linking, Pressable, StyleSheet, Text, View, useWindowDimensions, type LayoutChangeEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Camera, getCameraFormat, useCameraDevices, useCameraPermission, useFrameProcessor, type CameraRuntimeError } from 'react-native-vision-camera';
 import { useRunOnJS } from 'react-native-worklets-core';
 import { chooseScanCamera } from '@/led/camera';
-import { makeRecording, SampleRecorder, type CameraDetails } from '@/led/recording';
-import { saveRecording } from '@/led/recordingStore';
+import { ScanProgress, type ScanView } from '@/led/scanProgress';
 import { fingerprint } from '@/protocol/keys';
 import { useApp } from '@/state/store';
 import { Button } from '@/ui/Button';
@@ -36,16 +34,14 @@ const FPS = 30;
  */
 const VIEWFINDER_FRACTION = 0.5;
 
-const PLATFORM = Platform.OS;
 // The reader takes the Y plane of a yuv frame.
 const PIXEL_FORMAT = 'yuv';
-const APP_VERSION = Constants.expoConfig?.version ?? 'unknown';
 
 export default function ScanScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const window = useWindowDimensions();
-  const { setMachineId, setLastScan, services, target } = useApp();
+  const { setMachineId, services, target } = useApp();
   // The fingerprint of an LED read that was not the chosen Pi's.
   const [otherPi, setOtherPi] = useState<string | undefined>(undefined);
 
@@ -68,23 +64,20 @@ export default function ScanScreen() {
   // The native reader (modules/led-reader): it finds the LED anywhere in the frame and
   // decodes it on the camera's thread; this screen only shows its state. One per visit.
   const reader = useMemo(() => createLedReader(), []);
-  const recorder = useRef(new SampleRecorder());
   const [state, setState] = useState<LedReaderState | undefined>(undefined);
-  const latest = useRef<LedReaderState | undefined>(undefined);
+  // What the screen says: the reader's frames folded into where the user is (led/scanProgress.ts).
+  const progress = useRef(new ScanProgress());
+  const [scan, setScan] = useState<ScanView>(() => progress.current.update({ t: 0, ledSeen: false, coverage: 0 }));
   const [active, setActive] = useState(true);
   const [frameError, setFrameError] = useState<string | undefined>(
     reader ? undefined : 'the LED reader is not built into this app on this platform',
   );
-  const [locked, setLocked] = useState<'no' | 'yes' | 'unsupported'>('no');
-  const [torch, setTorch] = useState(false);
-  const [saved, setSaved] = useState<string | undefined>(undefined);
   const lastLog = useRef(0);
 
-  const onState = useRunOnJS((next: LedReaderState, width: number, height: number, pixelFormat: string) => {
-    latest.current = next;
-    recorder.current.camera = { width, height, pixelFormat, regionFraction: 0, pixelStep: 2 };
-    recorder.current.push({ t: next.t, y: next.sample });
+  const onState = useRunOnJS((next: LedReaderState) => {
     setState(next);
+    const view = progress.current.update(next);
+    setScan((current) => (current.phase === view.phase && current.progress === view.progress && current.hint === view.hint ? current : view));
     if (DIAGNOSTICS && (next.t - lastLog.current >= 1000 || next.idHex)) {
       // `adb logcat -s ReactNativeJS` on Android: what the reader measured, once a second.
       lastLog.current = next.t;
@@ -103,7 +96,7 @@ export default function ScanScreen() {
       if (!reader) return;
       try {
         const next = reader.call(frame) as unknown as LedReaderState | undefined;
-        if (next) onState(next, frame.width, frame.height, frame.pixelFormat);
+        if (next) onState(next);
       } catch (error) {
         onFrameError(error instanceof Error ? error.message : String(error));
       }
@@ -112,36 +105,13 @@ export default function ScanScreen() {
   );
 
   const lockOnReticle = useCallback(async () => {
-    if (!camera.current || view.width === 0) return;
-    if (device && !device.supportsFocus) {
-      setLocked('unsupported');
-      return;
-    }
+    if (!camera.current || view.width === 0 || (device && !device.supportsFocus)) return;
     try {
       await camera.current.focus({ x: view.width / 2, y: view.height / 2 });
-      setLocked('yes');
     } catch {
-      setLocked('unsupported');
+      // A camera that cannot focus on a point reads the LED all the same.
     }
   }, [device, view]);
-
-  const snapshot = useCallback(() => {
-    const last = latest.current;
-    return makeRecording(recorder.current.snapshot(), {
-      appVersion: APP_VERSION,
-      platform: PLATFORM,
-      fps: FPS,
-      camera: recorder.current.camera as CameraDetails | undefined,
-      decoded: last?.idHex ? { idHex: last.idHex, framesCombined: last.framesCombined ?? 1 } : null,
-    });
-  }, []);
-
-  // Whatever happens to the scan, the development recordings screen can save it.
-  useEffect(() => {
-    return () => {
-      if (recorder.current.count > 0) setLastScan(snapshot());
-    };
-  }, [setLastScan, snapshot]);
 
   const accept = useCallback(
     (idBytes: Uint8Array) => {
@@ -214,13 +184,6 @@ export default function ScanScreen() {
   }
 
   const boxSide = Math.round(Math.min(window.width, window.height) * 0.24);
-  // Only what the reader has measured: whether a protocol-like blink is in view,
-  // and how much of the repeating code it has seen.
-  const ledSeen = state?.ledSeen ?? false;
-  const coverage = state?.coverage ?? 0;
-  const seenPercent = Math.floor(coverage * 100);
-  const progressLabel = result ? 'Read' : ledSeen ? 'Reading the LED' : 'No blinking LED in view';
-  const progressDetail = result ? '' : !ledSeen ? '' : seenPercent >= 100 ? 'All of the code seen; decoding' : `${seenPercent}% of the code seen`;
   const tileBox = state && view.width > 0 ? tileInView(state, view) : undefined;
 
   return (
@@ -239,7 +202,6 @@ export default function ScanScreen() {
           isActive={active}
           pixelFormat={PIXEL_FORMAT}
           frameProcessor={frameProcessor}
-          torch={torch ? 'on' : 'off'}
           onInitialized={() => void lockOnReticle()}
           onError={(error: CameraRuntimeError) => {
             console.warn(`[camera] ${error.code}: ${error.message}`);
@@ -273,19 +235,10 @@ export default function ScanScreen() {
       </View>
       <View style={[styles.overlay, { paddingBottom: insets.bottom + space.md }]}>
         <View style={styles.panel}>
-          <Progress value={result ? 1 : coverage} label={progressLabel} detail={progressDetail} />
+          <Progress value={scan.progress} label={scan.label} detail={scan.detail} tone={scan.phase === 'lost' ? 'warn' : 'accent'} />
           <Text style={styles.check} numberOfLines={2}>
-            {result
-              ? `Read, ${result.errors} wrong and ${result.erasures} unreadable bytes repaired.`
-              : ledSeen
-                ? 'Hold still: the bar is how much of the code the camera has seen.'
-                : 'Bring the blinking LED into view; it is found anywhere in the picture.'}
+            {result ? `${result.errors} wrong and ${result.erasures} unreadable bytes repaired.` : scan.hint}
           </Text>
-          <View style={styles.counters}>
-            <Text style={styles.counter}>Frames failed {state?.framesFailed ?? 0}</Text>
-            <Text style={styles.counter}>Contrast {Math.round(state?.contrast ?? 0)}</Text>
-            <Text style={styles.counter}>{locked === 'yes' ? 'Locked' : locked === 'unsupported' ? 'No lock' : 'Auto'}</Text>
-          </View>
           {frameError ? <Text style={styles.error}>The camera frames cannot be read on this phone: {frameError}</Text> : null}
           {result ? (
             <View style={styles.result}>
@@ -293,24 +246,6 @@ export default function ScanScreen() {
               <Text style={styles.resultDetail}>Fingerprint {fingerprint(result.idBytes)}.</Text>
             </View>
           ) : null}
-          {DIAGNOSTICS ? (
-            <View style={styles.devRow}>
-              <Button
-                label={saved ? 'Saved' : 'Save recording'}
-                variant="quiet"
-                onPress={() => {
-                  try {
-                    setSaved(saveRecording(snapshot()).name);
-                  } catch (error) {
-                    setSaved(undefined);
-                    setFrameError(error instanceof Error ? error.message : String(error));
-                  }
-                }}
-              />
-              <Button label={torch ? 'Torch off' : 'Torch on'} variant="quiet" onPress={() => setTorch((on) => !on)} />
-            </View>
-          ) : null}
-          {DIAGNOSTICS && saved ? <Text style={styles.counter}>{saved}</Text> : null}
           <Button label="Cancel" variant="quiet" onPress={() => router.back()} />
         </View>
       </View>

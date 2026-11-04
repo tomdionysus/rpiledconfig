@@ -1,75 +1,42 @@
-// Home: what the two factors are, the button that starts, and the fallback
-// of typing the ID. In development, the switch to the fake daemon.
+// Home: what the app does, in two lines, and the button that starts.
 import { useRouter } from 'expo-router';
-import { StyleSheet, Switch, Text, View } from 'react-native';
-import { FAKE_MACHINE_ID_HEX } from '@/ble/fake';
-import { hexToBytes } from '@/protocol/bytes';
-import { FAKE_PASSPHRASE } from '@/state/services';
-import { useApp } from '@/state/store';
+import { Image, StyleSheet, Text, View } from 'react-native';
 import { Button } from '@/ui/Button';
 import { Screen } from '@/ui/Screen';
 import { colors, radius, space, type as typography } from '@/ui/theme';
-import { DIAGNOSTICS } from '@/util/diagnostics';
+
+const HERO_ICON = require('../../assets/hero-icon.png');
+
+const STEPS = [
+  ['Find', 'Choose the Pi over Bluetooth; its LED starts blinking.'],
+  ['Read', 'Point the camera at the LED for a few seconds.'],
+  ['Connect', 'Pick the network the Pi should join and give its passphrase.'],
+] as const;
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { fake, setFake, setMachineId } = useApp();
 
   return (
     <Screen>
       <View style={styles.hero}>
-        <View style={styles.led} />
-        <Text style={styles.title}>RPiLEDConfig</Text>
-        <Text style={styles.lede}>Set up a Raspberry Pi's WiFi with two things only someone in the room has.</Text>
+        <Image source={HERO_ICON} style={styles.icon} accessibilityIgnoresInvertColors />
+        <Text style={styles.lede}>Set up a Raspberry Pi's WiFi with only what someone in the room has: sight of its LED and Bluetooth range.</Text>
       </View>
 
-      <View style={styles.factor}>
-        <Text style={styles.factorNumber}>1</Text>
-        <View style={styles.factorText}>
-          <Text style={styles.factorTitle}>Line of sight</Text>
-          <Text style={styles.factorBody}>
-            The app finds the Pi over Bluetooth and asks it to blink its machine ID on its main LED. Point the camera at
-            it for up to twenty seconds and the app reads it.
-          </Text>
-        </View>
-      </View>
-      <View style={styles.factor}>
-        <Text style={styles.factorNumber}>2</Text>
-        <View style={styles.factorText}>
-          <Text style={styles.factorTitle}>Bluetooth range</Text>
-          <Text style={styles.factorBody}>
-            The app proves over Bluetooth that it knows the ID, without ever sending it, and then configures WiFi over an
-            encrypted channel.
-          </Text>
-        </View>
+      <View style={styles.steps}>
+        {STEPS.map(([name, text], index) => (
+          <View key={name} style={styles.step}>
+            <Text style={styles.stepNumber}>{index + 1}</Text>
+            <View style={styles.stepText}>
+              <Text style={styles.stepName}>{name}</Text>
+              <Text style={styles.stepBody}>{text}</Text>
+            </View>
+          </View>
+        ))}
       </View>
 
       <Button label="Find the Pi" onPress={() => router.push('/find')} style={styles.start} />
       <Button label="Type the ID instead" variant="quiet" onPress={() => router.push('/enter')} />
-
-      {DIAGNOSTICS ? (
-        <View style={styles.dev}>
-          <Text style={styles.devTitle}>DEVELOPMENT</Text>
-          <View style={styles.devRow}>
-            <Text style={styles.devLabel}>Talk to the fake Pi instead of Bluetooth</Text>
-            <Switch value={fake} onValueChange={setFake} trackColor={{ true: colors.accentEdge }} thumbColor={fake ? colors.accent : colors.textFaint} />
-          </View>
-          {fake ? <Text style={styles.devLabel}>The fake Pi joins Blackraven with the passphrase {FAKE_PASSPHRASE}; any other fails after 45 seconds.</Text> : null}
-          {fake ? (
-            <Button
-              label="Pair with the fake Pi's ID"
-              variant="secondary"
-              onPress={() => {
-                setMachineId(hexToBytes(FAKE_MACHINE_ID_HEX));
-                router.push('/pair');
-              }}
-              style={styles.devButton}
-            />
-          ) : null}
-          <Button label="Show a virtual LED for another phone" variant="secondary" onPress={() => router.push('/virtual-led')} style={styles.devButton} />
-          <Button label="LED recordings" variant="secondary" onPress={() => router.push('/recordings')} style={styles.devButton} />
-        </View>
-      ) : null}
     </Screen>
   );
 }
@@ -77,24 +44,14 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   hero: {
     alignItems: 'center',
-    paddingTop: space.xxl,
-    paddingBottom: space.xl,
+    paddingTop: space.lg,
+    paddingBottom: space.xxl,
     gap: space.md,
   },
-  led: {
-    width: 18,
-    height: 18,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accent,
-    shadowColor: colors.accent,
-    shadowOpacity: 0.9,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 0 },
-  },
-  title: {
-    ...typography.display,
-    fontSize: 30,
-    color: colors.text,
+  icon: {
+    width: 96,
+    height: 96,
+    borderRadius: radius.xl,
   },
   lede: {
     ...typography.body,
@@ -102,59 +59,34 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 21,
   },
-  factor: {
+  steps: {
+    gap: space.lg,
+  },
+  step: {
     flexDirection: 'row',
     gap: space.lg,
-    paddingVertical: space.md,
   },
-  factorNumber: {
+  stepNumber: {
     ...typography.title,
     color: colors.accent,
     width: 24,
     textAlign: 'center',
   },
-  factorText: {
+  stepText: {
     flex: 1,
     gap: space.xs,
   },
-  factorTitle: {
+  stepName: {
     ...typography.heading,
     color: colors.text,
   },
-  factorBody: {
+  stepBody: {
     ...typography.body,
     color: colors.textDim,
     lineHeight: 21,
   },
   start: {
-    marginTop: space.xl,
-    marginBottom: space.sm,
-  },
-  dev: {
     marginTop: space.xxl,
-    padding: space.lg,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    gap: space.md,
-  },
-  devTitle: {
-    ...typography.micro,
-    color: colors.textFaint,
-  },
-  devRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: space.md,
-  },
-  devLabel: {
-    ...typography.body,
-    color: colors.textDim,
-    flex: 1,
-  },
-  devButton: {
-    alignSelf: 'stretch',
+    marginBottom: space.sm,
   },
 });

@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "RPiLEDConfig",
+    "name": "RPi LED Config",
     "slug": "rpiledconfig",
     "version": "0.3.0",
     "orientation": "portrait",
@@ -11,8 +11,8 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.tomcully.rpiledconfig",
       "infoPlist": {
-        "NSBluetoothAlwaysUsageDescription": "RPiLEDConfig uses Bluetooth to talk to the Raspberry Pi whose LED you have read. Nothing else is scanned or stored.",
-        "NSCameraUsageDescription": "RPiLEDConfig uses the camera to read the blinking LED on your Raspberry Pi, and a WiFi QR code when you choose to scan one. Nothing is recorded and no image leaves the phone."
+        "NSBluetoothAlwaysUsageDescription": "RPi LED Config uses Bluetooth to talk to the Raspberry Pi whose LED you have read. Nothing else is scanned or stored.",
+        "NSCameraUsageDescription": "RPi LED Config uses the camera to read the blinking LED on your Raspberry Pi, and a WiFi QR code when you choose to scan one. Nothing is recorded and no image leaves the phone."
       }
     },
     "android": {
@@ -24,14 +24,18 @@
         "android.permission.ACCESS_FINE_LOCATION"
       ],
       "predictiveBackGestureEnabled": false,
-      "versionCode": 300
+      "versionCode": 300,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-foreground.png",
+        "backgroundColor": "#000000"
+      }
     },
     "plugins": [
       "expo-router",
       [
         "react-native-vision-camera",
         {
-          "cameraPermissionText": "RPiLEDConfig uses the camera to read the blinking LED on your Raspberry Pi, and a WiFi QR code when you choose to scan one. Nothing is recorded and no image leaves the phone.",
+          "cameraPermissionText": "RPi LED Config uses the camera to read the blinking LED on your Raspberry Pi, and a WiFi QR code when you choose to scan one. Nothing is recorded and no image leaves the phone.",
           "enableMicrophonePermission": false,
           "enableCodeScanner": true
         }
@@ -41,7 +45,7 @@
         {
           "isBackgroundEnabled": false,
           "neverForLocation": true,
-          "bluetoothAlwaysPermission": "RPiLEDConfig uses Bluetooth to talk to the Raspberry Pi whose LED you have read. Nothing else is scanned or stored."
+          "bluetoothAlwaysPermission": "RPi LED Config uses Bluetooth to talk to the Raspberry Pi whose LED you have read. Nothing else is scanned or stored."
         }
       ],
       [
@@ -51,10 +55,25 @@
             "minSdkVersion": 26
           }
         }
-      ]
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0d110e",
+          "dark": {
+            "backgroundColor": "#0d110e",
+            "image": "./assets/splash-icon.png"
+          },
+          "resizeMode": "contain",
+          "imageWidth": 200,
+          "image": "./assets/splash-icon.png"
+        }
+      ],
+      "./plugins/withDebuggableRelease"
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "icon": "./assets/icon.png"
   }
 }

@@ -1,6 +1,5 @@
-// Whether the app shows its diagnostics: the frame statistics in the log, the
-// scan screen's save and torch controls, and the development section of the
-// home screen (the fake Pi, the virtual LED, the recordings).
+// Whether the app shows its diagnostics: the reader's statistics in the log,
+// and the platform's own words under an error.
 //
 // Not __DEV__ alone: a development bundle embedded in the APK aborts at load
 // in Expo 57 (expo/src/async-require/messageSocket.native.ts throws when the

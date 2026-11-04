@@ -6,7 +6,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { pair, PairingError, type PairingPhase } from '@/pairing/session';
 import { bytesToHex } from '@/protocol/bytes';
-import { BLE_NAME_PREFIX } from '@/protocol/constants';
 import { fingerprint } from '@/protocol/keys';
 import { useApp } from '@/state/store';
 import { Button } from '@/ui/Button';
@@ -73,24 +72,12 @@ export default function PairScreen() {
   return (
     <Screen title="Pair" eyebrow="Step 3 of 4" showBack={!!error}>
       <View style={styles.idCard}>
-        <Text style={styles.idLabel}>MACHINE ID</Text>
+        <Text style={styles.idLabel}>PI {fp}</Text>
         <Text style={styles.id}>{bytesToHex(machineId)}</Text>
-        <Text style={styles.idDetail}>
-          Fingerprint {fp}. The Pi advertises as {BLE_NAME_PREFIX}
-          {fp}; the ID itself never crosses the air.
-        </Text>
+        <Text style={styles.idDetail}>The ID read from its LED. It never crosses the air: both sides prove they know it.</Text>
       </View>
 
       <Progress value={(step + (error ? 0 : 0.5)) / PHASES.length} label={PHASE_LABELS[phase]} detail={detail} tone={error ? 'warn' : 'accent'} />
-
-      <View style={styles.steps}>
-        {PHASES.map((name, index) => (
-          <Text key={name} style={[styles.step, index < step && styles.stepDone, index === step && !error && styles.stepCurrent]}>
-            {index < step ? 'done  ' : index === step ? (error ? 'failed  ' : 'now  ') : '      '}
-            {PHASE_LABELS[name]}
-          </Text>
-        ))}
-      </View>
 
       {error ? (
         <View style={styles.errorBox}>
@@ -153,21 +140,6 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.textDim,
     marginTop: space.xs,
-  },
-  steps: {
-    marginTop: space.xl,
-    gap: space.sm,
-  },
-  step: {
-    ...typography.body,
-    fontFamily: monospace,
-    color: colors.textFaint,
-  },
-  stepDone: {
-    color: colors.textDim,
-  },
-  stepCurrent: {
-    color: colors.text,
   },
   errorBox: {
     marginTop: space.xxl,
