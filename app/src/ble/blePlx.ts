@@ -78,7 +78,11 @@ function startScan(onPi: (peripheral: Peripheral) => void, onError: (error: Erro
   // By service as well as by name: the 128-bit UUID and the name may not
   // both fit in the advertisement, and which one lands in the scan
   // response depends on the stack.
-  void ble().startDeviceScan([SERVICE_UUID], { allowDuplicates: false, scanMode: ScanMode.LowLatency }, (error, device) => {
+  // allowDuplicates: with it off, Android reports a device once per hardware match and a Pi
+  // the phone's scanner still remembers from an earlier run of the app can go unreported
+  // for a minute or more (seen in the symbol-time trials, 2026-11-04); every report is
+  // taken and `recent` dedupes.
+  void ble().startDeviceScan([SERVICE_UUID], { allowDuplicates: true, scanMode: ScanMode.LowLatency }, (error, device) => {
     if (error) {
       onError(error);
       return;
