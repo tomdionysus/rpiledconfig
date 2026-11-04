@@ -1,0 +1,19 @@
+# The build context for packaging/Dockerfile is the repository root. Nothing built on the
+# host goes in: the image builds everything itself.
+.git
+.claude
+.basemind
+TODO
+dist
+**/node_modules
+**/.DS_Store
+**/*.local.conf
+app/.expo
+app/dist
+app/ios
+app/android
+daemon/build
+daemon/build-*
+daemon/compile_commands.json
+daemon/.cache
+daemon/.local

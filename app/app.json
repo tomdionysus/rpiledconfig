@@ -1,0 +1,60 @@
+{
+  "expo": {
+    "name": "RPiLEDConfig",
+    "slug": "rpiledconfig",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "rpiledconfig",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0d110e",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.tomcully.rpiledconfig",
+      "infoPlist": {
+        "NSBluetoothAlwaysUsageDescription": "RPiLEDConfig uses Bluetooth to talk to the Raspberry Pi whose LED you have read. Nothing else is scanned or stored.",
+        "NSCameraUsageDescription": "RPiLEDConfig uses the camera to read the blinking LED on your Raspberry Pi, and a WiFi QR code when you choose to scan one. Nothing is recorded and no image leaves the phone."
+      }
+    },
+    "android": {
+      "package": "com.tomcully.rpiledconfig",
+      "permissions": [
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.CAMERA",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ],
+      "predictiveBackGestureEnabled": false,
+      "versionCode": 100
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "react-native-vision-camera",
+        {
+          "cameraPermissionText": "RPiLEDConfig uses the camera to read the blinking LED on your Raspberry Pi, and a WiFi QR code when you choose to scan one. Nothing is recorded and no image leaves the phone.",
+          "enableMicrophonePermission": false,
+          "enableCodeScanner": true
+        }
+      ],
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": false,
+          "neverForLocation": true,
+          "bluetoothAlwaysPermission": "RPiLEDConfig uses Bluetooth to talk to the Raspberry Pi whose LED you have read. Nothing else is scanned or stored."
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 26
+          }
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

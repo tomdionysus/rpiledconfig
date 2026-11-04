@@ -1,0 +1,38 @@
+//
+// RPiLEDConfig - daemon
+//
+// Copyright (C) 2026 T. Cully
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
+// What NetworkManager asks polkit before it lets the service user change WiFi, granted to
+// that user alone. Installed as /usr/share/polkit-1/rules.d/60-rpiledconfig.rules by the
+// rpiledconfig package; polkitd notices new rules without a restart. JavaScript rules, as
+// polkitd reads them on bookworm (122) and trixie (126).
+//
+// NetworkManager gates these with polkit rather than with the bus policy, and its own
+// defaults answer "auth_admin" (or "auth" for a local active session) to anybody else. A
+// system service has no session and nobody to type a password, so without this rule every
+// one of them is refused with org.freedesktop.NetworkManager.PermissionDenied.
+//
+//   settings.modify.system  AddAndActivateConnection saves a system connection
+//                           (wifi.configure), Settings.Connection.Delete (wifi.forget)
+//   network-control         the activation AddAndActivateConnection asks for
+//   wifi.scan               Device.Wireless.RequestScan (wifi.scan; without it the answer
+//                           is NetworkManager's cached list)
+//
+// Nothing else: reading devices, access points and connections needs no permission.
+
+polkit.addRule(function (action, subject) {
+    if (subject.user !== "rpiledconfig") {
+        return polkit.Result.NOT_HANDLED;
+    }
+
+    switch (action.id) {
+    case "org.freedesktop.NetworkManager.settings.modify.system":
+    case "org.freedesktop.NetworkManager.network-control":
+    case "org.freedesktop.NetworkManager.wifi.scan":
+        return polkit.Result.YES;
+    }
+
+    return polkit.Result.NOT_HANDLED;
+});

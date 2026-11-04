@@ -1,0 +1,14 @@
+//
+// RPiLEDConfig - daemon
+//
+// Copyright (C) 2026 T. Cully
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
+// Generated from build_version.h.in by CMake. Do not edit the generated copy, and do not
+// clang-format this one: the markers between at signs must have no spaces.
+#pragma once
+
+#define RPILEDCONFIG_VERSION_MAJOR @PROJECT_VERSION_MAJOR@
+#define RPILEDCONFIG_VERSION_MINOR @PROJECT_VERSION_MINOR@
+#define RPILEDCONFIG_VERSION_PATCH @PROJECT_VERSION_PATCH@
+#define RPILEDCONFIG_VERSION_STRING "@PROJECT_VERSION@"

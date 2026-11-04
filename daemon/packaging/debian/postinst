@@ -1,0 +1,114 @@
+#!/bin/sh
+#
+# RPiLEDConfig - daemon
+#
+# Copyright (C) 2026 T. Cully
+# Licensed under the Apache License, Version 2.0 - see LICENSE
+#
+# rpiledconfig postinst: the service account, its directories, udev, the netdev group, and
+# the unit.
+#
+# The unit is enabled and, on a first install, started: the packaged configuration is the
+# Pi's (the real LED, BlueZ, NetworkManager), and a Pi that has just had this installed is
+# a Pi somebody wants to set up. An upgrade restarts it if it was running.
+
+set -e
+
+USER_NAME=rpiledconfig
+STATE_DIR=/var/lib/rpiledconfig
+CONFIG_DIR=/etc/rpiledconfig
+CONFIG_FILE=$CONFIG_DIR/rpiledconfig.conf
+UNIT=rpiledconfig.service
+
+# chown and chmod, unless the administrator has registered an override with
+# dpkg-statoverride, which wins.
+set_perms() {
+    owner=$1
+    mode=$2
+    path=$3
+
+    if ! dpkg-statoverride --list "$path" >/dev/null 2>&1; then
+        chown "$owner" "$path"
+        chmod "$mode" "$path"
+    fi
+}
+
+case "$1" in
+    configure)
+        if ! getent group "$USER_NAME" >/dev/null; then
+            addgroup --system --quiet "$USER_NAME"
+        fi
+
+        if ! getent passwd "$USER_NAME" >/dev/null; then
+            adduser --system --quiet --ingroup "$USER_NAME" --home "$STATE_DIR" \
+                --no-create-home --shell /usr/sbin/nologin "$USER_NAME"
+        fi
+
+        # The state directory, where the machine id lives, 0600. Enforced on every
+        # configure, as systemd's StateDirectoryMode enforces it on every start; never
+        # recursively.
+        [ -d "$STATE_DIR" ] || mkdir -p "$STATE_DIR"
+        set_perms "$USER_NAME:$USER_NAME" 0750 "$STATE_DIR"
+
+        # The service may read its configuration and not change it. dpkg unpacks it
+        # root:root 0644 on every upgrade that replaces it, so this runs every time.
+        set_perms "root:$USER_NAME" 0750 "$CONFIG_DIR"
+        if [ -f "$CONFIG_FILE" ]; then
+            set_perms "root:$USER_NAME" 0640 "$CONFIG_FILE"
+        fi
+
+        # A fresh install draws the machine id here, from getrandom(2), written whole or
+        # not at all (docs/protocol.md, The machine ID), and as the service user so the
+        # file is its own. Only when there is none, or only an empty file a power cut
+        # left: an upgrade must never change an id an app has learnt. The id is the whole
+        # secret, so it is not printed into apt's output or logs.
+        if [ ! -s "$STATE_DIR/machine-id" ]; then
+            runuser -u "$USER_NAME" -- /usr/bin/rpiledconfig --regenerate-id --config "$CONFIG_FILE" >/dev/null
+        fi
+
+        # The LED's rule, applied to the LED that is already there. Not inside a
+        # container, where there is no udev to tell.
+        if [ -S /run/udev/control ] && command -v udevadm >/dev/null 2>&1; then
+            udevadm control --reload-rules || true
+            udevadm trigger --subsystem-match=leds --action=change || true
+        fi
+
+        # The unit's SupplementaryGroups=netdev is how the service reaches wpa_supplicant's
+        # control socket for Wi-Fi Easy Connect, and systemd refuses to start a unit that
+        # names a group which does not exist. Raspberry Pi OS has netdev; a minimal Debian
+        # may not, and an empty group there costs nothing.
+        if ! getent group netdev >/dev/null; then
+            addgroup --system --quiet netdev
+        fi
+        ;;
+esac
+
+# As dh_installsystemd writes it: enable on a first install, and respect an administrator's
+# "systemctl disable" on every upgrade after.
+if [ "$1" = "configure" ] || [ "$1" = "abort-upgrade" ] || [ "$1" = "abort-deconfigure" ] || [ "$1" = "abort-remove" ]; then
+    deb-systemd-helper unmask "$UNIT" >/dev/null || true
+
+    if deb-systemd-helper --quiet was-enabled "$UNIT"; then
+        deb-systemd-helper enable "$UNIT" >/dev/null || true
+    else
+        deb-systemd-helper update-state "$UNIT" >/dev/null || true
+    fi
+fi
+
+if [ "$1" = "configure" ] || [ "$1" = "abort-upgrade" ] || [ "$1" = "abort-deconfigure" ] || [ "$1" = "abort-remove" ]; then
+    if [ -d /run/systemd/system ]; then
+        systemctl --system daemon-reload >/dev/null || true
+
+        if [ -n "$2" ]; then
+            # An upgrade: the new binary if the old one was running, and nothing if not.
+            systemctl try-restart "$UNIT" >/dev/null || true
+        else
+            deb-systemd-invoke start "$UNIT" >/dev/null || true
+            echo "rpiledconfig is installed, enabled and started."
+            echo "The machine id: sudo rpiledconfig --show-id --config $CONFIG_FILE"
+            echo "See /usr/share/doc/rpiledconfig/protocol.md"
+        fi
+    fi
+fi
+
+exit 0

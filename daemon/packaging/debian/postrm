@@ -1,0 +1,52 @@
+#!/bin/sh
+#
+# RPiLEDConfig - daemon
+#
+# Copyright (C) 2026 T. Cully
+# Licensed under the Apache License, Version 2.0 - see LICENSE
+#
+# rpiledconfig postrm.
+#
+# remove keeps /var/lib/rpiledconfig: it holds the machine id, and a reinstall that kept
+# it would still answer the app that learnt it.
+#
+# purge deletes it, as Debian expects of a purge; the next install makes a new id and the
+# LED has to be read again. The system user and group are left, as Debian policy advises:
+# files they own may remain elsewhere.
+
+set -e
+
+UNIT=rpiledconfig.service
+STATE_DIR=/var/lib/rpiledconfig
+
+case "$1" in
+    remove)
+        if [ -d /run/systemd/system ]; then
+            systemctl --system daemon-reload >/dev/null || true
+        fi
+        if [ -x /usr/bin/deb-systemd-helper ]; then
+            deb-systemd-helper mask "$UNIT" >/dev/null || true
+        fi
+        if [ -S /run/udev/control ] && command -v udevadm >/dev/null 2>&1; then
+            udevadm control --reload-rules || true
+        fi
+        ;;
+
+    purge)
+        if [ -x /usr/bin/deb-systemd-helper ]; then
+            deb-systemd-helper purge "$UNIT" >/dev/null || true
+            deb-systemd-helper unmask "$UNIT" >/dev/null || true
+        fi
+
+        if [ -d "$STATE_DIR" ]; then
+            echo "Purging rpiledconfig: deleting $STATE_DIR, the machine id included." >&2
+            rm -rf "$STATE_DIR"
+        fi
+
+        # dpkg has removed the conffile; anything left beside it (.dpkg-old, .dpkg-dist,
+        # an operator's notes) goes with the directory.
+        rm -rf /etc/rpiledconfig
+        ;;
+esac
+
+exit 0

@@ -1,0 +1,27 @@
+# Daemon builds
+daemon/build/
+daemon/build-*/
+daemon/compile_commands.json
+daemon/.cache/
+daemon/.local/
+
+# Packages from packaging/build-debs.sh
+/dist/
+
+# App
+app/node_modules/
+app/.expo/
+app/dist/
+app/ios/
+app/android/
+app/expo-env.d.ts
+app/.kotlin/
+*.tsbuildinfo
+
+# Local state
+.DS_Store
+*.local.conf
+.basemind/
+CLAUDE.local.md
+.claude/worktrees/
+basemind.toml

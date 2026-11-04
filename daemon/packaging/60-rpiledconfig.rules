@@ -1,0 +1,16 @@
+#
+# RPiLEDConfig - daemon
+#
+# Copyright (C) 2026 T. Cully
+# Licensed under the Apache License, Version 2.0 - see LICENSE
+#
+# The LEDs the daemon may drive (docs/protocol.md, "The LED channel"). Installed by the
+# rpiledconfig package; override it with a file of the same name in /etc/udev/rules.d.
+#
+# The kernel makes /sys/class/leds/<name>/brightness and trigger root:root 0644, and the
+# daemon runs as rpiledconfig with no capabilities, so the two files it writes are given to
+# its group. ACT (led0 on older boards) is the activity LED, the default; PWR (led1) is
+# the power LED, chosen with led.path. Both are covered so changing led.path
+# needs no rule change. Nothing else under a node is touched: max_brightness is read,
+# which anyone may.
+SUBSYSTEM=="leds", KERNEL=="PWR|led1|ACT|led0", RUN+="/bin/chgrp rpiledconfig /sys%p/brightness /sys%p/trigger", RUN+="/bin/chmod g+w /sys%p/brightness /sys%p/trigger"

@@ -1,0 +1,5 @@
+# clangd's index, made by an editor reading compile_commands.json.
+.cache/
+
+# A development state directory (machine-id) for running the daemon from the tree.
+.local/
