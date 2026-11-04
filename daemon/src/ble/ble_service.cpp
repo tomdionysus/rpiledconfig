@@ -22,6 +22,8 @@ const char* uuid(Characteristic characteristic) {
       return "2a7f0006-7e1d-4c3a-9b5e-0f8a6d4c2b10";
     case Characteristic::response:
       return "2a7f0007-7e1d-4c3a-9b5e-0f8a6d4c2b10";
+    case Characteristic::blink:
+      return "2a7f0008-7e1d-4c3a-9b5e-0f8a6d4c2b10";
   }
   return "";
 }
@@ -40,6 +42,8 @@ const char* name(Characteristic characteristic) {
       return "Request";
     case Characteristic::response:
       return "Response";
+    case Characteristic::blink:
+      return "Blink";
   }
   return "";
 }

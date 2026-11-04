@@ -27,6 +27,7 @@ const std::string auth = "2a7f0004-7e1d-4c3a-9b5e-0f8a6d4c2b10";
 const std::string auth_result = "2a7f0005-7e1d-4c3a-9b5e-0f8a6d4c2b10";
 const std::string request = "2a7f0006-7e1d-4c3a-9b5e-0f8a6d4c2b10";
 const std::string response = "2a7f0007-7e1d-4c3a-9b5e-0f8a6d4c2b10";
+const std::string blink = "2a7f0008-7e1d-4c3a-9b5e-0f8a6d4c2b10";
 
 using Bytes = types::Bytes;
 
@@ -152,6 +153,7 @@ TEST_F(BleBluezTest, RegistersTheServiceOfTheProtocolAndAdvertisesIt) {
 
   const std::map<std::string, std::vector<std::string>> flags = {
       {info, {"read"}}, {challenge, {"read"}}, {auth, {"write"}}, {auth_result, {"read", "notify"}}, {request, {"write"}}, {response, {"notify"}},
+      {blink, {"write"}},
   };
   EXPECT_EQ(app->characteristic_flags, flags);
 

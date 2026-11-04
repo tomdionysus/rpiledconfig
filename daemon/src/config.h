@@ -75,6 +75,13 @@ class Config {
   // wpa_supplicant otherwise. Resolved by loading, never empty after it.
   std::string wifi_easyconnect;
 
+  // --- uninstall -------------------------------------------------------------------
+
+  // What an authenticated phone's uninstall does (docs/protocol.md, "Uninstalling"):
+  // systemd starts the package's rpiledconfig-uninstall.service, which purges it; fake
+  // logs and removes nothing; off answers uninstall_unavailable.
+  std::string uninstall_driver = default_uninstall_driver;
+
   // --- setup -----------------------------------------------------------------------
 
   // Stay in setup mode for ever, finish or no finish: for a bench Pi whose LED and BLE
@@ -110,10 +117,12 @@ class Config {
   static constexpr const char* default_led_driver = "sysfs";
   static constexpr const char* default_ble_driver = "bluez";
   static constexpr const char* default_wifi_driver = "networkmanager";
+  static constexpr const char* default_uninstall_driver = "systemd";
 #else
   static constexpr const char* default_led_driver = "fake";
   static constexpr const char* default_ble_driver = "fake";
   static constexpr const char* default_wifi_driver = "fake";
+  static constexpr const char* default_uninstall_driver = "fake";
 #endif
 
  private:

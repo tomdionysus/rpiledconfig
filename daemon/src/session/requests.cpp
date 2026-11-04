@@ -15,8 +15,12 @@ using namespace protocol;
 std::string wifi_error_code(const std::string& code) { return code.empty() ? errors::wifi_failed : code; }
 
 Requests::Requests(std::shared_ptr<loggers::Logger> logger, std::shared_ptr<wifi::Wifi> wifi, std::string hostname,
-                   std::shared_ptr<wifi::EasyConnect> easyconnect)
-    : _logger(std::move(logger)), _wifi(std::move(wifi)), _hostname(std::move(hostname)), _easyconnect_backend(std::move(easyconnect)) {}
+                   std::shared_ptr<wifi::EasyConnect> easyconnect, std::shared_ptr<system::Uninstaller> uninstaller)
+    : _logger(std::move(logger)),
+      _wifi(std::move(wifi)),
+      _hostname(std::move(hostname)),
+      _easyconnect_backend(std::move(easyconnect)),
+      _uninstaller(std::move(uninstaller)) {}
 
 void Requests::closed() {
   if (!_easyconnect_backend || !_easyconnect_backend->active()) return;
@@ -41,7 +45,7 @@ void Requests::_easyconnect(types::Executor on, Done done) {
     }
 
     logger->info("Configuring WiFi for " + received.value.ssid + " from Wi-Fi Easy Connect");
-    wifi->configure(received.value.ssid, received.value.passphrase, on, [logger, ssid = received.value.ssid](types::Status status) {
+    wifi->configure(received.value.ssid, received.value.passphrase, false, on, [logger, ssid = received.value.ssid](types::Status status) {
       if (!status) logger->warn("Could not configure " + ssid + " from Wi-Fi Easy Connect: " + status.error);
     });
   };
@@ -72,7 +76,7 @@ void Requests::handle(const Request& request, types::Executor on, Done done) {
 
   if (request.op == ops::wifi_configure) {
     _logger->info("Configuring WiFi for " + request.ssid);
-    return _wifi->configure(request.ssid, request.psk, on, [done](types::Status status) {
+    return _wifi->configure(request.ssid, request.psk, request.hidden, on, [done](types::Status status) {
       if (!status) return done(error_response(wifi_error_code(status.code), status.error));
       done(ok_response());
     });
@@ -97,6 +101,19 @@ void Requests::handle(const Request& request, types::Executor on, Done done) {
   }
 
   if (request.op == ops::finish) return types::complete(std::move(on), std::move(done), ok_response());
+
+  if (request.op == ops::uninstall) {
+    if (!_uninstaller) {
+      return types::complete(std::move(on), std::move(done),
+                             error_response(errors::uninstall_unavailable, "uninstalling from the phone is off on this Pi (uninstall.driver: off)"));
+    }
+
+    _logger->warn("A phone asked for RPiLEDConfig to be removed from this Pi");
+    return _uninstaller->start(on, [done](types::Status status) {
+      if (!status) return done(error_response(status.code.empty() ? std::string(errors::uninstall_unavailable) : status.code, status.error));
+      done(ok_response());
+    });
+  }
 
   _logger->warn("A request with an op this daemon does not know: " + request.op);
   types::complete(std::move(on), std::move(done), error_response(errors::unknown_op, "this daemon does not know " + request.op));

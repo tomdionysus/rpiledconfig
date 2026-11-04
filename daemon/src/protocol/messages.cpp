@@ -36,6 +36,12 @@ types::Result<Request> parse_request(const std::string& plaintext) {
       if (!psk->is_string()) return Out::failure(errors::bad_request, "psk must be a string");
       request.psk = psk->as_string();
     }
+
+    const Json* hidden = json->get("hidden");
+    if (hidden != nullptr && !hidden->is_null()) {
+      if (!hidden->is_boolean()) return Out::failure(errors::bad_request, "hidden must be true or false");
+      request.hidden = hidden->as_boolean();
+    }
   }
 
   return Out::success(std::move(request));
@@ -52,6 +58,14 @@ std::string status_response(const std::string& hostname, const WifiStatus& wifi)
   if (wifi.connected) {
     wifi_json.set("ssid", Json::string(wifi.ssid));
     wifi_json.set("ip", Json::string(wifi.ip));
+  }
+  if (wifi.join) {
+    Json join = Json::object().set("ssid", Json::string(wifi.join->ssid)).set("state", Json::string(wifi.join->state));
+    if (wifi.join->state == join_states::failed) {
+      join.set("reason", Json::string(wifi.join->reason.empty() ? std::string(join_reasons::other) : wifi.join->reason));
+      join.set("message", Json::string(wifi.join->message));
+    }
+    wifi_json.set("join", std::move(join));
   }
 
   return Json::object().set("ok", Json::boolean(true)).set("hostname", Json::string(hostname)).set("wifi", std::move(wifi_json)).dump();

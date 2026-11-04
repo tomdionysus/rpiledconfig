@@ -34,7 +34,7 @@ describe('pair', () => {
     const session = await pair(daemon, ID, { onPhase: (phase) => phases.push(phase) });
     expect(phases).toEqual(['scanning', 'connecting', 'checking', 'authenticating', 'ready']);
     expect(session.info.fingerprint).toBe(fingerprint(ID));
-    expect(session.info.protocol).toBe(2);
+    expect(session.info.protocol).toBe(3);
 
     const status = await session.status();
     expect(status).toEqual({ ok: true, hostname: 'pi5', wifi: { connected: false } });
@@ -206,10 +206,10 @@ describe('pair', () => {
 
     await expect(session.wifiConfigure('Blackraven')).rejects.toBeInstanceOf(RequestError);
     await session.wifiConfigure('Blackraven', 'correct horse battery staple');
-    expect(daemon.wifi).toEqual({ connected: true, ssid: 'Blackraven', ip: '192.168.1.42' });
+    expect(daemon.wifi).toEqual({ connected: true, ssid: 'Blackraven', ip: '192.168.1.42', join: { ssid: 'Blackraven', state: 'joined' } });
 
     const status = await session.status();
-    expect(status.wifi).toEqual({ connected: true, ssid: 'Blackraven', ip: '192.168.1.42' });
+    expect(status.wifi).toEqual({ connected: true, ssid: 'Blackraven', ip: '192.168.1.42', join: { ssid: 'Blackraven', state: 'joined' } });
 
     await session.wifiForget();
     expect(daemon.wifi).toEqual({ connected: false });
@@ -265,3 +265,43 @@ function replayOfFirstRequest(mtu: number): Uint8Array[] {
   const sealed = appChannel(anyKey).sealer.seal(encodeRequest({ op: 'status' }));
   return fragment(sealed, mtu - 3);
 }
+
+describe('uninstall', () => {
+  it('is answered, closes the session, and the Pi stops advertising', async () => {
+    const daemon = new FakeDaemon({ machineId: ID });
+    const session = await pair(daemon, ID);
+    await session.uninstall();
+    expect(session.isClosed).toBe(true);
+    expect(daemon.uninstalled).toBe(true);
+    expect(daemon.advertising).toBe(false);
+  });
+
+  it('reports uninstall_unavailable and keeps the session', async () => {
+    const daemon = new FakeDaemon({ machineId: ID, uninstall: 'unavailable' });
+    const session = await pair(daemon, ID);
+    const error = await session.uninstall().then(
+      () => undefined,
+      (caught: unknown) => caught,
+    );
+    expect(error).toBeInstanceOf(RequestError);
+    expect((error as RequestError).code).toBe('uninstall_unavailable');
+    expect(session.isClosed).toBe(false);
+    expect((await session.status()).ok).toBe(true);
+    await session.close();
+  });
+});
+
+describe('a protocol 2 daemon', () => {
+  it('still pairs', async () => {
+    const daemon = new FakeDaemon({ machineId: ID, protocol: 2 });
+    const session = await pair(daemon, ID);
+    expect(session.info.protocol).toBe(2);
+    await session.close();
+  });
+
+  it('is refused at protocol 4', async () => {
+    const daemon = new FakeDaemon({ machineId: ID, protocol: 4 });
+    const error = await failure(pair(daemon, ID));
+    expect(error.kind).toBe('protocol');
+  });
+});

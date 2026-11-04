@@ -15,6 +15,7 @@
 
 #include "mocks/logger_mock.h"
 #include "protocol/json.h"
+#include "system/uninstaller_fake.h"
 #include "wifi/easy_connect_fake.h"
 #include "wifi/wifi_fake.h"
 
@@ -226,4 +227,70 @@ TEST(RequestsTest, FinishIsOkAndAnUnknownOpSaysSo) {
   EXPECT_FALSE(unknown.get("ok")->as_boolean());
   EXPECT_EQ(unknown.get("error")->as_string(), "unknown_op");
   EXPECT_NE(unknown.get("message")->as_string().find("reboot"), std::string::npos);
+}
+
+// docs/protocol.md, Uninstalling.
+TEST(RequestsTest, UninstallStartsTheUninstallerAndAnswersOk) {
+  Fixture f;
+  auto uninstaller = std::make_shared<system::UninstallerFake>(f.logger);
+  session::Requests requests{f.logger, f.wifi, "testpi", f.easyconnect, uninstaller};
+
+  std::optional<std::string> response;
+  requests.handle(parse_request("{\"op\":\"uninstall\"}").value, f.io.get_executor(), [&](std::string text) { response = text; });
+  f.drain();
+
+  ASSERT_TRUE(response);
+  EXPECT_EQ(*response, "{\"ok\":true}");
+  EXPECT_EQ(uninstaller->starts(), 1);
+}
+
+TEST(RequestsTest, UninstallWithNoUninstallerIsUnavailable) {
+  Fixture f;
+
+  const auto response = f.handle("{\"op\":\"uninstall\"}");
+  EXPECT_FALSE(response.get("ok")->as_boolean());
+  EXPECT_EQ(response.get("error")->as_string(), errors::uninstall_unavailable);
+}
+
+TEST(RequestsTest, AnUninstallerThatFailsIsUnavailableWithItsReason) {
+  Fixture f;
+  auto uninstaller = std::make_shared<system::UninstallerFake>(f.logger);
+  uninstaller->fail_start("Unit rpiledconfig-uninstall.service not found.");
+  session::Requests requests{f.logger, f.wifi, "testpi", f.easyconnect, uninstaller};
+
+  std::optional<std::string> response;
+  requests.handle(parse_request("{\"op\":\"uninstall\"}").value, f.io.get_executor(), [&](std::string text) { response = text; });
+  f.drain();
+
+  ASSERT_TRUE(response);
+  EXPECT_NE(response->find("\"error\":\"uninstall_unavailable\""), std::string::npos) << *response;
+  EXPECT_NE(response->find("not found"), std::string::npos) << *response;
+}
+
+// docs/protocol.md, The latest join: absent before a configure, then its outcome.
+TEST(RequestsTest, StatusCarriesTheLatestJoin) {
+  Fixture f;
+  EXPECT_EQ(f.handle("{\"op\":\"status\"}").get("wifi")->get("join"), nullptr);
+
+  f.handle("{\"op\":\"wifi.configure\",\"ssid\":\"home\",\"psk\":\"secret12\"}");
+  auto joined = f.handle("{\"op\":\"status\"}");
+  EXPECT_EQ(joined.get("wifi")->get("join")->get("ssid")->as_string(), "home");
+  EXPECT_EQ(joined.get("wifi")->get("join")->get("state")->as_string(), "joined");
+  EXPECT_EQ(joined.get("wifi")->get("join")->get("reason"), nullptr);
+
+  f.wifi->fail_join("not_found", "NetworkManager: SSID not found");
+  f.handle("{\"op\":\"wifi.configure\",\"ssid\":\"attic\",\"psk\":\"secret12\",\"hidden\":true}");
+  auto failed = f.handle("{\"op\":\"status\"}");
+  EXPECT_FALSE(failed.get("wifi")->get("connected")->as_boolean());
+  EXPECT_EQ(failed.get("wifi")->get("join")->get("state")->as_string(), "failed");
+  EXPECT_EQ(failed.get("wifi")->get("join")->get("reason")->as_string(), "not_found");
+  EXPECT_EQ(failed.get("wifi")->get("join")->get("message")->as_string(), "NetworkManager: SSID not found");
+}
+
+TEST(RequestsTest, ConfigurePassesHiddenToTheBackend) {
+  Fixture f;
+  const auto response = f.handle("{\"op\":\"wifi.configure\",\"ssid\":\"attic\",\"psk\":\"secret12\",\"hidden\":true}");
+  EXPECT_TRUE(response.get("ok")->as_boolean());
+  EXPECT_EQ(f.wifi->configured_ssid(), "attic");
+  EXPECT_TRUE(f.wifi->configured_hidden());
 }

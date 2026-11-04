@@ -47,7 +47,7 @@ namespace rpiledconfig::ble {
 namespace {
 
 constexpr Characteristic all_characteristics[] = {
-    Characteristic::info, Characteristic::challenge, Characteristic::auth, Characteristic::auth_result, Characteristic::request, Characteristic::response,
+    Characteristic::info, Characteristic::challenge, Characteristic::auth, Characteristic::auth_result, Characteristic::request, Characteristic::response, Characteristic::blink,
 };
 
 constexpr const char* error_not_permitted = "org.bluez.Error.NotPermitted";
@@ -60,6 +60,7 @@ std::vector<std::string> flags_of(Characteristic characteristic) {
       return {"read"};
     case Characteristic::auth:
     case Characteristic::request:
+    case Characteristic::blink:
       return {"write"};
     case Characteristic::auth_result:
       return {"read", "notify"};

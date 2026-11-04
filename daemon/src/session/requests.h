@@ -11,6 +11,7 @@
 
 #include "loggers/logger.h"
 #include "request_handler.h"
+#include "system/uninstaller.h"
 #include "wifi/easy_connect.h"
 #include "wifi/wifi.h"
 
@@ -24,10 +25,13 @@ namespace rpiledconfig::session {
 // easyconnect_unavailable), and a network it receives is applied through the WiFi
 // backend's configure, the same path as wifi.configure. It stops on wifi.easyconnect.stop
 // and when the session that started it closes (closed()).
+//
+// uninstall hands the removal to the uninstaller (null when uninstall.driver is off, which
+// answers uninstall_unavailable); the session hangs up after an ok, as after finish.
 class Requests : public RequestHandler {
  public:
   Requests(std::shared_ptr<loggers::Logger> logger, std::shared_ptr<wifi::Wifi> wifi, std::string hostname,
-           std::shared_ptr<wifi::EasyConnect> easyconnect = nullptr);
+           std::shared_ptr<wifi::EasyConnect> easyconnect = nullptr, std::shared_ptr<system::Uninstaller> uninstaller = nullptr);
 
   void handle(const protocol::Request& request, types::Executor on, Done done) override;
   void closed() override;
@@ -39,6 +43,7 @@ class Requests : public RequestHandler {
   std::shared_ptr<wifi::Wifi> _wifi;
   std::string _hostname;
   std::shared_ptr<wifi::EasyConnect> _easyconnect_backend;
+  std::shared_ptr<system::Uninstaller> _uninstaller;
 };
 
 // A backend failure as the protocol's error: its own code when it gave one, wifi_failed

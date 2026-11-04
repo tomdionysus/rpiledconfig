@@ -20,6 +20,12 @@
 //   wifi.scan               Device.Wireless.RequestScan (wifi.scan; without it the answer
 //                           is NetworkManager's cached list)
 //
+//
+// And one thing of systemd's, for uninstall (docs/protocol.md, "Uninstalling"):
+//
+//   systemd1.manage-units   start rpiledconfig-uninstall.service, the package's own purge,
+//                           and no other unit and no other verb
+//
 // Nothing else: reading devices, access points and connections needs no permission.
 
 polkit.addRule(function (action, subject) {
@@ -31,6 +37,12 @@ polkit.addRule(function (action, subject) {
     case "org.freedesktop.NetworkManager.settings.modify.system":
     case "org.freedesktop.NetworkManager.network-control":
     case "org.freedesktop.NetworkManager.wifi.scan":
+        return polkit.Result.YES;
+    }
+
+    if (action.id === "org.freedesktop.systemd1.manage-units" &&
+        action.lookup("unit") === "rpiledconfig-uninstall.service" &&
+        action.lookup("verb") === "start") {
         return polkit.Result.YES;
     }
 

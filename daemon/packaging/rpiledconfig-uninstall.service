@@ -1,0 +1,28 @@
+#
+# RPiLEDConfig - daemon
+#
+# Copyright (C) 2026 T. Cully
+# Licensed under the Apache License, Version 2.0 - see LICENSE
+#
+# Removes RPiLEDConfig from this Pi (docs/protocol.md, "Uninstalling"). Started by the
+# daemon, through systemd, when an authenticated phone sends uninstall; the package's polkit
+# rule lets the service's user start this unit and nothing else of systemd's. Never enabled.
+#
+# It runs as root because removing a package needs root, and it is the package's own purge:
+# prerm stops rpiledconfig.service (which gives the LED back), postrm deletes the
+# configuration and the machine id. dpkg deletes this file while the unit runs, which
+# systemd allows. The WiFi connections the daemon saved are NetworkManager's and are kept.
+
+[Unit]
+Description=Remove RPiLEDConfig, as an authenticated phone asked
+Documentation=file:/usr/share/doc/rpiledconfig/protocol.md
+
+[Service]
+Type=oneshot
+Environment=DEBIAN_FRONTEND=noninteractive
+# The phone's answer is sent when systemd queues this job; the wait lets it reach the
+# phone before prerm stops the daemon.
+ExecStartPre=/bin/sleep 3
+# Waits for an apt or dpkg that is already running rather than failing on its lock.
+ExecStart=/usr/bin/apt-get --yes -o DPkg::Lock::Timeout=300 purge rpiledconfig
+TimeoutStartSec=10min

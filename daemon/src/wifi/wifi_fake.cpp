@@ -28,20 +28,34 @@ void WifiFake::scan(types::Executor on, types::Handler<std::vector<WifiNetwork>>
   types::complete(std::move(on), std::move(handler), types::Result<std::vector<WifiNetwork>>::success(_networks));
 }
 
-void WifiFake::configure(const std::string& ssid, const std::string& psk, types::Executor on, types::StatusHandler handler) {
+void WifiFake::configure(const std::string& ssid, const std::string& psk, bool hidden, types::Executor on, types::StatusHandler handler) {
   ++_configures;
 
   if (_failing()) return types::complete(std::move(on), std::move(handler), types::Status::failure(_fail_code, _fail_reason));
 
   _configured_ssid = ssid;
   _configured_psk = psk;
+  _configured_hidden = hidden;
   _logger->info("Configured " + ssid + (psk.empty() ? " (open)" : " (with a passphrase)") + " (fake: nothing was saved)");
 
-  if (_connect_on_configure) {
+  protocol::JoinState join;
+  join.ssid = ssid;
+  join.state = protocol::join_states::joining;
+
+  if (!_join_failure_reason.empty()) {
+    join.state = protocol::join_states::failed;
+    join.reason = _join_failure_reason;
+    join.message = _join_failure_message;
+    _status.connected = false;
+    _status.ssid.clear();
+    _status.ip.clear();
+  } else if (_connect_on_configure) {
+    join.state = protocol::join_states::joined;
     _status.connected = true;
     _status.ssid = ssid;
     _status.ip = "192.0.2.10";
   }
+  _status.join = join;
 
   types::complete(std::move(on), std::move(handler), types::Status::success());
 }

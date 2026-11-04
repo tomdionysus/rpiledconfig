@@ -2,9 +2,11 @@
 // control, and a scrolling or fixed body.
 import { useRouter } from 'expo-router';
 import React from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, space, type as typography, TOUCH_TARGET } from './theme';
+
+const TITLE_ICON = require('../../assets/title-icon.png');
 
 interface ScreenProps {
   title?: string;
@@ -20,45 +22,54 @@ export function Screen({ title, eyebrow, showBack = false, scrollable = true, co
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
-  const header =
-    title || showBack ? (
-      <View style={[styles.header, { paddingTop: insets.top + space.sm }]}>
-        {showBack ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-            hitSlop={8}
-            onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
-            style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}>
-            <Text style={styles.backGlyph}>{'<'}</Text>
-          </Pressable>
+  // The title bar, on every screen: back where there is somewhere to go, the
+  // app's icon and name. The screen's own title sits under it.
+  const header = (
+    <View style={[styles.bar, { paddingTop: insets.top + space.sm }]}>
+      {showBack ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Back"
+          hitSlop={8}
+          onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
+          style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}>
+          <Text style={styles.backGlyph}>{'<'}</Text>
+        </Pressable>
+      ) : null}
+      <Image source={TITLE_ICON} style={styles.icon} accessibilityIgnoresInvertColors />
+      <Text style={styles.appName}>RPi LED Config</Text>
+    </View>
+  );
+
+  const heading =
+    title || eyebrow ? (
+      <View style={styles.heading}>
+        {eyebrow ? (
+          <Text numberOfLines={1} style={styles.eyebrow}>
+            {eyebrow.toUpperCase()}
+          </Text>
         ) : null}
-        <View style={styles.headerText}>
-          {eyebrow ? (
-            <Text numberOfLines={1} style={styles.eyebrow}>
-              {eyebrow.toUpperCase()}
-            </Text>
-          ) : null}
-          {title ? (
-            <Text numberOfLines={1} style={styles.title}>
-              {title}
-            </Text>
-          ) : null}
-        </View>
+        {title ? (
+          <Text numberOfLines={1} style={styles.title}>
+            {title}
+          </Text>
+        ) : null}
       </View>
-    ) : (
-      <View style={{ height: insets.top }} />
-    );
+    ) : null;
 
   const body = scrollable ? (
     <ScrollView
       style={styles.flex}
       contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + space.xl }, contentStyle]}
       keyboardShouldPersistTaps="handled">
+      {heading}
       {children}
     </ScrollView>
   ) : (
-    <View style={[styles.flex, styles.content, { paddingBottom: insets.bottom + space.xl }, contentStyle]}>{children}</View>
+    <View style={[styles.flex, styles.content, { paddingBottom: insets.bottom + space.xl }, contentStyle]}>
+      {heading}
+      {children}
+    </View>
   );
 
   return (
@@ -80,15 +91,27 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: space.xl,
   },
-  header: {
+  bar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: space.md,
+    gap: space.sm,
     paddingHorizontal: space.xl,
-    paddingBottom: space.md,
+    paddingBottom: space.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
   },
-  headerText: {
-    flex: 1,
+  icon: {
+    width: 28,
+    height: 28,
+    borderRadius: radius.sm,
+  },
+  appName: {
+    ...typography.heading,
+    color: colors.text,
+  },
+  heading: {
+    paddingTop: space.lg,
+    paddingBottom: space.lg,
   },
   eyebrow: {
     ...typography.micro,

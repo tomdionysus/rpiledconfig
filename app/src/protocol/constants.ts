@@ -1,8 +1,12 @@
 // The protocol's constants, every one from docs/protocol.md. A change here is a
 // change to the document and to daemon/src/protocol/ as well.
 
-/** Protocol version carried in the Info characteristic. 2: SPAKE2 authentication. */
-export const PROTOCOL_VERSION = 2;
+/** Protocol version carried in the Info characteristic. 3: Blink and uninstall; 2: SPAKE2. */
+export const PROTOCOL_VERSION = 3;
+/** The oldest daemon the app pairs with: protocol 2 has no Blink and blinks all through setup mode. */
+export const MIN_PROTOCOL_VERSION = 2;
+/** The first protocol with the Blink characteristic. */
+export const BLINK_PROTOCOL_VERSION = 3;
 
 /** Half-bit period of the LED channel, in milliseconds. A bit is 2T. */
 export const T_MS = 50;
@@ -59,6 +63,13 @@ export const CHAR_AUTH = '2a7f0004-7e1d-4c3a-9b5e-0f8a6d4c2b10';
 export const CHAR_AUTH_RESULT = '2a7f0005-7e1d-4c3a-9b5e-0f8a6d4c2b10';
 export const CHAR_REQUEST = '2a7f0006-7e1d-4c3a-9b5e-0f8a6d4c2b10';
 export const CHAR_RESPONSE = '2a7f0007-7e1d-4c3a-9b5e-0f8a6d4c2b10';
+export const CHAR_BLINK = '2a7f0008-7e1d-4c3a-9b5e-0f8a6d4c2b10';
+
+/** Blink's values: blink the ID on the LED, or stop. */
+export const BLINK_START = 0x01;
+export const BLINK_STOP = 0x00;
+/** The LED stops this long after the last BLINK_START. */
+export const BLINK_TIMEOUT_MS = 120_000;
 
 export const AUTH_ACCEPTED = 0x01;
 export const AUTH_REFUSED = 0x00;

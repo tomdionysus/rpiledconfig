@@ -328,6 +328,7 @@ const sd_bus_vtable device_vtable[] = {
     SD_BUS_PROPERTY("Interface", "s", H::device_interface_name, 0, SD_BUS_VTABLE_PROPERTY_CONST),
     SD_BUS_PROPERTY("ActiveConnection", "o", H::device_active, 0, SD_BUS_VTABLE_PROPERTY_EMITS_CHANGE),
     SD_BUS_PROPERTY("Ip4Config", "o", H::device_ip4, 0, SD_BUS_VTABLE_PROPERTY_EMITS_CHANGE),
+    SD_BUS_SIGNAL("StateChanged", "uuu", 0),
     SD_BUS_VTABLE_END,
 };
 
@@ -499,7 +500,12 @@ std::string MockNetworkManager::_activate(const std::string& connection, const s
 
     const bool ok = _activation_succeeds;
     it->second->state = ok ? activated : deactivated;
-    sd_bus_emit_signal(bus(), path.c_str(), active_interface, "StateChanged", "uu", it->second->state, ok ? 0u : 9u);
+
+    // As NetworkManager does it: the device fails with the reason first (120 is failed,
+    // 50 config, the reason NMDeviceStateReason), then the active connection is
+    // deactivated with device-disconnected (3).
+    if (!ok) sd_bus_emit_signal(bus(), _wifi->path.c_str(), device_interface, "StateChanged", "uuu", 120u, 50u, _failure_reason);
+    sd_bus_emit_signal(bus(), path.c_str(), active_interface, "StateChanged", "uu", it->second->state, ok ? 0u : 3u);
     sd_bus_emit_properties_changed(bus(), path.c_str(), active_interface, "State", nullptr);
 
     if (!ok) return _deactivate_device();
@@ -577,8 +583,15 @@ void MockNetworkManager::activation_succeeds(bool succeeds) {
   run([this, succeeds]() { _activation_succeeds = succeeds; });
 }
 
-void MockNetworkManager::activation_hangs() {
-  run([this]() { _activation_hangs = true; });
+void MockNetworkManager::activation_fails_with(std::uint32_t device_reason) {
+  run([this, device_reason]() {
+    _activation_succeeds = false;
+    _failure_reason = device_reason;
+  });
+}
+
+void MockNetworkManager::activation_hangs(bool hangs) {
+  run([this, hangs]() { _activation_hangs = hangs; });
 }
 
 int MockNetworkManager::scans_requested() {

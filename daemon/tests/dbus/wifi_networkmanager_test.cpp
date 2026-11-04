@@ -84,7 +84,7 @@ class WifiNetworkManagerTest : public ::testing::Test {
 
   types::Status configure(const std::string& ssid, const std::string& psk) {
     Awaited<types::Status> answer;
-    wifi->configure(ssid, psk, daemon.executor(), answer.handler());
+    wifi->configure(ssid, psk, false, daemon.executor(), answer.handler());
     types::Status out;
     EXPECT_TRUE(answer.wait(out)) << "no answer to configure";
     return out;
@@ -244,6 +244,41 @@ TEST_F(WifiNetworkManagerTest, PermissionDeniedIsWifiFailed) {
   EXPECT_FALSE(configured.ok);
   EXPECT_EQ(configured.code, protocol::errors::wifi_failed);
   EXPECT_NE(configured.error.find("Insufficient privileges"), std::string::npos) << configured.error;
+}
+
+// docs/protocol.md, The latest join: status says what became of the configure, as soon as
+// NetworkManager has said.
+TEST_F(WifiNetworkManagerTest, StatusCarriesTheLatestJoinAndItsReason) {
+  EXPECT_FALSE(status().value.join.has_value()) << "nothing configured yet";
+
+  nm->activation_hangs();
+  ASSERT_TRUE(configure("Home", "correct horse").ok);
+  auto joining = status();
+  ASSERT_TRUE(joining.ok && joining.value.join.has_value());
+  EXPECT_EQ(joining.value.join->ssid, "Home");
+  EXPECT_EQ(joining.value.join->state, "joining");
+
+  nm->activation_hangs(false);
+  nm->activation_fails_with(7);
+  ASSERT_TRUE(configure("Home", "wrong passphrase").ok);
+  EXPECT_TRUE(eventually([this]() { return status().value.join->state == "failed"; }));
+  auto failed = status();
+  EXPECT_EQ(failed.value.join->reason, "wrong_passphrase");
+  EXPECT_NE(failed.value.join->message.find("no secrets"), std::string::npos) << failed.value.join->message;
+  EXPECT_FALSE(failed.value.connected);
+
+  nm->activation_fails_with(53);
+  ASSERT_TRUE(configure("Attic", "correct horse").ok);
+  EXPECT_TRUE(eventually([this]() {
+    const auto s = status();
+    return s.ok && s.value.join && s.value.join->ssid == "Attic" && s.value.join->state == "failed";
+  }));
+  EXPECT_EQ(status().value.join->reason, "not_found");
+
+  nm->activation_succeeds(true);
+  ASSERT_TRUE(configure("Home", "correct horse").ok);
+  EXPECT_TRUE(eventually([this]() { return status().value.join->state == "joined"; }));
+  EXPECT_TRUE(status().value.connected);
 }
 
 TEST_F(WifiNetworkManagerTest, ConfiguringAgainLeavesOnlyTheNewConnection) {

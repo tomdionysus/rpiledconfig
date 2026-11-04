@@ -30,7 +30,7 @@ describe('joinWifi', () => {
     expect(outcome.kind).toBe('joined');
     if (outcome.kind !== 'joined') return;
     expect(outcome.session).toBe(session);
-    expect(outcome.status.wifi).toEqual({ connected: true, ssid: 'Blackraven', ip: FAKE_IP });
+    expect(outcome.status.wifi).toEqual({ connected: true, ssid: 'Blackraven', ip: FAKE_IP, join: { ssid: 'Blackraven', state: 'joined' } });
     expect(kinds(steps)).toEqual(['sending', 'saved']);
     expect(daemon.connections).toBe(1);
     expect(describeOutcome(outcome, 'Blackraven').body).toMatch(new RegExp(`as ${FAKE_IP}`));
@@ -86,24 +86,51 @@ describe('joinWifi', () => {
     expect(describeStep({ kind: 'link_lost', answered: false }, 'Blackraven')).toMatch(/before the Pi answered/);
   });
 
-  it('ends a wrong passphrase as a clear failure at the deadline, not a hang', async () => {
+  it('ends a wrong passphrase as soon as the Pi reports it, with the reason', async () => {
     const { clock, steps, join } = await setUp({ joinAfterMs: 20_000, linkDrop: { when: 'after_response', offAirMs: 4_000 } });
     const start = clock.now();
     const outcome = await join('Blackraven', 'wrong passphrase');
     expect(outcome.kind).toBe('not_joined');
     if (outcome.kind !== 'not_joined') return;
-    expect(clock.now() - start).toBeGreaterThanOrEqual(JOIN_TIMEOUT_MS);
-    expect(clock.now() - start).toBeLessThan(JOIN_TIMEOUT_MS + 3_000);
+    // At the next status after the Pi gave up (20 s), not at the 45 s deadline.
+    expect(clock.now() - start).toBeGreaterThanOrEqual(20_000);
+    expect(clock.now() - start).toBeLessThan(JOIN_TIMEOUT_MS);
     expect(outcome.status.wifi.connected).toBe(false);
+    expect(outcome.reason?.reason).toBe('wrong_passphrase');
     expect(kinds(steps)).toContain('reconnected');
     const verdict = describeOutcome(outcome, 'Blackraven');
     expect(verdict.tone).toBe('error');
-    expect(verdict.title).toBe('Did not join Blackraven');
-    expect(verdict.body).toMatch(/still not on Blackraven.*passphrase is most likely wrong/);
+    expect(verdict.title).toBe('Wrong passphrase for Blackraven');
+    expect(verdict.body).toMatch(/refused the passphrase/);
     // The session is live, so the user can correct the passphrase and try again.
     expect(outcome.session.isClosed).toBe(false);
     const retry = await clock.run(joinWifi(outcome.session, 'Blackraven', PSK), 120_000, 1_000);
     expect(retry.kind).toBe('joined');
+  });
+
+  it('reports a name no network has as not found, at once', async () => {
+    const { clock, join } = await setUp({ joinAfterMs: 3_000 });
+    const start = clock.now();
+    const outcome = await join('Blackraven5G', 'any passphrase');
+    expect(outcome.kind).toBe('not_joined');
+    if (outcome.kind !== 'not_joined') return;
+    expect(clock.now() - start).toBeLessThan(10_000);
+    expect(outcome.reason?.reason).toBe('not_found');
+    const verdict = describeOutcome(outcome, 'Blackraven5G');
+    expect(verdict.title).toBe('No network called Blackraven5G');
+    expect(verdict.body).toMatch(/match exactly/);
+    expect(outcome.session.isClosed).toBe(false);
+  });
+
+  it('runs to the deadline only when the Pi never says', async () => {
+    const { clock, join } = await setUp({ joinAfterMs: 'never' });
+    const start = clock.now();
+    const outcome = await join('Blackraven', PSK);
+    expect(outcome.kind).toBe('not_joined');
+    if (outcome.kind !== 'not_joined') return;
+    expect(outcome.reason).toBeUndefined();
+    expect(clock.now() - start).toBeGreaterThanOrEqual(JOIN_TIMEOUT_MS);
+    expect(describeOutcome(outcome, 'Blackraven').body).toMatch(/still not on Blackraven/);
   });
 
   it('says so when the Pi falls back to the network it was on', async () => {
@@ -114,7 +141,7 @@ describe('joinWifi', () => {
     const outcome = await join('Blackraven', 'wrong passphrase');
     expect(outcome.kind).toBe('not_joined');
     const verdict = describeOutcome(outcome, 'Blackraven');
-    expect(verdict.body).toMatch(/back on Neighbours 5G, not Blackraven/);
+    expect(verdict.body).toMatch(/back on Neighbours 5G/);
   });
 
   it('ends a join that never completes at the deadline', async () => {
