@@ -369,9 +369,9 @@ Plaintexts are UTF-8 JSON objects. A request carries `op`; a response carries
 
 | Request | Response when ok |
 | --- | --- |
-| `{"op":"status"}` | `{"ok":true,"hostname":"...","wifi":{"connected":true,"ssid":"...","ip":"..."}}`, `wifi.connected` false with no `ssid` or `ip` when it is not. When the WiFi backend cannot be asked at all the answer is an error (`wifi_unavailable`), not `connected: false` |
+| `{"op":"status"}` | `{"ok":true,"hostname":"...","wifi":{"connected":true,"ssid":"...","ip":"...","join":{...}}}`, `wifi.connected` false with no `ssid` or `ip` when it is not. When the WiFi backend cannot be asked at all the answer is an error (`wifi_unavailable`), not `connected: false`. `join` (The latest join, below) is present once a `wifi.configure` has been taken since the daemon started |
 | `{"op":"wifi.scan"}` | `{"ok":true,"networks":[{"ssid":"...","signal":0..100,"secure":true},...]}` sorted by signal, strongest first, ties by the SSID's UTF-8 bytes ascending, one entry per SSID (the strongest), hidden networks (empty SSID) left out, signal clamped to 0..100 |
-| `{"op":"wifi.configure","ssid":"...","psk":"..."}` | `{"ok":true}` once the connection is saved and activation has been asked for; `psk` is absent or empty for an open network |
+| `{"op":"wifi.configure","ssid":"...","psk":"...","hidden":true}` | `{"ok":true}` once the connection is saved and activation has been asked for; `psk` is absent or empty for an open network; `hidden` is optional, true for a network typed by hand that may not broadcast its SSID (the Pi then probes for it by name) |
 | `{"op":"wifi.forget"}` | `{"ok":true}` |
 | `{"op":"finish"}` | `{"ok":true}`; the daemon leaves setup mode and disconnects |
 | `{"op":"uninstall"}` | `{"ok":true}` once the removal has been started; the daemon disconnects, and the package is purged (Uninstalling, below) |
@@ -383,9 +383,27 @@ Error codes: `bad_request` (not JSON, no `op`, missing field), `unknown_op`,
 `wifi_unavailable`.
 
 `wifi.configure` answering `ok` means the connection is saved and
-activation has been asked for, not that the network was joined: a wrong
-passphrase shows only as a later `status` that is not connected to that
-SSID.
+activation has been asked for, not that the network was joined. What became
+of it is in `status`:
+
+#### The latest join
+
+`wifi.join` describes the most recent `wifi.configure` (or network received
+by Wi-Fi Easy Connect) since the daemon started, and is absent before any:
+
+| Field | Content |
+| --- | --- |
+| `ssid` | the network asked for |
+| `state` | `joining` until the backend has said; then `joined`, or `failed` |
+| `reason` | with `failed` only: `wrong_passphrase` (the network refused the passphrase), `not_found` (no network of that name was found), or `other` |
+| `message` | with `failed` only: the backend's own words, for a person |
+
+The daemon learns the outcome from NetworkManager as it happens (the WiFi
+device's state becoming failed, with its reason, or the connection becoming
+activated), so an app polling `status` learns a wrong passphrase or a
+misspelt name within a few seconds of the backend giving up, rather than
+at its own deadline. A join that NetworkManager abandons without a reason
+the daemon can name is `other`.
 
 A request the daemon does not understand gets `unknown_op`, so a newer app
 against an older daemon learns what it cannot do rather than hanging.

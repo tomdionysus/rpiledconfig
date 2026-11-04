@@ -31,6 +31,19 @@ TEST(MessagesTest, AConfigureRequestCarriesTheSsidAndPsk) {
   EXPECT_TRUE(parse_request("{\"op\":\"wifi.configure\",\"ssid\":\"open\",\"psk\":null}"));
 }
 
+// docs/protocol.md, Messages: hidden is optional, for a network typed by hand.
+TEST(MessagesTest, AConfigureRequestMayBeForAHiddenNetwork) {
+  EXPECT_FALSE(parse_request("{\"op\":\"wifi.configure\",\"ssid\":\"home\"}").value.hidden);
+
+  const auto hidden = parse_request("{\"op\":\"wifi.configure\",\"ssid\":\"attic\",\"psk\":\"secret12\",\"hidden\":true}");
+  ASSERT_TRUE(hidden) << hidden.error;
+  EXPECT_TRUE(hidden.value.hidden);
+
+  const auto wrong = parse_request("{\"op\":\"wifi.configure\",\"ssid\":\"attic\",\"hidden\":\"yes\"}");
+  EXPECT_FALSE(wrong);
+  EXPECT_EQ(wrong.code, errors::bad_request);
+}
+
 TEST(MessagesTest, WhatIsNotARequestIsBadRequest) {
   for (const char* text : {"", "not json", "[1]", "{}", "{\"op\":1}", "{\"op\":\"\"}", "{\"op\":\"wifi.configure\"}",
                            "{\"op\":\"wifi.configure\",\"ssid\":\"\"}", "{\"op\":\"wifi.configure\",\"ssid\":\"x\",\"psk\":5}"}) {

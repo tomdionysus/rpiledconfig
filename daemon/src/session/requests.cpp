@@ -45,7 +45,7 @@ void Requests::_easyconnect(types::Executor on, Done done) {
     }
 
     logger->info("Configuring WiFi for " + received.value.ssid + " from Wi-Fi Easy Connect");
-    wifi->configure(received.value.ssid, received.value.passphrase, on, [logger, ssid = received.value.ssid](types::Status status) {
+    wifi->configure(received.value.ssid, received.value.passphrase, false, on, [logger, ssid = received.value.ssid](types::Status status) {
       if (!status) logger->warn("Could not configure " + ssid + " from Wi-Fi Easy Connect: " + status.error);
     });
   };
@@ -76,7 +76,7 @@ void Requests::handle(const Request& request, types::Executor on, Done done) {
 
   if (request.op == ops::wifi_configure) {
     _logger->info("Configuring WiFi for " + request.ssid);
-    return _wifi->configure(request.ssid, request.psk, on, [done](types::Status status) {
+    return _wifi->configure(request.ssid, request.psk, request.hidden, on, [done](types::Status status) {
       if (!status) return done(error_response(wifi_error_code(status.code), status.error));
       done(ok_response());
     });

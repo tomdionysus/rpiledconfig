@@ -32,8 +32,9 @@ class Wifi {
   virtual void scan(types::Executor on, types::Handler<std::vector<WifiNetwork>> handler) = 0;
 
   // Saves the connection and asks for it to be activated; success once that has been
-  // asked for, not once it is up. psk is empty for an open network.
-  virtual void configure(const std::string& ssid, const std::string& psk, types::Executor on, types::StatusHandler handler) = 0;
+  // asked for, not once it is up. psk is empty for an open network; hidden is a network typed
+  // by hand that may not broadcast its SSID, which the WiFi device then probes for by name.
+  virtual void configure(const std::string& ssid, const std::string& psk, bool hidden, types::Executor on, types::StatusHandler handler) = 0;
 
   // Removes the saved connection.
   virtual void forget(types::Executor on, types::StatusHandler handler) = 0;

@@ -24,7 +24,7 @@ class WifiFake : public Wifi {
 
   void status(types::Executor on, types::Handler<WifiStatus> handler) override;
   void scan(types::Executor on, types::Handler<std::vector<WifiNetwork>> handler) override;
-  void configure(const std::string& ssid, const std::string& psk, types::Executor on, types::StatusHandler handler) override;
+  void configure(const std::string& ssid, const std::string& psk, bool hidden, types::Executor on, types::StatusHandler handler) override;
   void forget(types::Executor on, types::StatusHandler handler) override;
   std::string describe() const override { return "fake"; }
 
@@ -46,14 +46,21 @@ class WifiFake : public Wifi {
     _fail_reason.clear();
   }
 
-  // Whether configure() makes the status connected (default) or leaves it alone.
+  // Whether configure() makes the status connected (default) or leaves it alone, in which
+  // case the join stays joining; or fails it with this reason (docs/protocol.md, The latest
+  // join), as NetworkManager would a wrong passphrase or a name it cannot find.
   void connect_on_configure(bool connect) { _connect_on_configure = connect; }
+  void fail_join(const std::string& reason, const std::string& message) {
+    _join_failure_reason = reason;
+    _join_failure_message = message;
+  }
 
   // --- What a test looks at ------------------------------------------------------------
 
   const WifiStatus& current() const { return _status; }
   const std::string& configured_ssid() const { return _configured_ssid; }
   const std::string& configured_psk() const { return _configured_psk; }
+  bool configured_hidden() const { return _configured_hidden; }
   int configures() const { return _configures; }
   int forgets() const { return _forgets; }
   int status_calls() const { return _status_calls; }
@@ -70,7 +77,10 @@ class WifiFake : public Wifi {
   std::string _fail_reason;
   std::string _configured_ssid;
   std::string _configured_psk;
+  bool _configured_hidden = false;
   bool _connect_on_configure = true;
+  std::string _join_failure_reason;
+  std::string _join_failure_message;
   int _configures = 0;
   int _forgets = 0;
   int _status_calls = 0;

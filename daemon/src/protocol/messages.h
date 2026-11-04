@@ -6,6 +6,7 @@
 //
 #pragma once
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -49,16 +50,39 @@ inline constexpr char uninstall_unavailable[] = "uninstall_unavailable";
 struct Request {
   std::string op;
 
-  // wifi.configure only. psk is empty for an open network.
+  // wifi.configure only. psk is empty for an open network; hidden is a network typed by hand.
   std::string ssid;
   std::string psk;
+  bool hidden = false;
 };
+
+// The latest join (docs/protocol.md, Messages): what became of the most recent
+// wifi.configure. state is joining, joined or failed; reason and message only with failed.
+struct JoinState {
+  std::string ssid;
+  std::string state;
+  std::string reason;
+  std::string message;
+};
+
+namespace join_states {
+inline constexpr char joining[] = "joining";
+inline constexpr char joined[] = "joined";
+inline constexpr char failed[] = "failed";
+}  // namespace join_states
+
+namespace join_reasons {
+inline constexpr char wrong_passphrase[] = "wrong_passphrase";
+inline constexpr char not_found[] = "not_found";
+inline constexpr char other[] = "other";
+}  // namespace join_reasons
 
 // What the WiFi backend reports and the status response carries.
 struct WifiStatus {
   bool connected = false;
   std::string ssid;
   std::string ip;
+  std::optional<JoinState> join;
 };
 
 struct WifiNetwork {

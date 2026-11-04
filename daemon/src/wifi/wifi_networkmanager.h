@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -67,7 +68,8 @@ class WifiNetworkManager : public Wifi, public std::enable_shared_from_this<Wifi
     // are answered with.
     std::chrono::milliseconds scan_timeout{10000};
 
-    // How long the activation after a configure is watched, for the log only.
+    // How long the activation after a configure is watched for its outcome (docs/protocol.md,
+    // The latest join); after it the join is left as it was last seen.
     std::chrono::milliseconds activation_watch{90000};
   };
 
@@ -77,12 +79,16 @@ class WifiNetworkManager : public Wifi, public std::enable_shared_from_this<Wifi
 
   void status(types::Executor on, types::Handler<WifiStatus> handler) override;
   void scan(types::Executor on, types::Handler<std::vector<WifiNetwork>> handler) override;
-  void configure(const std::string& ssid, const std::string& psk, types::Executor on, types::StatusHandler handler) override;
+  void configure(const std::string& ssid, const std::string& psk, bool hidden, types::Executor on, types::StatusHandler handler) override;
   void forget(types::Executor on, types::StatusHandler handler) override;
   std::string describe() const override;
 
   // The (secure) answer for an access point's flags: privacy, or any WPA or RSN flag.
   static bool is_secure(std::uint32_t flags, std::uint32_t wpa_flags, std::uint32_t rsn_flags);
+
+  // What a watched activation reports (the ActivationWatch, outside the class); on the
+  // loop's executor. Not for callers.
+  void _join_outcome(const std::string& ssid, const std::string& state, const std::string& reason, const std::string& message);
 
  private:
   struct StatusJob;
@@ -106,7 +112,7 @@ class WifiNetworkManager : public Wifi, public std::enable_shared_from_this<Wifi
   void _scan_access_point(std::shared_ptr<ScanJob> job, std::size_t index);
 
   void _configure_add(std::shared_ptr<ConfigureJob> job);
-  void _watch_activation(const std::string& active, const std::string& ssid);
+  void _watch_activation(const std::string& active, const std::string& device, const std::string& ssid);
 
   // Every saved connection whose Id starts with connection_id_prefix, except keep.
   void _own_connections(const std::string& keep, PathsHandler done);
@@ -115,6 +121,8 @@ class WifiNetworkManager : public Wifi, public std::enable_shared_from_this<Wifi
   std::shared_ptr<loggers::Logger> _logger;
   std::shared_ptr<dbus::SdBusLoop> _loop;
   Options _options;
+  // The most recent configure and what became of it; read by status. Loop's executor only.
+  std::optional<protocol::JoinState> _last_join;
 };
 
 }  // namespace rpiledconfig::wifi

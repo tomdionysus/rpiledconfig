@@ -71,10 +71,12 @@ class MockNetworkManager : public MockService {
   void connect_existing(const std::string& id, const std::string& ssid, const std::string& ip);
   // The next AddAndActivateConnection fails with this error.
   void refuse_add(const std::string& name, const std::string& message);
-  // Whether the activation after AddAndActivateConnection succeeds (default) or fails.
+  // Whether the activation after AddAndActivateConnection succeeds (default) or fails,
+  // with the device's NMDeviceStateReason: 7 no-secrets (default), 53 ssid-not-found.
   void activation_succeeds(bool succeeds);
+  void activation_fails_with(std::uint32_t device_reason);
   // The active connection stays activating.
-  void activation_hangs();
+  void activation_hangs(bool hangs = true);
 
   // --- What a test looks at ---
 
@@ -130,6 +132,7 @@ class MockNetworkManager : public MockService {
   std::string _refuse_name;
   std::string _refuse_message;
   bool _activation_succeeds = true;
+  std::uint32_t _failure_reason = 7;
   bool _activation_hangs = false;
   int _scans_requested = 0;
   int _deletes = 0;

@@ -266,3 +266,31 @@ TEST(RequestsTest, AnUninstallerThatFailsIsUnavailableWithItsReason) {
   EXPECT_NE(response->find("\"error\":\"uninstall_unavailable\""), std::string::npos) << *response;
   EXPECT_NE(response->find("not found"), std::string::npos) << *response;
 }
+
+// docs/protocol.md, The latest join: absent before a configure, then its outcome.
+TEST(RequestsTest, StatusCarriesTheLatestJoin) {
+  Fixture f;
+  EXPECT_EQ(f.handle("{\"op\":\"status\"}").get("wifi")->get("join"), nullptr);
+
+  f.handle("{\"op\":\"wifi.configure\",\"ssid\":\"home\",\"psk\":\"secret12\"}");
+  auto joined = f.handle("{\"op\":\"status\"}");
+  EXPECT_EQ(joined.get("wifi")->get("join")->get("ssid")->as_string(), "home");
+  EXPECT_EQ(joined.get("wifi")->get("join")->get("state")->as_string(), "joined");
+  EXPECT_EQ(joined.get("wifi")->get("join")->get("reason"), nullptr);
+
+  f.wifi->fail_join("not_found", "NetworkManager: SSID not found");
+  f.handle("{\"op\":\"wifi.configure\",\"ssid\":\"attic\",\"psk\":\"secret12\",\"hidden\":true}");
+  auto failed = f.handle("{\"op\":\"status\"}");
+  EXPECT_FALSE(failed.get("wifi")->get("connected")->as_boolean());
+  EXPECT_EQ(failed.get("wifi")->get("join")->get("state")->as_string(), "failed");
+  EXPECT_EQ(failed.get("wifi")->get("join")->get("reason")->as_string(), "not_found");
+  EXPECT_EQ(failed.get("wifi")->get("join")->get("message")->as_string(), "NetworkManager: SSID not found");
+}
+
+TEST(RequestsTest, ConfigurePassesHiddenToTheBackend) {
+  Fixture f;
+  const auto response = f.handle("{\"op\":\"wifi.configure\",\"ssid\":\"attic\",\"psk\":\"secret12\",\"hidden\":true}");
+  EXPECT_TRUE(response.get("ok")->as_boolean());
+  EXPECT_EQ(f.wifi->configured_ssid(), "attic");
+  EXPECT_TRUE(f.wifi->configured_hidden());
+}
