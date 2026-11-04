@@ -51,6 +51,10 @@ class Config {
   // lit for 0 and went dark for max_brightness, so the camera saw every frame inverted.
   bool led_active_low = false;
 
+  // The symbol time T in milliseconds. The protocol's is 45 (docs/protocol.md, Symbols);
+  // any other value is an experiment the app has to be built to match (TODO/ACTIVE.md).
+  std::uint32_t led_symbol_ms = 45;
+
   // --- ble -------------------------------------------------------------------------
 
   // bluez talks to BlueZ over D-Bus (milestone 2); fake is a harness for the tests and

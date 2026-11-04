@@ -1,5 +1,5 @@
 // Home: what the app does, in two lines, and the button that starts.
-import { useRouter } from 'expo-router';
+import { useRouter } from '@/navigation';
 import { Image, StyleSheet, Text, View } from 'react-native';
 import { Button } from '@/ui/Button';
 import { Screen } from '@/ui/Screen';

@@ -1,7 +1,8 @@
 // The native LED reader: a VisionCamera frame-processor plugin (android/, cpp/) that finds the
-// blinking LED anywhere in the frame and decodes frame version 6 on the camera's thread.
-// Android only for now; on iOS `createLedReader` returns undefined.
-import { requireOptionalNativeModule } from 'expo-modules-core';
+// blinking LED anywhere in the frame and decodes frame version 7 on the camera's thread. The
+// application registers the plugin at start (LedReaderRegistration.kt); here it is only looked
+// up. Android only for now; elsewhere `createLedReader` returns undefined.
+import { Platform } from 'react-native';
 import { VisionCameraProxy, type FrameProcessorPlugin } from 'react-native-vision-camera';
 
 /** What the plugin returns for each frame. */
@@ -30,15 +31,21 @@ export interface LedReaderState {
   planeHeight: number;
   /** Tiles the LED is seen in now. */
   candidates: number;
-  /** This frame's brightness of the tile read (or the centre tile): what a recording keeps. */
+  /** This frame's brightness of the tile read (or the centre tile). */
   sample: number;
   orientation: string;
 }
 
-/** A new reader with nothing seen yet, or undefined where the plugin is not built in. */
-export function createLedReader(): FrameProcessorPlugin | undefined {
-  const module = requireOptionalNativeModule<{ install(): boolean }>('LedReader');
-  if (!module) return undefined;
-  module.install();
-  return VisionCameraProxy.initFrameProcessorPlugin('ledReader', {});
+/**
+ * A new reader with nothing seen yet, or undefined where the plugin is not built in.
+ * `symbolMs` is the Pi's symbol time: the protocol's 45 unless both sides are built for
+ * an experiment (TODO/ACTIVE.md).
+ */
+export function createLedReader(symbolMs = 45): FrameProcessorPlugin | undefined {
+  if (Platform.OS !== 'android') return undefined;
+  try {
+    return VisionCameraProxy.initFrameProcessorPlugin('ledReader', { symbolMs }) ?? undefined;
+  } catch {
+    return undefined;
+  }
 }

@@ -57,8 +57,8 @@ shares, key confirmations and ciphertext.
   (5 refusals, then a minute's pause) lets through in under an hour. With
   64 bits, 48 stay unknown. Authentication is a PAKE (SPAKE2, below), so a
   recorded pairing gives nothing to test guesses against offline and every
-  guess is a live, rate-limited attempt. On the LED it costs 8.5 seconds a
-  frame (frame version 6).
+  guess is a live, rate-limited attempt. On the LED it costs 7.65 seconds
+  a frame (frame version 7).
 
 ## The LED channel (daemon to camera)
 
@@ -70,21 +70,26 @@ asked for it with Blink, below), the daemon takes the LED's trigger over
 the blinking stops, so the LED otherwise does what the Pi's own setting
 says.
 
-This is frame version 6. Version 1 was an uncoded 64-bit ID and CRC-8; 2 a
+This is frame version 7. Version 1 was an uncoded 64-bit ID and CRC-8; 2 a
 64-bit ID under RS(24, 12); 3 a 48-bit ID, RS(20, 10), T = 100 ms; 4 a
 24-bit ID, RS(14, 7); 5 a 64-bit ID with magic, version and CRC under
-RS(24, 12), Manchester at T = 50 ms, 19.9 seconds a frame. Version 6 reads
-in under ten seconds.
+RS(24, 12), Manchester at T = 50 ms, 19.9 seconds a frame; 6 this frame at
+T = 50 ms, 8.5 seconds. Version 7 is version 6 at T = 45 ms.
 
 ### Symbols
 
-The LED sends one symbol every **T = 50 ms**: on for a `1`, off for a `0`.
+The LED sends one symbol every **T = 45 ms**: on for a `1`, off for a `0`.
 The decoder is expected to tolerate 5% clock error over a frame.
 
-Why this rate: it is the shortest run measured to work. A Blackview A85 at
-30 fps on a Raspberry Pi 5's LED read frame version 5, whose shortest runs
-were also 50 ms, with no bit errors across whole frames; the edges blur by up
-to a camera frame. A camera at 30 fps samples each symbol 1.5 times.
+Why this rate: measured, on 2026-11-04, with a Blackview A85 at 30 fps (the
+most its camera gives a frame processor) on a Raspberry Pi 5's LED, each
+symbol time run in scripted rounds from the blink to the pairing: 50 ms
+read 5.5 to 8.1 s after first sight; 45 ms 3.6 to 5.8 s, every round; 40 ms
+3.6 to 11.4 s, slower than either neighbour; 33 ms 1.5 to 6.6 s in 13 of 13
+rounds but with exactly one camera frame per symbol, no margin for a
+slower camera or a brighter room; 25 ms worked with rounds of 22 and 30 s.
+45 ms is the fastest with margin: a 30 fps camera samples each symbol 1.35
+times. The edges blur by up to a camera frame.
 
 The symbols are not the data bits. Each 4 bits of data (a nibble) is sent as
 one of the 16 five-symbol words that hold no run of three equal symbols,
@@ -112,7 +117,7 @@ A frame is, in order:
 | Sync | on for 5T, then off for 5T | 10 |
 | Codeword | 16 bytes, each as its high nibble's word then its low nibble's, each word first symbol first | 160 |
 
-Frames repeat back to back while the daemon blinks. One frame is 170T, 8.5
+Frames repeat back to back while the daemon blinks. One frame is 170T, 7.65
 seconds. A word next to the sync can lengthen its runs (the last word's
 final `1`s join the sync's on, the first word's leading `0`s its off), so
 the sync's runs are 5T to 7T; nothing else is longer than 4T.
@@ -120,7 +125,7 @@ the sync's runs are 5T to 7T; nothing else is longer than 4T.
 ### The codeword
 
 The 10-byte message is `id_bytes` followed by a CRC-16, big-endian, over the
-frame version byte 0x06 and `id_bytes`. The version byte is not sent: it is
+frame version byte 0x07 and `id_bytes`. The version byte is not sent: it is
 folded into the CRC, so a frame of another version can never pass, and it
 costs no time on the LED.
 
@@ -189,7 +194,7 @@ Then:
   rather than guessed, which doubles what the code can repair.
 - Decode with errors and erasures, then check the CRC.
 
-One frame that passes is a read: in under one frame, 8.5 seconds, from
+One frame that passes is a read: in under one frame, 7.65 seconds, from
 whenever the camera first sees the LED, and sooner when the code can fill
 what is missing. The progress shown is only what was measured: nothing until
 the LED is found, then the share of the frame's symbol slots a sample has
@@ -507,19 +512,22 @@ The test suites on both sides include, at least:
 - CRC-16/CCITT-FALSE of `123456789` is 0x29B1.
 - For machine ID `0x0123456789abcdef`, computed independently of both sides
   (Python, from the definitions above, after it reproduced frame version
-  5's vectors):
-  - the message: `0123456789abcdefebaf`
-  - the codeword: `0123456789abcdefebaf67a7a555b2c6`
+  6's vectors):
+  - the message: `0123456789abcdef008c`
+  - the codeword: `0123456789abcdef008cc420bb0f15c9`
   - the generator polynomial, highest power first: `013f01da20e326`
   - the frame's 170 symbols:
-    `11111000000010000101001100100101010010110110001101100101001110100101011011011001110101101111010101011010011011011000110110100011011010001011010110101110101001101011001100`,
-    106 runs, starting `+5,-7,+1,-4,+1,-1,+1,-2` and ending
-    `+2,-1,+1,-1,+2,-2,+2,-2`. Runs are physical: adjacent symbols at the
+    `11111000000010000101001100100101010010110110001101100101001110100101011011011001110101101100100001001001010110101100101000110001001010110101001001101100101010111011010011`,
+    107 runs, starting `+5,-7,+1,-4,+1,-1,+1,-2` and ending
+    `-1,+3,-1,+2,-1,+1,-2,+2`. Runs are physical: adjacent symbols at the
     same level merge.
+  - Frame version 6's message for the same ID was `0123456789abcdefebaf`
+    and its codeword `0123456789abcdefebaf67a7a555b2c6`: the CRC is what
+    tells the versions apart.
 - The decoder recovers that codeword with 3 bytes changed, with 6 bytes
   erased, and with 2 changed and 2 erased; and rejects a word whose CRC is
-  wrong, including frame version 6's word with the CRC computed over
-  another version byte.
+  wrong, including frame version 7's word with the CRC computed over
+  another version byte (frame version 6's codeword above).
 - The four P256-SHA256 vectors of RFC 9382, Appendix B (at least the first,
   A = `server`, B = `client`, and the last, both identities empty): `pA`,
   `pB`, `K`, `Ke`, `KcA`, `KcB`, `cA` and `cB` from the given `w`, `x`, `y`.

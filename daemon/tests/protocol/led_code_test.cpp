@@ -25,7 +25,7 @@ const auto vectors_id = machine_id::MachineId::from_value(0x0123456789abcdefULL)
 // docs/protocol.md, "Test vectors", computed outside this code base.
 TEST(LedCodeTest, TheMessageIsTheIdAndACrcOverTheVersionAndId) {
   const auto message = protocol::led_message(vectors_id);
-  EXPECT_EQ(util::to_hex(message), "0123456789abcdefebaf");
+  EXPECT_EQ(util::to_hex(message), "0123456789abcdef008c");
   ASSERT_EQ(message.size(), 10u);
 }
 
@@ -41,7 +41,7 @@ TEST(LedCodeTest, TheVersionIsFoldedIntoTheCrc) {
 
 TEST(LedCodeTest, TheCodewordIsTheMessageAndSixParityBytes) {
   const auto codeword = protocol::led_codeword(vectors_id);
-  EXPECT_EQ(util::to_hex(codeword), "0123456789abcdefebaf67a7a555b2c6");
+  EXPECT_EQ(util::to_hex(codeword), "0123456789abcdef008cc420bb0f15c9");
   EXPECT_EQ(rpiledconfig::protocol::rs::syndromes(codeword, 6), types::Bytes(6, 0));
 }
 

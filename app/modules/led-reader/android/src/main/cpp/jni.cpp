@@ -47,8 +47,11 @@ enum Field {
 
 extern "C" {
 
-JNIEXPORT jlong JNICALL Java_com_tomcully_ledreader_LedReaderPlugin_nativeCreate(JNIEnv*, jclass) {
-  return reinterpret_cast<jlong>(new Tracker());
+// `symbol_ms` is the protocol's T unless the app was built for an experiment.
+JNIEXPORT jlong JNICALL Java_com_tomcully_ledreader_LedReaderPlugin_nativeCreate(JNIEnv*, jclass, jdouble symbol_ms) {
+  rpiledconfig::reader::TrackerConfig config;
+  if (symbol_ms > 0) config.symbol = symbol_ms;
+  return reinterpret_cast<jlong>(new Tracker(config));
 }
 
 JNIEXPORT void JNICALL Java_com_tomcully_ledreader_LedReaderPlugin_nativeDestroy(JNIEnv*, jclass, jlong handle) {

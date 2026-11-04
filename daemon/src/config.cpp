@@ -226,6 +226,7 @@ bool Config::_apply(const std::string& key, const std::string& value, int line, 
   }
 
   if (key == "led.active_low") return take_bool(led_active_low);
+  if (key == "led.symbol_ms") return take_uint(led_symbol_ms);
 
   if (key == "ble.driver") {
     ble_driver = value;
@@ -285,6 +286,8 @@ bool Config::_validate() {
   if (uninstall_driver != "systemd" && uninstall_driver != "fake" && uninstall_driver != "off") {
     return refuse("uninstall.driver must be systemd, fake or off, not " + uninstall_driver);
   }
+
+  if (led_symbol_ms < 10 || led_symbol_ms > 500) return refuse("led.symbol_ms must be 10 to 500, not " + std::to_string(led_symbol_ms));
 
   if (setup_timeout == 0) return refuse("setup.timeout must be at least 1 second");
   if (setup_recheck == 0) return refuse("setup.recheck must be at least 1 second");

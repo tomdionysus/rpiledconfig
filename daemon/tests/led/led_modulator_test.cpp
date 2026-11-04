@@ -26,10 +26,10 @@ namespace {
 
 const auto vectors_id = machine_id::MachineId::from_value(0x0123456789abcdefULL);
 
-// The frame of docs/protocol.md, frame version 6, as its 170 symbols, computed outside this
+// The frame of docs/protocol.md, frame version 7, as its 170 symbols, computed outside this
 // code base; runs are maximal stretches of one level.
 const std::string vector_symbols =
-    "11111000000010000101001100100101010010110110001101100101001110100101011011011001110101101111010101011010011011011000110110100011011010001011010110101110101001101011001100";
+    "11111000000010000101001100100101010010110110001101100101001110100101011011011001110101101100100001001001010110101100101000110001001010110101001001101100101010111011010011";
 
 std::vector<led::Run> expected_runs() {
   std::vector<led::Run> runs;
@@ -52,10 +52,10 @@ std::string describe(const std::vector<led::Run>& runs) {
 
 }  // namespace
 
-TEST(LedModulatorTest, AFrameIs170SymbolsOr8500Milliseconds) {
+TEST(LedModulatorTest, AFrameIs170SymbolsOr7650Milliseconds) {
   EXPECT_EQ(led::frame_symbols(), 170u);
-  EXPECT_EQ(led::symbol_time, 50ms);
-  EXPECT_EQ(led::symbol_time * led::frame_symbols(), 8500ms);
+  EXPECT_EQ(led::symbol_time, 45ms);
+  EXPECT_EQ(led::symbol_time * led::frame_symbols(), 7650ms);
 }
 
 TEST(LedModulatorTest, TheFrameRunsOfTheVectorsId) {
@@ -63,14 +63,14 @@ TEST(LedModulatorTest, TheFrameRunsOfTheVectorsId) {
   const auto expected = expected_runs();
 
   EXPECT_EQ(runs, expected) << "got:      " << describe(runs) << "\nexpected: " << describe(expected);
-  EXPECT_EQ(runs.size(), 106u);
+  EXPECT_EQ(runs.size(), 107u);
 
   // docs/protocol.md: starting +5,-7,+1,-4,+1,-1,+1,-2 (the sync, its off joined by the
-  // first word's leading 0s) and ending +2,-1,+1,-1,+2,-2,+2,-2.
+  // first word's leading 0s) and ending -1,+3,-1,+2,-1,+1,-2,+2.
   const std::vector<led::Run> start{{true, 5}, {false, 7}, {true, 1}, {false, 4}, {true, 1}, {false, 1}, {true, 1}, {false, 2}};
   ASSERT_GE(runs.size(), start.size());
   EXPECT_EQ(std::vector<led::Run>(runs.begin(), runs.begin() + static_cast<std::ptrdiff_t>(start.size())), start);
-  const std::vector<led::Run> end{{true, 2}, {false, 1}, {true, 1}, {false, 1}, {true, 2}, {false, 2}, {true, 2}, {false, 2}};
+  const std::vector<led::Run> end{{false, 1}, {true, 3}, {false, 1}, {true, 2}, {false, 1}, {true, 1}, {false, 2}, {true, 2}};
   EXPECT_EQ(std::vector<led::Run>(runs.end() - static_cast<std::ptrdiff_t>(end.size()), runs.end()), end);
 
   int total = 0;
@@ -141,13 +141,13 @@ TEST(LedModulatorTest, FramesRepeatBackToBack) {
   ASSERT_TRUE(modulator->start());
   const auto started = timers->now();
 
-  timers->advance(3 * 8500ms);
+  timers->advance(3 * 7650ms);
   EXPECT_EQ(modulator->frames_started(), 4u);
 
   // The fourth frame's sync began exactly 3 frames after the first: no drift.
   const auto& events = led->events();
   const auto fourth = events[3 * led::frame_runs(vectors_id).size()];
-  EXPECT_EQ(fourth.at - started, 3 * 8500ms);
+  EXPECT_EQ(fourth.at - started, 3 * 7650ms);
   EXPECT_TRUE(fourth.on);
 
   modulator->stop();

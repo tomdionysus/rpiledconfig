@@ -26,16 +26,63 @@ export function concat(...parts: Uint8Array[]): Uint8Array {
   return out;
 }
 
-const encoder = new TextEncoder();
-const decoder = new TextDecoder('utf-8', { fatal: true });
+// UTF-8 by hand: Hermes has TextEncoder but no TextDecoder, and a polyfill is a dependency.
 
 export function utf8Encode(text: string): Uint8Array {
-  return encoder.encode(text);
+  const out: number[] = [];
+  for (let i = 0; i < text.length; i += 1) {
+    let code = text.charCodeAt(i);
+    if (code >= 0xd800 && code <= 0xdbff && i + 1 < text.length) {
+      const low = text.charCodeAt(i + 1);
+      if (low >= 0xdc00 && low <= 0xdfff) {
+        code = 0x10000 + ((code - 0xd800) << 10) + (low - 0xdc00);
+        i += 1;
+      }
+    }
+    if (code < 0x80) out.push(code);
+    else if (code < 0x800) out.push(0xc0 | (code >> 6), 0x80 | (code & 0x3f));
+    else if (code < 0x10000) out.push(0xe0 | (code >> 12), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f));
+    else out.push(0xf0 | (code >> 18), 0x80 | ((code >> 12) & 0x3f), 0x80 | ((code >> 6) & 0x3f), 0x80 | (code & 0x3f));
+  }
+  return Uint8Array.from(out);
 }
 
 /** Throws on malformed UTF-8: a message that is not text is not a message. */
 export function utf8Decode(bytes: Uint8Array): string {
-  return decoder.decode(bytes);
+  let out = '';
+  for (let i = 0; i < bytes.length; ) {
+    const b0 = bytes[i];
+    let code: number;
+    let length: number;
+    if (b0 < 0x80) {
+      code = b0;
+      length = 1;
+    } else if (b0 >= 0xc2 && b0 <= 0xdf) {
+      code = b0 & 0x1f;
+      length = 2;
+    } else if (b0 >= 0xe0 && b0 <= 0xef) {
+      code = b0 & 0x0f;
+      length = 3;
+    } else if (b0 >= 0xf0 && b0 <= 0xf4) {
+      code = b0 & 0x07;
+      length = 4;
+    } else {
+      throw new Error(`malformed UTF-8 at byte ${i}`);
+    }
+    if (i + length > bytes.length) throw new Error(`malformed UTF-8 at byte ${i}`);
+    for (let k = 1; k < length; k += 1) {
+      const b = bytes[i + k];
+      if ((b & 0xc0) !== 0x80) throw new Error(`malformed UTF-8 at byte ${i + k}`);
+      code = (code << 6) | (b & 0x3f);
+    }
+    // Overlong forms, surrogates and values past U+10FFFF are not UTF-8.
+    if ((length === 3 && code < 0x800) || (length === 4 && code < 0x10000) || (code >= 0xd800 && code <= 0xdfff) || code > 0x10ffff) {
+      throw new Error(`malformed UTF-8 at byte ${i}`);
+    }
+    out += String.fromCodePoint(code);
+    i += length;
+  }
+  return out;
 }
 
 /** `value` as `length` big-endian bytes; the counter is 8 bytes and the direction 4. */

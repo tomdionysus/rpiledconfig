@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Checks that every stated version agrees: package.json, package-lock.json,
- * app.json, a generated android/ project, the root README's `*vX.Y.Z*` line
+ * app.json, android/app/build.gradle, the root README's `*vX.Y.Z*` line
  * and the git tag. The daemon's CMake checks its own against the same README.
  *
  * `android.versionCode` must be major*10000 + minor*100 + patch: Android
@@ -13,7 +13,7 @@ import { execSync } from 'node:child_process';
 const read = (path) => JSON.parse(readFileSync(new URL(`../${path}`, import.meta.url), 'utf8'));
 
 const pkg = read('package.json');
-const app = read('app.json').expo;
+const app = read('app.json');
 const problems = [];
 
 if (pkg.version !== app.version) {
@@ -31,24 +31,15 @@ if (lock && lock.version !== pkg.version) {
   problems.push(`package-lock.json says ${lock.version}, package.json says ${pkg.version} (run npm install)`);
 }
 
-// Gradle reads the version from the prebuilt `android/app/build.gradle`, not
-// app.json, so a bump without a fresh prebuild ships the old version. android/
-// is gitignored; only a present, disagreeing one is a problem.
-let gradle;
-try {
-  gradle = readFileSync(new URL('../android/app/build.gradle', import.meta.url), 'utf8');
-} catch {
-  gradle = undefined;
-}
-if (gradle) {
-  const gradleName = /versionName\s+"([^"]+)"/.exec(gradle)?.[1];
-  const gradleCode = Number(/versionCode\s+(\d+)/.exec(gradle)?.[1]);
-  if (gradleName !== app.version || gradleCode !== app.android?.versionCode) {
-    problems.push(
-      `android/app/build.gradle says ${gradleName ?? 'unset'} (versionCode ${Number.isNaN(gradleCode) ? 'unset' : gradleCode}); ` +
-        `run npx expo prebuild --platform android before building`,
-    );
-  }
+// android/app/build.gradle is checked in: its versionName is the version, and its
+// versionCode major*10000 + minor*100 + patch.
+const [major, minor, patch] = app.version.split('.').map(Number);
+const expectedCode = major * 10000 + minor * 100 + patch;
+const gradle = readFileSync(new URL('../android/app/build.gradle', import.meta.url), 'utf8');
+const gradleName = /versionName\s+"([^"]+)"/.exec(gradle)?.[1];
+const gradleCode = Number(/versionCode\s+(\d+)/.exec(gradle)?.[1]);
+if (gradleName !== app.version || gradleCode !== expectedCode) {
+  problems.push(`android/app/build.gradle says ${gradleName ?? 'unset'} (versionCode ${Number.isNaN(gradleCode) ? 'unset' : gradleCode}); expected ${app.version} (${expectedCode})`);
 }
 
 // The first non-blank line after the root README's title is `*vX.Y.Z*`, with
@@ -64,16 +55,7 @@ if (readmeVersion !== pkg.version) {
   );
 }
 
-const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(pkg.version);
-if (!match) {
-  problems.push(`${pkg.version} is not a bare x.y.z version`);
-} else {
-  const [, major, minor, patch] = match.map(Number);
-  const expected = major * 10000 + minor * 100 + patch;
-  if (app.android?.versionCode !== expected) {
-    problems.push(`android.versionCode is ${app.android?.versionCode ?? 'unset'}, expected ${expected} for ${pkg.version}`);
-  }
-}
+if (!/^\d+\.\d+\.\d+$/.test(pkg.version)) problems.push(`${pkg.version} is not a bare x.y.z version`);
 
 // Checked only when this commit is tagged.
 let tag;
@@ -92,4 +74,4 @@ if (problems.length > 0) {
   process.exit(1);
 }
 
-console.log(`${pkg.version} (versionCode ${app.android.versionCode})${tag ? `, tagged ${tag}` : ''}: consistent`);
+console.log(`${pkg.version} (versionCode ${expectedCode})${tag ? `, tagged ${tag}` : ''}: consistent`);

@@ -37,8 +37,8 @@ TEST(CodecTest, TheCrcCheckValue) {
 }
 
 TEST(CodecTest, TheVectorsMessageCodewordAndGenerator) {
-  EXPECT_EQ(hex(message_for(vectors_id)), "0123456789abcdefebaf");
-  EXPECT_EQ(hex(codeword_for(vectors_id)), "0123456789abcdefebaf67a7a555b2c6");
+  EXPECT_EQ(hex(message_for(vectors_id)), "0123456789abcdef008c");
+  EXPECT_EQ(hex(codeword_for(vectors_id)), "0123456789abcdef008cc420bb0f15c9");
   EXPECT_EQ(hex(rs_generator(6)), "013f01da20e326");
 }
 
@@ -46,8 +46,8 @@ TEST(CodecTest, TheVectorsFrameSymbols) {
   std::string symbols;
   for (const auto s : frame_symbols_for(vectors_id)) symbols += s ? '1' : '0';
   EXPECT_EQ(symbols,
-            "11111000000010000101001100100101010010110110001101100101001110100101011011011001110101101111010101011010011011011000110110100011011010001011010110101"
-            "110101001101011001100");
+            "111110000000100001010011001001010100101101100011011001010011101001010110110110011101011011001000010010010101101011001010001100010010101101010010011011"
+            "00101010111011010011");
 }
 
 TEST(CodecTest, TheWordsAreTheSixteenWithoutARunOfThree) {
@@ -104,7 +104,7 @@ TEST(CodecTest, RefusesWhatTheCodeDoesNotReach) {
   EXPECT_FALSE(read_codeword(codeword_for(vectors_id), {0, 1, 2, 3, 4, 5, 6})) << "seven erasures";
 }
 
-// The CRC covers the version byte: frame version 6's word with the CRC computed over another
+// The CRC covers the version byte: frame version 7's word with the CRC computed over another
 // version is refused, though it is a valid Reed-Solomon codeword.
 TEST(CodecTest, RejectsAWordWhoseCrcIsOverAnotherVersion) {
   Bytes checked{0x05};

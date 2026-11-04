@@ -1,7 +1,7 @@
 // Pairing over Bluetooth: scan for the Pi named for the ID's fingerprint,
 // connect, check Info, authenticate both ways. The session logic is in
 // pairing/session.ts; this screen only shows where it is.
-import { useRouter } from 'expo-router';
+import { useRouter } from '@/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { pair, PairingError, type PairingPhase } from '@/pairing/session';

@@ -1,7 +1,7 @@
 // Step 1: the Pis in setup mode nearby, over Bluetooth. Choosing one asks it
 // to blink its ID (docs/protocol.md, Blink); its LED is dark until then. The
 // discovery and the Blink write are in pairing/discover.ts.
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from '@/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { setBlinking, watchForPis, type FoundPi } from '@/pairing/discover';
@@ -17,6 +17,8 @@ const HINT_AFTER_MS = 12_000;
 
 export default function FindScreen() {
   const router = useRouter();
+  // The symbol-time experiment's settings, carried to the scan screen (scan.tsx).
+  const experiment = useLocalSearchParams<{ symbolMs?: string; fps?: string }>();
   const { services, setTarget, setMachineId } = useApp();
   const [pis, setPis] = useState<FoundPi[]>([]);
   const [error, setError] = useState<PairingError | undefined>(undefined);
@@ -64,7 +66,7 @@ export default function FindScreen() {
         await setBlinking(services.transport, pi);
         setTarget(pi);
         setMachineId(undefined);
-        router.push('/scan');
+        router.push({ pathname: '/scan', params: experiment });
       } catch (caught) {
         setError(caught instanceof PairingError ? caught : new PairingError('bluetooth', 'Something went wrong with Bluetooth. Try again.', caught));
         setAttempt((n) => n + 1);

@@ -1,5 +1,5 @@
 {
-  "extends": "expo/tsconfig.base",
+  "extends": "@react-native/typescript-config",
   "compilerOptions": {
     "strict": true,
     "noUnusedLocals": true,
@@ -7,12 +7,17 @@
       "@/*": [
         "./src/*"
       ]
-    }
+    },
+    "types": []
   },
   "include": [
-    "**/*.ts",
-    "**/*.tsx",
-    ".expo/types/**/*.ts",
-    "expo-env.d.ts"
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "modules/**/*.ts",
+    "vitest.config.mts"
+  ],
+  "exclude": [
+    "**/node_modules",
+    "android"
   ]
 }

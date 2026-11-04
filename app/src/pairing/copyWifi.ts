@@ -6,8 +6,8 @@
 // followed exactly as after wifi.configure (join.ts).
 //
 // The Android screen is reached through `launch`, so this runs against the
-// fake daemon in tests and expo-intent-launcher on a phone
-// (src/wifi/easyConnect.ts).
+// fake daemon in tests. The 0.4.0 app does not offer Easy Connect
+// (TODO/ACTIVE.md); the flow is kept, tested, for when it does.
 import type { WifiStatus } from '@/protocol/messages';
 import { describeOutcome, describeStep, followStatus, type JoinOptions, type JoinOutcome, type JoinStep, type Verdict } from './join';
 import { LinkLostError, RequestError, type Session } from './session';

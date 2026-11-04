@@ -19,11 +19,11 @@
 
 namespace rpiledconfig::led {
 
-// The LED channel of docs/protocol.md, frame version 6: a symbol period T of 50 ms (the
+// The LED channel of docs/protocol.md, frame version 7: a symbol period T of 45 ms (the
 // shortest run a 30 fps phone camera was measured to read without errors), and a frame of
 // sync and the 16-byte codeword (protocol/led_code.h) as five-symbol words, repeated back
 // to back.
-inline constexpr std::chrono::milliseconds symbol_time{50};
+inline constexpr std::chrono::milliseconds symbol_time{45};
 
 // A stretch of the LED in one state, in units of T. Maximal: two adjacent symbols at the
 // same level are one run, which is what a camera sees.
@@ -38,7 +38,7 @@ struct Run {
 // Pure, so the protocol's vector is checked against it without a clock.
 std::vector<Run> frame_runs(const machine_id::MachineId& id);
 
-// How many T a frame is: 170, or 8.5 seconds.
+// How many T a frame is: 170, or 7.65 seconds.
 std::size_t frame_symbols();
 
 // Drives an Led through frames until stopped. Runs on its executor; the timer source is
@@ -46,8 +46,9 @@ std::size_t frame_symbols();
 // with ManualTimerSource and LedFake.
 class LedModulator : public std::enable_shared_from_this<LedModulator> {
  public:
+  // `symbol` is the protocol's T unless the configuration says otherwise (led.symbol_ms).
   LedModulator(std::shared_ptr<loggers::Logger> logger, types::Executor executor, std::shared_ptr<Led> led, std::shared_ptr<timers::TimerSource> timers,
-               machine_id::MachineId id);
+               machine_id::MachineId id, std::chrono::milliseconds symbol = symbol_time);
 
   // Takes the LED over and starts the first frame now. Failure is the LED refusing
   // (begin()), and nothing then blinks. Called on the executor.
@@ -60,6 +61,7 @@ class LedModulator : public std::enable_shared_from_this<LedModulator> {
   std::uint64_t frames_started() const { return _frames; }
 
   const machine_id::MachineId& id() const { return _id; }
+  std::chrono::milliseconds symbol() const { return _symbol; }
 
  private:
   void _step();
@@ -69,6 +71,7 @@ class LedModulator : public std::enable_shared_from_this<LedModulator> {
   std::shared_ptr<Led> _led;
   std::shared_ptr<timers::TimerSource> _timers;
   machine_id::MachineId _id;
+  std::chrono::milliseconds _symbol;
 
   std::vector<Run> _runs;
   std::size_t _index = 0;

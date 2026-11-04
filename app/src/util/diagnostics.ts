@@ -1,9 +1,21 @@
-// Whether the app shows its diagnostics: the reader's statistics in the log,
-// and the platform's own words under an error.
+// Whether the app shows its diagnostics: the reader's statistics in the log, the join
+// dialog's keystrokes, and the platform's own words under an error.
 //
-// Not __DEV__ alone: a development bundle embedded in the APK aborts at load
-// in Expo 57 (expo/src/async-require/messageSocket.native.ts throws when the
-// bundle did not come from a dev server), so a phone tested without Metro runs
-// a production bundle, built with EXPO_PUBLIC_RPILEDCONFIG_DIAGNOSTICS=1, which
-// Expo inlines when it bundles.
-export const DIAGNOSTICS: boolean = __DEV__ || process.env.EXPO_PUBLIC_RPILEDCONFIG_DIAGNOSTICS === '1';
+// A development bundle, or a build made with -Prpiledconfig.diagnostics=true (android/app/
+// build.gradle), which the app's own RpiRandom module reports as a constant.
+import { NativeModules } from 'react-native';
+
+interface WithConstants {
+  getConstants?(): { diagnostics?: boolean };
+}
+
+function fromBuild(): boolean {
+  try {
+    const module = (NativeModules as { RpiRandom?: WithConstants }).RpiRandom;
+    return module?.getConstants?.().diagnostics === true;
+  } catch {
+    return false;
+  }
+}
+
+export const DIAGNOSTICS: boolean = (typeof __DEV__ !== 'undefined' && __DEV__) || fromBuild();

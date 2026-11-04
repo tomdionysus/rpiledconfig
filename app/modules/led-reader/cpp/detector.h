@@ -19,7 +19,7 @@
 // absolute deviations, and the share of samples near the 5th or 95th percentile. Measured
 // over 1 s windows: a Blackview A85 on a Pi 5's LED, separation median 14, lowest 2.05,
 // near the extremes median 0.65 to 0.74, lowest 0.45 (a third of its frames straddle an
-// edge, at 30 fps and T = 50 ms); uniform and Gaussian noise, separation median 2, up to
+// edge, at 30 fps and T = 45 ms); uniform and Gaussian noise, separation median 2, up to
 // 5.2, near the extremes up to 0.58. Both to find, either to keep, and noise never passed
 // the bar to find for longer than 533 ms in 40 minutes of it, hence the 800 ms hold.
 namespace rpiledconfig::reader {

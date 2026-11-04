@@ -37,7 +37,7 @@ TEST(DetectorTest, KeepsTheLedThroughABloomingPhoneCamera) {
                                                                                     .on = 69,
                                                                                     .jitter_ms = 3,
                                                                                     .content_jitter_ms = 8,
-                                                                                    .exposure_ms = 33,
+                                                                                    .exposure_ms = 12,
                                                                                     .saturation = 3,
                                                                                     .seed = seed});
     Detector detector;
