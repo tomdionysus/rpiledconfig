@@ -46,8 +46,9 @@ std::size_t frame_symbols();
 // with ManualTimerSource and LedFake.
 class LedModulator : public std::enable_shared_from_this<LedModulator> {
  public:
+  // `symbol` is the protocol's T unless the configuration says otherwise (led.symbol_ms).
   LedModulator(std::shared_ptr<loggers::Logger> logger, types::Executor executor, std::shared_ptr<Led> led, std::shared_ptr<timers::TimerSource> timers,
-               machine_id::MachineId id);
+               machine_id::MachineId id, std::chrono::milliseconds symbol = symbol_time);
 
   // Takes the LED over and starts the first frame now. Failure is the LED refusing
   // (begin()), and nothing then blinks. Called on the executor.
@@ -60,6 +61,7 @@ class LedModulator : public std::enable_shared_from_this<LedModulator> {
   std::uint64_t frames_started() const { return _frames; }
 
   const machine_id::MachineId& id() const { return _id; }
+  std::chrono::milliseconds symbol() const { return _symbol; }
 
  private:
   void _step();
@@ -69,6 +71,7 @@ class LedModulator : public std::enable_shared_from_this<LedModulator> {
   std::shared_ptr<Led> _led;
   std::shared_ptr<timers::TimerSource> _timers;
   machine_id::MachineId _id;
+  std::chrono::milliseconds _symbol;
 
   std::vector<Run> _runs;
   std::size_t _index = 0;

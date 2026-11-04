@@ -9,7 +9,7 @@
 // CameraX focus-and-metering action at that point, which CameraX lets go
 // after about five seconds. It is run once the camera starts and whenever the
 // reticle is tapped.
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View, useWindowDimensions, type LayoutChangeEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -26,7 +26,18 @@ import { DIAGNOSTICS } from '@/util/diagnostics';
 import { hexToBytes } from '@/protocol/bytes';
 import { createLedReader, type LedReaderState } from '../../modules/led-reader';
 
-const FPS = 30;
+// The camera's frame rate and the Pi's symbol time. The protocol's T is 50 ms at 30 fps;
+// EXPO_PUBLIC_RPILEDCONFIG_SYMBOL_MS and _FPS build the app for the symbol-time
+// experiment (TODO/ACTIVE.md), against a Pi configured with the same led.symbol_ms.
+const DEFAULT_FPS = Number(process.env.EXPO_PUBLIC_RPILEDCONFIG_FPS ?? 30);
+const DEFAULT_SYMBOL_MS = Number(process.env.EXPO_PUBLIC_RPILEDCONFIG_SYMBOL_MS ?? 50);
+
+/** A positive number from a route parameter, in diagnostics builds only; otherwise the default. */
+function setting(value: string | string[] | undefined, fallback: number): number {
+  if (!DIAGNOSTICS || typeof value !== 'string') return fallback;
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
 /**
  * The viewfinder's share of the screen, fixed: when it took whatever the
  * panel left, a status line wrapping resized it and moved the measured spot
@@ -42,6 +53,10 @@ export default function ScanScreen() {
   const insets = useSafeAreaInsets();
   const window = useWindowDimensions();
   const { setMachineId, services, target } = useApp();
+  // The experiment's settings, from a deep link such as rpiledconfig://find?symbolMs=25&fps=60.
+  const params = useLocalSearchParams<{ symbolMs?: string; fps?: string }>();
+  const FPS = setting(params.fps, DEFAULT_FPS);
+  const SYMBOL_MS = setting(params.symbolMs, DEFAULT_SYMBOL_MS);
   // The fingerprint of an LED read that was not the chosen Pi's.
   const [otherPi, setOtherPi] = useState<string | undefined>(undefined);
 
@@ -57,13 +72,19 @@ export default function ScanScreen() {
     () => (device && device.formats.length > 0 ? getCameraFormat(device, [{ fps: FPS }, { videoResolution: { width: 1280, height: 720 } }]) : undefined),
     [device],
   );
+  // VisionCamera refuses an fps outside the format's range, so the rate asked for is
+  // clamped to what the format gives; the log says both.
+  const fps = Math.min(FPS, format?.maxFps ?? FPS);
   const [cameraError, setCameraError] = useState<string | undefined>(undefined);
   const camera = useRef<Camera>(null);
   const [view, setView] = useState({ width: 0, height: 0 });
 
   // The native reader (modules/led-reader): it finds the LED anywhere in the frame and
   // decodes it on the camera's thread; this screen only shows its state. One per visit.
-  const reader = useMemo(() => createLedReader(), []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const reader = useMemo(() => createLedReader(SYMBOL_MS), []);
+  // The last second of frame times, for the measured frame rate in the log.
+  const frameTimes = useRef<number[]>([]);
   const [state, setState] = useState<LedReaderState | undefined>(undefined);
   // What the screen says: the reader's frames folded into where the user is (led/scanProgress.ts).
   const progress = useRef(new ScanProgress());
@@ -76,13 +97,20 @@ export default function ScanScreen() {
 
   const onState = useRunOnJS((next: LedReaderState) => {
     setState(next);
+    if (DIAGNOSTICS) {
+      const times = frameTimes.current;
+      times.push(next.t);
+      while (times.length > 0 && next.t - times[0] > 1000) times.shift();
+    }
     const view = progress.current.update(next);
     setScan((current) => (current.phase === view.phase && current.progress === view.progress && current.hint === view.hint ? current : view));
     if (DIAGNOSTICS && (next.t - lastLog.current >= 1000 || next.idHex)) {
       // `adb logcat -s ReactNativeJS` on Android: what the reader measured, once a second.
       lastLog.current = next.t;
+      const times = frameTimes.current;
+      const measuredFps = times.length > 1 ? ((times.length - 1) * 1000) / (times[times.length - 1] - times[0]) : 0;
       console.log(
-        `[reader] t=${(next.t / 1000).toFixed(1)} s, LED seen ${next.ledSeen}, ${Math.floor(next.coverage * 100)}% seen, contrast ${next.contrast.toFixed(0)}, ` +
+        `[reader] t=${(next.t / 1000).toFixed(1)} s, ${measuredFps.toFixed(1)} fps measured (asked ${FPS}, format max ${format?.maxFps ?? '?'}, using ${fps}, T ${SYMBOL_MS} ms), LED seen ${next.ledSeen}, ${Math.floor(next.coverage * 100)}% seen, contrast ${next.contrast.toFixed(0)}, ` +
           `${next.candidates} candidate tiles, tile ${next.tileX ?? '-'},${next.tileY ?? '-'} of ${next.planeWidth}x${next.planeHeight}, tries ${next.tries}, ` +
           `${next.erasures} unsure${next.idHex ? ', read' : ''}`,
       );
@@ -198,7 +226,7 @@ export default function ScanScreen() {
           style={StyleSheet.absoluteFill}
           device={device}
           format={format}
-          fps={FPS}
+          fps={fps}
           isActive={active}
           pixelFormat={PIXEL_FORMAT}
           frameProcessor={frameProcessor}

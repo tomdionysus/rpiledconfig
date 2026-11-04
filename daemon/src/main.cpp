@@ -291,7 +291,7 @@ int main(int argc, char* argv[]) {
                "; Wi-Fi Easy Connect: " + (easyconnect ? easyconnect->describe() : std::string("off")) +
                "; uninstall: " + (uninstaller ? uninstaller->describe() : std::string("off")));
 
-  auto modulator = std::make_shared<led::LedModulator>(scoped(logger, "led"), executor, led_driver, timers, id.value);
+  auto modulator = std::make_shared<led::LedModulator>(scoped(logger, "led"), executor, led_driver, timers, id.value, std::chrono::milliseconds(config->led_symbol_ms));
   auto requests = std::make_shared<session::Requests>(scoped(logger, "requests"), wifi_driver, hostname(), easyconnect, uninstaller);
 
   setup::SetupMode::Options setup_options;

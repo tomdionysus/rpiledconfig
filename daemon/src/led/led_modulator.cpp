@@ -47,8 +47,8 @@ std::vector<Run> frame_runs(const machine_id::MachineId& id) {
 std::size_t frame_symbols() { return protocol::led_frame_symbols; }
 
 LedModulator::LedModulator(std::shared_ptr<loggers::Logger> logger, types::Executor executor, std::shared_ptr<Led> led,
-                           std::shared_ptr<timers::TimerSource> timers, machine_id::MachineId id)
-    : _logger(std::move(logger)), _executor(std::move(executor)), _led(std::move(led)), _timers(std::move(timers)), _id(id) {}
+                           std::shared_ptr<timers::TimerSource> timers, machine_id::MachineId id, std::chrono::milliseconds symbol)
+    : _logger(std::move(logger)), _executor(std::move(executor)), _led(std::move(led)), _timers(std::move(timers)), _id(id), _symbol(symbol) {}
 
 types::Status LedModulator::start() {
   if (_running) return types::Status::success();
@@ -65,7 +65,7 @@ types::Status LedModulator::start() {
 
   // Not the id: it is the pairing secret, and the journal is not (docs/installation.md).
   _logger->info("Blinking the machine id on " + _led->describe() + ": " + std::to_string(_runs.size()) + " runs, " +
-                std::to_string(frame_symbols() * symbol_time.count()) + " ms per frame");
+                std::to_string(frame_symbols() * _symbol.count()) + " ms per frame" + (_symbol == symbol_time ? "" : " (T = " + std::to_string(_symbol.count()) + " ms, not the protocol's 50)"));
 
   _step();
   return types::Status::success();
@@ -100,7 +100,7 @@ void LedModulator::_step() {
   const Run& run = _runs[_index];
   _led->set(run.on);
 
-  _next += symbol_time * run.length;
+  _next += _symbol * run.length;
   _index = (_index + 1) % _runs.size();
 
   const auto now = _timers->now();

@@ -35,10 +35,14 @@ export interface LedReaderState {
   orientation: string;
 }
 
-/** A new reader with nothing seen yet, or undefined where the plugin is not built in. */
-export function createLedReader(): FrameProcessorPlugin | undefined {
+/**
+ * A new reader with nothing seen yet, or undefined where the plugin is not built in.
+ * `symbolMs` is the Pi's symbol time: the protocol's 50 unless both sides are built for
+ * an experiment (TODO/ACTIVE.md).
+ */
+export function createLedReader(symbolMs = 50): FrameProcessorPlugin | undefined {
   const module = requireOptionalNativeModule<{ install(): boolean }>('LedReader');
   if (!module) return undefined;
   module.install();
-  return VisionCameraProxy.initFrameProcessorPlugin('ledReader', {});
+  return VisionCameraProxy.initFrameProcessorPlugin('ledReader', { symbolMs });
 }

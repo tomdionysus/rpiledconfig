@@ -19,6 +19,7 @@ file, not to where the daemon was started.
 | `state.dir` | `/var/lib/rpiledconfig` | Where `machine-id` lives. |
 | `led.driver` | `sysfs` on Linux, `fake` elsewhere | `sysfs` drives a kernel LED; `fake` logs what it would do. |
 | `led.path` | `/sys/class/leds/ACT` | The LED's sysfs directory: `ACT`, the activity LED (`led0` on Raspberry Pi 3 and earlier), or `PWR`, the power LED (`led1` on older boards). |
+| `led.symbol_ms` | `50` | The LED's symbol time T. The protocol's is 50 (docs/protocol.md, Symbols); anything else is an experiment and needs an app built to match (TODO/ACTIVE.md). 10 to 500. |
 | `led.active_low` | `false` | `true` when the LED lights at brightness 0 (the Raspberry Pi 5's `ACT`); without it the camera reads every frame inverted. |
 | `ble.driver` | `bluez` on Linux, `fake` elsewhere | `bluez` serves GATT through BlueZ over D-Bus; `fake` serves nothing and logs. |
 | `ble.adapter` | `hci0` | The BlueZ adapter to advertise on, by its name under `/org/bluez` (`ls /sys/class/bluetooth`). Powered on at start if it is off. |

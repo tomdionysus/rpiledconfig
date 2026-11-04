@@ -22,7 +22,6 @@ constexpr double min_contrast = 10;
 // Hysteresis of the level, as a fraction of the range.
 constexpr double hysteresis = 0.15;
 constexpr double window_ms = 1000;
-constexpr double shortest_run_ms = 30;
 constexpr int min_runs = 4;
 constexpr double find_separation = 4;
 constexpr double find_near_extremes = 0.5;
@@ -130,7 +129,8 @@ bool Detector::push(double t, double y) {
     int plausible = 0;
     for (const auto& run : _runs) {
       if (run.length > longest) blinking = false;
-      if (run.length >= shortest_run_ms) ++plausible;
+      // Shorter than a symbol less a camera frame's blur: at the protocol's 50 ms, 30 ms.
+    if (run.length >= 0.6 * _config.symbol) ++plausible;
     }
     blinking = blinking && plausible >= min_runs;
   }

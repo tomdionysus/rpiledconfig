@@ -11,9 +11,9 @@ import com.mrousavy.camera.frameprocessors.FrameProcessorPlugin
 import com.mrousavy.camera.frameprocessors.VisionCameraProxy
 import java.nio.ByteBuffer
 
-class LedReaderPlugin(@Suppress("UNUSED_PARAMETER") proxy: VisionCameraProxy, @Suppress("UNUSED_PARAMETER") options: Map<String, Any>?) :
-  FrameProcessorPlugin() {
-  private var handle: Long = nativeCreate()
+class LedReaderPlugin(@Suppress("UNUSED_PARAMETER") proxy: VisionCameraProxy, options: Map<String, Any>?) : FrameProcessorPlugin() {
+  // The symbol time the Pi was configured with (the protocol's 50 ms unless an experiment).
+  private var handle: Long = nativeCreate((options?.get("symbolMs") as? Number)?.toDouble() ?: 0.0)
   private val out = DoubleArray(nativeFieldCount())
 
   override fun callback(frame: Frame, params: Map<String, Any>?): Any? {
@@ -64,7 +64,7 @@ class LedReaderPlugin(@Suppress("UNUSED_PARAMETER") proxy: VisionCameraProxy, @S
       System.loadLibrary("ledreader")
     }
 
-    @JvmStatic private external fun nativeCreate(): Long
+    @JvmStatic private external fun nativeCreate(symbolMs: Double): Long
 
     @JvmStatic private external fun nativeDestroy(handle: Long)
 

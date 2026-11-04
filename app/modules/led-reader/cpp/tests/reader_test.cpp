@@ -175,3 +175,36 @@ TEST(ReaderTest, SymbolTimeTrialAt40Ms) {
   RecordProperty("slowest_ms", static_cast<int>(slowest));
   std::printf("[ trial    ] T = 40 ms, phone-camera model: %d of 8 read, slowest at %.0f ms\n", read, slowest);
 }
+
+// The symbol-time experiment (TODO/ACTIVE.md, Next 1), on the model: what each T reads at
+// 30 and 60 fps, with the exposure a frame allows. Printed, not asserted: the live phone
+// decides.
+TEST(ReaderTest, SymbolTimeTrials) {
+  for (const double symbol : {50.0, 40.0, 33.0, 25.0, 20.0}) {
+    for (const double fps : {30.0, 60.0}) {
+      int read = 0;
+      double slowest = 0;
+      for (std::uint32_t seed = 1; seed <= 8; ++seed) {
+        const auto out = run(test::synthesize(test::id_from(0x64958d1c7ab3e205ULL), {.fps = fps,
+                                                                                        .seconds = 20,
+                                                                                        .symbol = symbol,
+                                                                                        .noise = 12,
+                                                                                        .off = 20,
+                                                                                        .on = 69,
+                                                                                        .start_ms = 700.0 * seed,
+                                                                                        .jitter_ms = 3,
+                                                                                        .content_jitter_ms = fps > 30 ? 4.0 : 8.0,
+                                                                                        .exposure_ms = fps > 30 ? 16.0 : 33.0,
+                                                                                        .saturation = 3,
+                                                                                        .seed = seed}),
+                             ReaderConfig{symbol});
+        if (out.ids == std::set<Id>{test::id_from(0x64958d1c7ab3e205ULL)}) {
+          ++read;
+          slowest = std::max(slowest, *out.read_at);
+        }
+        EXPECT_LE(out.ids.size(), 1u) << "a wrong ID at T " << symbol << " fps " << fps << " seed " << seed;
+      }
+      std::printf("[ trial    ] T = %.0f ms at %.0f fps: %d of 8 read, slowest at %.0f ms\n", symbol, fps, read, slowest);
+    }
+  }
+}
