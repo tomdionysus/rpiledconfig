@@ -13,7 +13,7 @@ board.
 | Folder | What it is |
 | --- | --- |
 | `daemon/` | The service, `rpiledconfig`. C++20, Boost.Asio, OpenSSL, BlueZ and NetworkManager over sd-bus; systemd. |
-| `app/` | The phone app. Expo (React Native), TypeScript, react-native-ble-plx, react-native-vision-camera. The LED reader is native: `app/modules/led-reader`, C++ behind a VisionCamera frame-processor plugin. |
+| `app/` | The phone app, RPi LED Config. Expo (React Native), TypeScript, react-native-ble-plx, react-native-vision-camera. The LED reader is native: `app/modules/led-reader`, C++ behind a VisionCamera frame-processor plugin. |
 | `docs/` | The protocol (`protocol.md`), installation, configuration. |
 | `packaging/` | The Docker build of the Debian package. The package's own files are in `daemon/packaging/`. |
 | `TODO/` | `ACTIVE.md` is the plan; `COMPLETED.md` the record. |
@@ -34,9 +34,12 @@ board.
    they hold the ID with SPAKE2 (RFC 9382), so nothing on the air can be
    used to test guesses of it offline. A session key is derived and
    everything after is AES-GCM. The LED stops.
-5. The app lists the networks the Pi can see and sends the chosen SSID and
-   passphrase. The daemon hands them to NetworkManager, confirms the
-   connection, and leaves setup mode.
+5. The app lists the networks the Pi can see; the user picks one and types
+   its passphrase, types a network's name by hand, or scans a WiFi QR code.
+   The daemon hands the network to NetworkManager and reports what became
+   of it, so a wrong passphrase or a name nothing broadcasts is shown the
+   moment NetworkManager gives up. On success, Finish takes the Pi out of
+   setup mode.
 
 Once paired, the app can also remove RPiLEDConfig from the Pi altogether:
 the daemon starts a root unit the package ships, which purges the package

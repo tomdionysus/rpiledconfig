@@ -440,6 +440,11 @@ confirms; the app never sees the password. The daemon is the enrollee, and
 the BLE channel is how the app learns the Pi's bootstrap code, so only a
 phone that has authenticated with the LED's ID can start it.
 
+The daemon implements this; the 0.3.0 app does not offer it. On the
+Blackview A85 the configurator took the phone off its network and never
+reached the Pi listening on the Pi's own channel, and until that is
+understood the app joins networks by passphrase or QR code only.
+
 | Request | Response when ok |
 | --- | --- |
 | `{"op":"wifi.easyconnect"}` | `{"ok":true,"uri":"DPP:C:...;M:...;V:2;K:...;;"}` |

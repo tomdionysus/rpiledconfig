@@ -112,8 +112,9 @@ from the part of the system that owns it:
       wpa_cli -i wlan0 dpp_bootstrap_gen type=qrcode chan=81/6
 
   answers a number (then `wpa_cli -i wlan0 dpp_bootstrap_remove <number>`); `FAIL` or
-  `UNKNOWN COMMAND` means this wpa_supplicant cannot do Easy Connect, and the app is told
-  `easyconnect_unavailable` and offers its other two ways.
+  `UNKNOWN COMMAND` means this wpa_supplicant cannot do Easy Connect, and the daemon
+  answers `easyconnect_unavailable`. The 0.3.0 app does not offer Easy Connect
+  (TODO/ACTIVE.md): the daemon's side is there for when it does.
 
 A `cmake --install` into `/usr/local` puts the rule in
 `/usr/local/share/polkit-1/rules.d`, which polkitd does not read: copy it to
