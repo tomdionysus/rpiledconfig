@@ -6,7 +6,7 @@
 #
 cmake_minimum_required(VERSION 3.23...4.4)
 
-project(rpiledconfig VERSION 0.2.0 LANGUAGES CXX)
+project(rpiledconfig VERSION 0.3.0 LANGUAGES CXX)
 
 option(RPILEDCONFIG_BUILD_TESTING "Build test targets" OFF)
 set(RPILEDCONFIG_SANITIZE "none" CACHE STRING "Sanitizer to build with: none, address, thread")
@@ -147,6 +147,7 @@ if(NOT RPILEDCONFIG_HAVE_SD_BUS)
     list(REMOVE_ITEM RPILEDCONFIG_SOURCES
         "${CMAKE_CURRENT_SOURCE_DIR}/src/ble/ble_bluez.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/wifi/wifi_networkmanager.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/system/uninstaller_systemd.cpp"
     )
     list(FILTER RPILEDCONFIG_SOURCES EXCLUDE REGEX "/src/dbus/")
 endif()
@@ -349,6 +350,7 @@ install(CODE "
 if(RPILEDCONFIG_INSTALL_SYSTEM_FILES)
     # Generated rather than copied, so ExecStart names where the binary actually went.
     install(FILES ${CMAKE_CURRENT_BINARY_DIR}/packaging/rpiledconfig.service DESTINATION ${RPILEDCONFIG_SYSTEMD_UNIT_DIR})
+    install(FILES packaging/rpiledconfig-uninstall.service DESTINATION ${RPILEDCONFIG_SYSTEMD_UNIT_DIR})
     install(FILES packaging/60-rpiledconfig.rules DESTINATION ${RPILEDCONFIG_UDEV_RULES_DIR})
     install(FILES packaging/polkit-rpiledconfig.rules DESTINATION ${RPILEDCONFIG_POLKIT_RULES_DIR} RENAME 60-rpiledconfig.rules)
 endif()

@@ -18,7 +18,8 @@ namespace rpiledconfig::ble {
 // The GATT service of docs/protocol.md, "BLE".
 inline constexpr char service_uuid[] = "2a7f0001-7e1d-4c3a-9b5e-0f8a6d4c2b10";
 
-enum class Characteristic { info, challenge, auth, auth_result, request, response };
+// In the order of their UUIDs; blink came with protocol 3.
+enum class Characteristic { info, challenge, auth, auth_result, request, response, blink };
 
 const char* uuid(Characteristic characteristic);
 const char* name(Characteristic characteristic);

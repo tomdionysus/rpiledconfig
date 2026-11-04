@@ -23,8 +23,8 @@
 
 namespace rpiledconfig::setup {
 
-// Setup mode (docs/protocol.md, "Setup mode"): the LED blinking and the BLE service
-// advertising. Entered at start when there is no WiFi connection, left on finish or after
+// Setup mode (docs/protocol.md, "Setup mode"): the BLE service advertising, and the LED
+// blinking while a phone has asked for it (Blink). Entered at start when there is no WiFi connection, left on finish or after
 // setup.timeout; outside it the daemon idles and checks WiFi every setup.recheck. One
 // executor for all of it, the sessions included, and the timer source made for it.
 class SetupMode : public ble::BleListener, public std::enable_shared_from_this<SetupMode> {
@@ -41,6 +41,9 @@ class SetupMode : public ble::BleListener, public std::enable_shared_from_this<S
     // Per connection: see PairingSession::Options.
     std::chrono::milliseconds auth_timeout{30000};
     int max_refusals = 3;
+
+    // How long the LED blinks after the last 0x01 written to Blink.
+    std::chrono::seconds blink_timeout{120};
   };
 
   struct Identity {
@@ -64,6 +67,7 @@ class SetupMode : public ble::BleListener, public std::enable_shared_from_this<S
   bool advertising_paused() const { return _paused; }
   std::size_t sessions() const { return _sessions.size(); }
   int consecutive_refusals() const { return _consecutive_refusals; }
+  bool blinking() const { return _blinking; }
 
   // --- BleListener -------------------------------------------------------------------
 
@@ -80,6 +84,8 @@ class SetupMode : public ble::BleListener, public std::enable_shared_from_this<S
   void _on_authenticated();
   void _on_refused();
   void _on_finished();
+  void _blink(ble::ConnectionId connection, const types::Bytes& value);
+  void _stop_blinking(const std::string& why);
 
   std::shared_ptr<loggers::Logger> _logger;
   types::Executor _executor;
@@ -96,10 +102,13 @@ class SetupMode : public ble::BleListener, public std::enable_shared_from_this<S
   bool _active = false;
   bool _paused = false;
   int _consecutive_refusals = 0;
+  // Asked for and not yet stopped, whether or not the LED could be driven.
+  bool _blinking = false;
 
   std::shared_ptr<timers::Timer> _timeout;
   std::shared_ptr<timers::Timer> _recheck;
   std::shared_ptr<timers::Timer> _pause;
+  std::shared_ptr<timers::Timer> _blink_timeout;
 };
 
 }  // namespace rpiledconfig::setup

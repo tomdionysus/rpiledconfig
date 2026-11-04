@@ -1,10 +1,8 @@
-// WiFi over the paired session. First the quick way: copy this phone's WiFi
-// to the Pi with Wi-Fi Easy Connect (pairing/copyWifi.ts), Android's own
-// screen sending the network so the password never passes through the app.
-// Where that cannot work (iOS, Android before 10, a Pi without it) the other
-// two ways: scan the network's QR code, or pick it from the Pi's scan and
-// type the passphrase. Every way ends in the same join flow
-// (pairing/join.ts), which expects the BLE link to drop and reconnects.
+// WiFi over the paired session: pick a network from the Pi's scan and type
+// its passphrase, or scan the network's QR code. Both end in the same join
+// flow (pairing/join.ts), which expects the BLE link to drop and reconnects.
+// Wi-Fi Easy Connect (copying this phone's WiFi) is left out: on the A85 it
+// took the phone off its network and never reached the Pi (TODO/ACTIVE.md).
 //
 // The link can also go while nothing is happening (a daemon restarted under
 // a link bluetoothd kept up gives no disconnect), so the screen asks for
@@ -12,23 +10,21 @@
 // fails.
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { copyPhoneWifi, describeCopyOutcome, describeCopyStep, type CopyOutcome, type CopyStep } from '@/pairing/copyWifi';
+import { Alert, BackHandler, KeyboardAvoidingView, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { describeCopyOutcome, describeCopyStep, type CopyOutcome, type CopyStep } from '@/pairing/copyWifi';
 import { collapseSteps, joinWifi, type Verdict } from '@/pairing/join';
 import { LinkLostError, RequestError } from '@/pairing/session';
 import { MessageError, type Network, type StatusResponse } from '@/protocol/messages';
-import { FAKE_PASSPHRASE } from '@/state/services';
 import { useApp } from '@/state/store';
 import { Button } from '@/ui/Button';
 import { Screen } from '@/ui/Screen';
 import { colors, monospace, radius, space, type as typography, TOUCH_TARGET } from '@/ui/theme';
 import { DIAGNOSTICS } from '@/util/diagnostics';
-import { easyConnectSupported, launchEasyConnect } from '@/wifi/easyConnect';
 import { phoneSsid } from '@/wifi/phoneWifi';
 import { WifiQrScanner } from '@/wifi/WifiQrScanner';
 import type { WifiCredentials } from '@/wifi/wifiQr';
 
-type Busy = 'status' | 'scan' | 'forget' | 'finish' | undefined;
+type Busy = 'status' | 'scan' | 'forget' | 'finish' | 'uninstall' | undefined;
 
 /** One way of getting the Pi onto a network, from the first step to its verdict. */
 interface Attempt {
@@ -51,37 +47,36 @@ function describe(error: unknown): string {
 
 export default function WifiScreen() {
   const router = useRouter();
-  const { session, setSession, services } = useApp();
+  const { session, setSession } = useApp();
   const [status, setStatus] = useState<StatusResponse | undefined>(undefined);
   const [networks, setNetworks] = useState<Network[] | undefined>(undefined);
-  const [selected, setSelected] = useState<Network | undefined>(undefined);
-  const [psk, setPsk] = useState('');
+  const [choice, setChoice] = useState<JoinChoice | undefined>(undefined);
+  const cancelChoice = useCallback(() => setChoice(undefined), []);
   const [busy, setBusy] = useState<Busy>(undefined);
   const [message, setMessage] = useState<string | undefined>(undefined);
   const [attempt, setAttempt] = useState<Attempt | undefined>(undefined);
   const [closed, setClosed] = useState<LinkLostError | undefined>(undefined);
   const [phoneNetwork, setPhoneNetwork] = useState<string | undefined>(undefined);
-  /** The other ways are on show: Easy Connect cannot work here, or did not. */
-  const [otherWays, setOtherWays] = useState(!easyConnectSupported());
   const [scanningQr, setScanningQr] = useState(false);
+  /** The Pi answered uninstall: its removal has started. */
+  const [removed, setRemoved] = useState(false);
   // While a join runs, the link dropping is part of the plan, not news.
   const joining = useRef(false);
+  // Once a second while a join runs, so its countdown moves between status polls.
+  const [now, setNow] = useState(() => Date.now());
 
-  const run = useCallback(
-    async (what: Exclude<Busy, undefined>, action: () => Promise<void>) => {
-      setBusy(what);
-      setMessage(undefined);
-      try {
-        await action();
-      } catch (error) {
-        // A lost link has its own notice; anything else is said here.
-        if (!(error instanceof LinkLostError)) setMessage(describe(error));
-      } finally {
-        setBusy(undefined);
-      }
-    },
-    [],
-  );
+  const run = useCallback(async (what: Exclude<Busy, undefined>, action: () => Promise<void>) => {
+    setBusy(what);
+    setMessage(undefined);
+    try {
+      await action();
+    } catch (error) {
+      // A lost link has its own notice; anything else is said here.
+      if (!(error instanceof LinkLostError)) setMessage(describe(error));
+    } finally {
+      setBusy(undefined);
+    }
+  }, []);
 
   const refresh = useCallback(async () => {
     if (!session) return;
@@ -114,6 +109,11 @@ export default function WifiScreen() {
   // While idle, keep asking: a link that died quietly is found within seconds.
   const inProgress = attempt !== undefined && attempt.outcome === undefined;
   useEffect(() => {
+    if (!inProgress) return;
+    const timer = setInterval(() => setNow(Date.now()), 1_000);
+    return () => clearInterval(timer);
+  }, [inProgress]);
+  useEffect(() => {
     if (!session || closed || inProgress || busy || scanningQr) return;
     const timer = setTimeout(() => {
       if (joining.current || session.isClosed) return;
@@ -123,6 +123,17 @@ export default function WifiScreen() {
     }, KEEPALIVE_MS);
     return () => clearTimeout(timer);
   }, [session, closed, inProgress, busy, scanningQr, status]);
+
+  if (removed) {
+    return (
+      <Screen title="Removed">
+        <Text style={styles.body}>
+          The Pi is removing RPi LED Config: in a few seconds the service stops, and its program, settings and machine ID are deleted. Its WiFi stays as it is.
+        </Text>
+        <Button label="Home" onPress={() => router.replace('/')} style={styles.removedHome} />
+      </Screen>
+    );
+  }
 
   if (!session) {
     return (
@@ -139,6 +150,27 @@ export default function WifiScreen() {
     router.replace('/');
   };
 
+  // docs/protocol.md, Uninstalling: destructive and for good, so it is confirmed first.
+  const uninstall = () => {
+    Alert.alert(
+      'Remove RPi LED Config from this Pi?',
+      'The service is stopped and deleted with its settings and machine ID. The Pi keeps its WiFi, but cannot be set up from a phone again until the package is reinstalled.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () =>
+            void run('uninstall', async () => {
+              await session.uninstall();
+              setSession(undefined);
+              setRemoved(true);
+            }),
+        },
+      ],
+    );
+  };
+
   const pairAgain = () => {
     void session.close();
     setSession(undefined);
@@ -151,7 +183,9 @@ export default function WifiScreen() {
     setMessage(undefined);
     setClosed(undefined);
     setAttempt({ label, steps: [] });
-    const outcome = await how((step) => setAttempt((current) => (current && current.outcome === undefined ? { ...current, steps: [...current.steps, step] } : current)));
+    const outcome = await how((step) =>
+      setAttempt((current) => (current && current.outcome === undefined ? { ...current, steps: [...current.steps, step] } : current)),
+    );
     joining.current = false;
     if (outcome.kind === 'lost') {
       if (outcome.lastStatus) setStatus(outcome.lastStatus);
@@ -159,29 +193,23 @@ export default function WifiScreen() {
       if (outcome.session !== session) setSession(outcome.session);
       if (outcome.kind === 'joined' || outcome.kind === 'not_joined') setStatus(outcome.status);
     }
-    if (outcome.kind === 'unavailable' || outcome.kind === 'cancelled') setOtherWays(true);
-    setAttempt({ label, steps: [], outcome, verdict: describeCopyOutcome(outcome, label) });
+    setAttempt({
+      label,
+      steps: [],
+      outcome,
+      verdict: describeCopyOutcome(outcome, label),
+    });
   };
 
-  const copyPhone = () => {
-    if (!easyConnectSupported()) {
-      setOtherWays(true);
-      return;
-    }
-    const label = phoneNetwork ?? 'the network this phone shared';
-    // With the fake Pi, Android's screen is played by the fake, which shares Blackraven.
-    const fake = services.fake;
-    const launch = fake
-      ? async () => {
-          fake.easyConnectDeliver('Blackraven', FAKE_PASSPHRASE);
-          return 'done' as const;
-        }
-      : launchEasyConnect;
-    void follow(label, (onStep) => copyPhoneWifi(session, launch, { onStep, ssidHint: phoneNetwork }));
+  const configure = (ssid: string, passphrase: string | undefined, hidden = false) => {
+    if (DIAGNOSTICS) console.log(`[wifi] join ${ssid}${hidden ? ' (typed)' : ''}`);
+    void follow(ssid, (onStep) => joinWifi(session, ssid, passphrase, { onStep, hidden }));
   };
 
-  const configure = (ssid: string, passphrase: string | undefined) => {
-    void follow(ssid, (onStep) => joinWifi(session, ssid, passphrase, { onStep }));
+  const choose = (next: JoinChoice) => {
+    setMessage(undefined);
+    if (attempt?.outcome) setAttempt(undefined);
+    setChoice(next);
   };
 
   const fromQr = (credentials: WifiCredentials) => {
@@ -189,186 +217,312 @@ export default function WifiScreen() {
     configure(credentials.ssid, credentials.psk);
   };
 
-  const typeIt = () => {
-    const match = networks?.find((network) => network.ssid === phoneNetwork);
-    if (match) setSelected(match);
-  };
-
   const lost = attempt?.outcome?.kind === 'lost';
   const joined = attempt?.outcome?.kind === 'joined';
   const offline = !!closed || lost || inProgress;
+  const piNetwork = status?.wifi.connected ? status.wifi.ssid : undefined;
 
   if (scanningQr) return <WifiQrScanner onRead={fromQr} onCancel={() => setScanningQr(false)} />;
 
   return (
-    <Screen title="WiFi" eyebrow="Step 3 of 3">
-      <View style={styles.card}>
-        <Text style={styles.cardLabel}>PI</Text>
-        <Text style={styles.cardTitle}>{status?.hostname ?? session.info.fingerprint}</Text>
-        <Text style={styles.cardDetail}>
-          {status
-            ? status.wifi.connected
-              ? `Connected to ${status.wifi.ssid ?? 'a network'}${status.wifi.ip ? ` as ${status.wifi.ip}` : ''}.`
-              : 'Not connected to WiFi.'
-            : 'Asking for its status.'}
-          {` Daemon ${session.info.version}, fingerprint ${session.info.fingerprint}.`}
-        </Text>
-      </View>
-
-      {closed && !inProgress && !lost ? (
-        <View style={[styles.notice, styles.noticeError]}>
-          <Text style={styles.errorTitle}>Lost touch with the Pi</Text>
-          <Text style={styles.body}>{closed.message} Pair again to carry on; the Pi stays in setup mode until it is told to finish.</Text>
-          {DIAGNOSTICS && closed.detail ? <Text style={styles.detail}>{closed.detail}</Text> : null}
-          <Button label="Pair again" onPress={pairAgain} />
-          <Button label="Start again" variant="quiet" onPress={leave} />
-        </View>
-      ) : null}
-
-      {inProgress ? (
-        <View style={styles.notice} accessibilityLiveRegion="polite">
-          <Text style={styles.sectionTitle}>Joining {attempt.label}</Text>
-          {collapseSteps(attempt.steps).map((step, index, all) => (
-            <Text key={`${index}-${step.kind}`} style={[styles.step, index === all.length - 1 && styles.stepCurrent]}>
-              {index === all.length - 1 ? 'now   ' : 'done  '}
-              {describeCopyStep(step, attempt.label)}
-            </Text>
-          ))}
-        </View>
-      ) : null}
-
-      {attempt?.verdict ? (
-        <View style={[styles.notice, attempt.verdict.tone === 'error' && styles.noticeError]}>
-          <Text style={attempt.verdict.tone === 'ok' ? styles.ok : styles.errorTitle}>{attempt.verdict.title}</Text>
-          <Text style={styles.body}>{attempt.verdict.body}</Text>
-          {joined ? (
-            <>
-              <Text style={styles.body}>Finish tells the Pi to leave setup mode: the LED stops blinking and Bluetooth goes quiet.</Text>
-              <Button
-                label="Finish"
-                busy={busy === 'finish'}
-                onPress={() =>
-                  void run('finish', async () => {
-                    await session.finish();
-                    setSession(undefined);
-                    router.replace('/');
-                  })
-                }
-              />
-              <Button label="Check status again" variant="quiet" busy={busy === 'status'} onPress={() => void run('status', async () => setStatus(await session.status()))} />
-            </>
-          ) : lost ? (
-            <Button label="Pair again" onPress={pairAgain} />
-          ) : null}
-        </View>
-      ) : null}
-
-      {!joined ? (
-        <View style={styles.copy}>
-          <Text style={styles.sectionTitle}>Copy this phone's WiFi</Text>
-          <Text style={styles.body}>
-            {easyConnectSupported()
-              ? `Android sends the Pi the network you pick${phoneNetwork ? `, ${phoneNetwork} first` : ''}, passphrase and all; this app never sees the passphrase.`
-              : 'This phone cannot send its WiFi to the Pi by itself. Scan the network\'s QR code, or pick it below and type the passphrase.'}
+    <View style={styles.fill}>
+      <Screen title="WiFi" eyebrow="Step 4 of 4">
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>{status?.hostname ?? `Pi ${session.info.fingerprint}`}</Text>
+          <Text style={styles.cardStatus}>
+            {status
+              ? status.wifi.connected
+                ? `On ${status.wifi.ssid ?? 'WiFi'}${status.wifi.ip ? `, ${status.wifi.ip}` : ''}`
+                : 'Not on WiFi'
+              : 'Asking for its status'}
           </Text>
-          {easyConnectSupported() ? <Button label="Copy this phone's WiFi" busy={inProgress} disabled={offline} onPress={copyPhone} /> : null}
-          {otherWays ? (
-            <View style={styles.otherWays}>
-              <Button label="Scan the network's QR code" variant="secondary" disabled={offline} onPress={() => setScanningQr(true)} />
-              <Text style={styles.detail}>On a phone that is on the network: WiFi settings, the network, Share. Its QR code carries the passphrase.</Text>
-              <Button label="Type it instead" variant="quiet" disabled={offline} onPress={typeIt} />
-            </View>
-          ) : (
-            <Button label="Other ways" variant="quiet" disabled={offline} onPress={() => setOtherWays(true)} />
-          )}
+          <Text style={styles.cardDetail}>
+            Fingerprint {session.info.fingerprint}, daemon {session.info.version}
+          </Text>
         </View>
-      ) : null}
 
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Networks the Pi can see</Text>
-        <Button label="Rescan" variant="quiet" busy={busy === 'scan'} disabled={offline} onPress={() => void refresh()} />
-      </View>
-      {networks === undefined ? (
-        <Text style={styles.body}>{busy === 'scan' ? 'Scanning.' : 'No scan yet.'}</Text>
-      ) : networks.length === 0 ? (
-        <Text style={styles.body}>The Pi sees no networks. Try again in a moment.</Text>
-      ) : (
-        networks.map((network) => (
-          <Pressable
-            key={network.ssid}
-            accessibilityRole="button"
-            accessibilityState={{ selected: selected?.ssid === network.ssid, disabled: inProgress }}
-            disabled={inProgress}
-            onPress={() => {
-              setSelected(network);
-              setMessage(undefined);
-              if (attempt?.outcome) setAttempt(undefined);
-            }}
-            style={({ pressed }) => [styles.row, selected?.ssid === network.ssid && styles.rowSelected, pressed && styles.pressed]}>
-            <View style={styles.rowText}>
-              <Text style={styles.rowTitle}>
-                {network.ssid}
-                {network.ssid === phoneNetwork ? '  (this phone)' : ''}
-              </Text>
-              <Text style={styles.rowDetail}>{network.secure ? 'Secured' : 'Open'}</Text>
-            </View>
-            <Text style={styles.signal}>{network.signal}%</Text>
-          </Pressable>
-        ))
-      )}
-
-      {selected && !joined ? (
-        <View style={styles.form}>
-          <Text style={styles.sectionTitle}>Join {selected.ssid}</Text>
-          {selected.secure ? (
-            <TextInput
-              value={psk}
-              onChangeText={setPsk}
-              placeholder="Passphrase"
-              placeholderTextColor={colors.textFaint}
-              secureTextEntry
-              autoCapitalize="none"
-              autoCorrect={false}
-              editable={!inProgress}
-              style={styles.input}
-            />
-          ) : (
-            <Text style={styles.body}>This network is open; no passphrase.</Text>
-          )}
-          <Button
-            label={attempt?.outcome && attempt.label === selected.ssid ? 'Try again' : 'Configure'}
-            busy={inProgress}
-            disabled={offline || (selected.secure && psk.length === 0)}
-            onPress={() => configure(selected.ssid, selected.secure ? psk : undefined)}
-          />
-        </View>
-      ) : null}
-
-      {message ? <Text style={styles.error}>{message}</Text> : null}
-
-      <View style={styles.footer}>
-        {status?.wifi.connected && !joined ? (
-          <Button
-            label="Forget the Pi's WiFi"
-            variant="secondary"
-            busy={busy === 'forget'}
-            disabled={offline}
-            onPress={() =>
-              void run('forget', async () => {
-                await session.wifiForget();
-                setAttempt(undefined);
-                setStatus(await session.status());
-              })
-            }
-          />
+        {closed && !inProgress && !lost ? (
+          <View style={[styles.notice, styles.noticeError]}>
+            <Text style={styles.errorTitle}>Lost touch with the Pi</Text>
+            <Text style={styles.body}>{closed.message}</Text>
+            {DIAGNOSTICS && closed.detail ? <Text style={styles.detail}>{closed.detail}</Text> : null}
+            <Button label="Pair again" onPress={pairAgain} />
+          </View>
         ) : null}
-        <Button label="Disconnect without finishing" variant="quiet" disabled={inProgress} onPress={leave} />
-      </View>
-    </Screen>
+
+        {inProgress ? (
+          <View style={styles.notice} accessibilityLiveRegion="polite">
+            <Text style={styles.sectionTitle}>Joining {attempt.label}</Text>
+            {collapseSteps(attempt.steps).map((step, index, all) => (
+              <Text key={`${index}-${step.kind}`} style={[styles.step, index === all.length - 1 && styles.stepCurrent]}>
+                {index === all.length - 1 ? 'now   ' : 'done  '}
+                {describeCopyStep(step, attempt.label, now)}
+              </Text>
+            ))}
+          </View>
+        ) : null}
+
+        {attempt?.verdict ? (
+          <View style={[styles.notice, attempt.verdict.tone === 'error' && styles.noticeError]}>
+            <Text style={attempt.verdict.tone === 'ok' ? styles.ok : styles.errorTitle}>{attempt.verdict.title}</Text>
+            <Text style={styles.body}>{attempt.verdict.body}</Text>
+            {joined ? (
+              <>
+                <Button
+                  label="Finish"
+                  busy={busy === 'finish'}
+                  onPress={() =>
+                    void run('finish', async () => {
+                      await session.finish();
+                      setSession(undefined);
+                      router.replace('/');
+                    })
+                  }
+                />
+                <Text style={styles.detail}>Or, if this Pi will not need setting up from a phone again, remove the service and keep the WiFi it is on.</Text>
+                <Button label="Remove RPi LED Config from this Pi" variant="danger" busy={busy === 'uninstall'} disabled={busy !== undefined} onPress={uninstall} />
+              </>
+            ) : lost ? (
+              <Button label="Pair again" onPress={pairAgain} />
+            ) : null}
+          </View>
+        ) : null}
+
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Networks the Pi can see</Text>
+          <Button label="Rescan" variant="quiet" busy={busy === 'scan'} disabled={offline} onPress={() => void refresh()} />
+        </View>
+        {networks === undefined ? (
+          <Text style={styles.body}>{busy === 'scan' ? 'Scanning.' : 'No scan yet.'}</Text>
+        ) : networks.length === 0 ? (
+          <Text style={styles.body}>The Pi sees no networks. Rescan in a moment.</Text>
+        ) : (
+          <View style={styles.list}>
+            {networks.map((network, index) => (
+              <Pressable
+                key={network.ssid}
+                accessibilityRole="button"
+                accessibilityLabel={`Join ${network.ssid}`}
+                disabled={offline}
+                onPress={() => choose({ kind: 'scanned', network })}
+                style={({ pressed }) => [styles.row, index > 0 && styles.rowDivider, pressed && styles.pressed, offline && styles.dimmed]}
+              >
+                <View style={styles.rowText}>
+                  <Text style={styles.rowTitle} numberOfLines={1}>
+                    {network.ssid}
+                    <Text style={styles.tags}>{networkTags(network.ssid, piNetwork, phoneNetwork)}</Text>
+                  </Text>
+                  <Text style={styles.rowDetail}>{network.secure ? 'Secured' : 'Open'}</Text>
+                </View>
+                <Text style={styles.signal}>{network.signal}%</Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
+        <Button label="Other network: type its name" variant="quiet" disabled={offline} onPress={() => choose({ kind: 'typed' })} />
+        <Button label="Scan a WiFi QR code" variant="quiet" disabled={offline} onPress={() => setScanningQr(true)} />
+
+        {message ? <Text style={styles.error}>{message}</Text> : null}
+
+        <View style={styles.footer}>
+          {status?.wifi.connected && !joined ? (
+            <Button
+              label="Forget the Pi's WiFi"
+              variant="secondary"
+              busy={busy === 'forget'}
+              disabled={offline}
+              onPress={() =>
+                void run('forget', async () => {
+                  await session.wifiForget();
+                  setAttempt(undefined);
+                  setStatus(await session.status());
+                })
+              }
+            />
+          ) : null}
+          <Button label="Disconnect without finishing" variant="quiet" disabled={inProgress} onPress={leave} />
+          {joined ? null : (
+            <Button
+              label="Remove RPi LED Config from this Pi"
+              variant="danger"
+              busy={busy === 'uninstall'}
+              disabled={offline || busy !== undefined}
+              onPress={uninstall}
+            />
+          )}
+        </View>
+      </Screen>
+      <JoinSheet
+        choice={choice}
+        busy={inProgress}
+        onCancel={cancelChoice}
+        onJoin={(request) => {
+          setChoice(undefined);
+          configure(request.ssid, request.passphrase, request.hidden);
+        }}
+      />
+    </View>
   );
 }
 
+/** What the join dialog was opened for: a network from the Pi's scan, or one to type. */
+type JoinChoice = { kind: 'scanned'; network: Network } | { kind: 'typed' };
+
+/** What the dialog hands back. */
+interface JoinRequest {
+  ssid: string;
+  passphrase: string | undefined;
+  hidden: boolean;
+}
+
+/** How long after the dialog mounts the first field is focused: after the mount is complete. */
+const FOCUS_DELAY_MS = 80;
+
+/** An eye, drawn with views (no icon library, no emoji): open, or struck through. */
+function EyeIcon({ open }: { open: boolean }) {
+  return (
+    <View style={styles.eye} pointerEvents="none">
+      <View style={styles.eyeOutline}>
+        <View style={styles.eyePupil} />
+      </View>
+      {open ? null : <View style={styles.eyeStrike} />}
+    </View>
+  );
+}
+
+/**
+ * The join dialog: the passphrase for a network from the list, or the SSID
+ * and passphrase of one typed by hand. Centred, and moved up by the keyboard.
+ *
+ * The first field is focused from code after the mount, not with autoFocus:
+ * on the A85 (React Native 0.86, new architecture) a field opened with
+ * autoFocus showed what was typed but its onChangeText never fired, so the
+ * passphrase stayed empty and Join stayed disabled.
+ */
+function JoinSheet({
+  choice,
+  busy,
+  onCancel,
+  onJoin,
+}: {
+  choice: JoinChoice | undefined;
+  busy: boolean;
+  onCancel(): void;
+  onJoin(request: JoinRequest): void;
+}) {
+  const [ssid, setSsid] = useState('');
+  const [psk, setPsk] = useState('');
+  const [secure, setSecure] = useState(true);
+  const [shown, setShown] = useState(false);
+  const first = useRef<TextInput>(null);
+
+  // A fresh dialog each time it opens, and the first field focused once it is on screen.
+  useEffect(() => {
+    setSsid('');
+    setPsk('');
+    setShown(false);
+    setSecure(choice?.kind === 'scanned' ? choice.network.secure : true);
+    if (!choice) return;
+    const timer = setTimeout(() => first.current?.focus(), FOCUS_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [choice]);
+
+  // The system back closes the dialog rather than the screen.
+  useEffect(() => {
+    if (!choice) return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      onCancel();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [choice, onCancel]);
+
+  if (!choice) return null;
+  const typed = choice.kind === 'typed';
+  const name = typed ? ssid.trim() : choice.network.ssid;
+  // Only what cannot be sent at all: no name, or a secured network with nothing typed. What
+  // a passphrase must look like is the network's business, and the Pi reports a refusal.
+  const ready = name.length > 0 && (!secure || psk.length > 0) && !busy;
+  const join = () => {
+    if (DIAGNOSTICS) console.log(`[join] press: name ${name.length} chars, passphrase ${psk.length} chars, secure ${secure}, ready ${ready}`);
+    if (!ready) return;
+    onJoin({ ssid: name, passphrase: secure ? psk : undefined, hidden: typed });
+  };
+  const onPsk = (text: string) => {
+    if (DIAGNOSTICS) console.log(`[join] passphrase now ${text.length} chars`);
+    setPsk(text);
+  };
+
+  return (
+    <KeyboardAvoidingView behavior="padding" style={styles.scrim}>
+      <View style={styles.sheet}>
+        <Text style={styles.sheetTitle} numberOfLines={2}>
+          {typed ? 'Join another network' : `Join ${name}`}
+        </Text>
+        {typed ? (
+          <TextInput
+            ref={first}
+            value={ssid}
+            onChangeText={setSsid}
+            placeholder="Network name (SSID)"
+            placeholderTextColor={colors.textFaint}
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="next"
+            style={styles.input}
+          />
+        ) : null}
+        {typed ? (
+          <Pressable accessibilityRole="switch" accessibilityState={{ checked: secure }} hitSlop={8} onPress={() => setSecure((on) => !on)}>
+            <Text style={styles.show}>{secure ? 'Secured: tap if it is an open network' : 'Open: tap if it has a passphrase'}</Text>
+          </Pressable>
+        ) : null}
+        {secure ? (
+          <View style={styles.field}>
+            <TextInput
+              ref={typed ? undefined : first}
+              value={psk}
+              onChangeText={onPsk}
+              placeholder="Passphrase"
+              placeholderTextColor={colors.textFaint}
+              secureTextEntry={!shown}
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="done"
+              onSubmitEditing={join}
+              style={[styles.input, styles.inputWithIcon]}
+            />
+            <Pressable
+              accessibilityRole="switch"
+              accessibilityLabel={shown ? 'Hide passphrase' : 'Show passphrase'}
+              accessibilityState={{ checked: shown }}
+              hitSlop={8}
+              onPress={() => setShown((on) => !on)}
+              style={styles.eyeButton}
+            >
+              <EyeIcon open={shown} />
+            </Pressable>
+          </View>
+        ) : (
+          <Text style={styles.body}>An open network: no passphrase.</Text>
+        )}
+        <Button label="Join" disabled={!ready} busy={busy} onPress={join} />
+        <Button label="Cancel" variant="quiet" onPress={onCancel} />
+      </View>
+    </KeyboardAvoidingView>
+  );
+}
+
+/** After an SSID in the list: whether the Pi is on it now, and whether this phone is. */
+function networkTags(ssid: string, piNetwork: string | undefined, phoneNetwork: string | undefined): string {
+  const tags = [ssid === piNetwork ? 'current' : undefined, ssid === phoneNetwork ? 'this phone' : undefined].filter((tag) => tag !== undefined);
+  return tags.length > 0 ? `  (${tags.join(', ')})` : '';
+}
+
 const styles = StyleSheet.create({
+  removedHome: {
+    marginTop: space.xl,
+  },
   body: {
     ...typography.body,
     color: colors.textDim,
@@ -383,17 +537,17 @@ const styles = StyleSheet.create({
     gap: space.xs,
     marginBottom: space.xl,
   },
-  cardLabel: {
-    ...typography.micro,
-    color: colors.textFaint,
-  },
   cardTitle: {
     ...typography.title,
     color: colors.text,
   },
+  cardStatus: {
+    ...typography.body,
+    color: colors.text,
+  },
   cardDetail: {
     ...typography.caption,
-    color: colors.textDim,
+    color: colors.textFaint,
   },
   notice: {
     gap: space.md,
@@ -420,26 +574,37 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    marginBottom: space.xs,
   },
   sectionTitle: {
     ...typography.heading,
     color: colors.text,
   },
+  list: {
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    overflow: 'hidden',
+    marginBottom: space.sm,
+  },
   row: {
-    minHeight: TOUCH_TARGET + 8,
+    minHeight: TOUCH_TARGET + 12,
     flexDirection: 'row',
     alignItems: 'center',
     gap: space.md,
     paddingVertical: space.sm,
-    paddingHorizontal: space.md,
-    marginHorizontal: -space.md,
-    borderRadius: radius.md,
+    paddingHorizontal: space.lg,
   },
-  rowSelected: {
-    backgroundColor: colors.accentSurface,
+  rowDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
   },
   pressed: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.surface2,
+  },
+  dimmed: {
+    opacity: 0.5,
   },
   rowText: {
     flex: 1,
@@ -448,6 +613,10 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.text,
   },
+  tags: {
+    ...typography.caption,
+    color: colors.accent,
+  },
   rowDetail: {
     ...typography.caption,
     color: colors.textFaint,
@@ -455,21 +624,6 @@ const styles = StyleSheet.create({
   signal: {
     ...typography.label,
     color: colors.textDim,
-  },
-  form: {
-    marginTop: space.xl,
-    gap: space.md,
-  },
-  input: {
-    ...typography.body,
-    color: colors.text,
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.borderStrong,
-    paddingHorizontal: space.lg,
-    paddingVertical: space.md,
-    minHeight: 50,
   },
   error: {
     ...typography.body,
@@ -484,19 +638,98 @@ const styles = StyleSheet.create({
     ...typography.heading,
     color: colors.ok,
   },
-  copy: {
-    gap: space.md,
-    marginBottom: space.xl,
-  },
-  otherWays: {
-    gap: space.sm,
-  },
   detail: {
     ...typography.caption,
     color: colors.textFaint,
   },
   footer: {
     marginTop: space.xxl,
+    paddingTop: space.xl,
     gap: space.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  fill: {
+    flex: 1,
+  },
+  scrim: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    paddingHorizontal: space.xl,
+    backgroundColor: colors.scrim,
+  },
+  sheet: {
+    gap: space.md,
+    padding: space.xl,
+    borderRadius: radius.xl,
+    backgroundColor: colors.backgroundLift,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderStrong,
+  },
+  sheetTitle: {
+    ...typography.title,
+    color: colors.text,
+  },
+  field: {
+    justifyContent: 'center',
+  },
+  input: {
+    ...typography.body,
+    color: colors.text,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.borderStrong,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    minHeight: 50,
+  },
+  inputWithIcon: {
+    paddingRight: TOUCH_TARGET + space.sm,
+  },
+  eyeButton: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: TOUCH_TARGET + space.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  eye: {
+    width: 24,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  eyeOutline: {
+    width: 24,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 1.5,
+    borderColor: colors.textDim,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  eyePupil: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.textDim,
+  },
+  eyeStrike: {
+    position: 'absolute',
+    width: 26,
+    height: 1.5,
+    backgroundColor: colors.textDim,
+    transform: [{ rotate: '-35deg' }],
+  },
+  show: {
+    ...typography.label,
+    color: colors.textDim,
   },
 });

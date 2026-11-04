@@ -12,9 +12,10 @@ default; the package depends on them.
 | --- | --- |
 | `/usr/bin/rpiledconfig` | The daemon. The package depends on libssl3 and libsystemd0 from the distribution; Boost is headers only. |
 | `/usr/lib/systemd/system/rpiledconfig.service` | The unit: hardened, running as `rpiledconfig`. |
+| `/usr/lib/systemd/system/rpiledconfig-uninstall.service` | A oneshot unit, run as root, that purges the package when an authenticated phone asks (docs/protocol.md, Uninstalling). Never enabled; started only through systemd. |
 | `/etc/rpiledconfig/rpiledconfig.conf` | The configuration, a conffile: an upgrade never overwrites your changes. |
 | `/usr/lib/udev/rules.d/60-rpiledconfig.rules` | Gives the `rpiledconfig` group write access to the activity LED's `brightness` and `trigger`. |
-| `/usr/share/polkit-1/rules.d/60-rpiledconfig.rules` | The polkit rule that lets the `rpiledconfig` user, and only it, scan for, add, activate and delete NetworkManager connections. |
+| `/usr/share/polkit-1/rules.d/60-rpiledconfig.rules` | The polkit rule that lets the `rpiledconfig` user, and only it, scan for, add, activate and delete NetworkManager connections, and start `rpiledconfig-uninstall.service`. |
 | `/usr/share/doc/rpiledconfig/` | These docs, the protocol, the example configuration, README, LICENSE and NOTICE. |
 | `/var/lib/rpiledconfig/` | State: the machine ID (`machine-id`, 0600). Made by the package, not shipped in it. |
 
@@ -44,14 +45,16 @@ Watch it:
 
     sudo journalctl -u rpiledconfig -f
 
-On a Pi with no WiFi connection it enters setup mode: the activity LED starts
-blinking the machine ID, and `bluetoothctl` on another machine, or any BLE scanner, sees
-`RPiLEDConfig-<fingerprint>` (the name is in the scan response, so a scanner has to scan
-actively, as phones do). The journal says `GATT application registered` and
-`Advertising RPiLEDConfig-<fingerprint>`; if it says BlueZ refused either, the reason
-follows. Open the app, point the camera at the LED, and follow it.
-When the app sends `finish`, or after `setup.timeout`, the LED goes back to its usual
-trigger and advertising stops.
+On a Pi with no WiFi connection it enters setup mode: `bluetoothctl` on another
+machine, or any BLE scanner, sees `RPiLEDConfig-<fingerprint>` (the name is in the scan
+response, so a scanner has to scan actively, as phones do). The journal says `GATT
+application registered` and `Advertising RPiLEDConfig-<fingerprint>`; if it says BlueZ
+refused either, the reason follows. The LED keeps doing what it did until a phone asks:
+open the app, pick the Pi by its fingerprint, and the activity LED starts blinking the
+machine ID (the journal says `Blinking the id`); point the camera at it and follow the
+app. The LED goes back to its usual trigger once the phone has authenticated, or two
+minutes after it asked; advertising stops when the app sends `finish`, or after
+`setup.timeout`.
 
 To see the machine ID the LED is blinking:
 
@@ -94,6 +97,11 @@ from the part of the system that owns it:
 
   should say `yes` for those three. Without the rule a configure is answered
   `wifi_failed` with "not authorized", and a scan falls back to the cached list.
+- **systemd**, for uninstalling from the phone: the same rule lets `rpiledconfig` start
+  `rpiledconfig-uninstall.service` (`org.freedesktop.systemd1.manage-units`, verb
+  `start`, that unit only) and nothing else of systemd's. The unit runs as root and
+  purges the package. `uninstall.driver: off` turns this off; the app is then told
+  `uninstall_unavailable`.
 - **wpa_supplicant**, for Wi-Fi Easy Connect: its control socket
   `/run/wpa_supplicant/wlan0` is `root:netdev 0770` where NetworkManager starts it, and
   the unit gives the service the `netdev` group (`SupplementaryGroups=netdev`) and
@@ -104,8 +112,9 @@ from the part of the system that owns it:
       wpa_cli -i wlan0 dpp_bootstrap_gen type=qrcode chan=81/6
 
   answers a number (then `wpa_cli -i wlan0 dpp_bootstrap_remove <number>`); `FAIL` or
-  `UNKNOWN COMMAND` means this wpa_supplicant cannot do Easy Connect, and the app is told
-  `easyconnect_unavailable` and offers its other two ways.
+  `UNKNOWN COMMAND` means this wpa_supplicant cannot do Easy Connect, and the daemon
+  answers `easyconnect_unavailable`. The 0.3.0 app does not offer Easy Connect
+  (TODO/ACTIVE.md): the daemon's side is there for when it does.
 
 A `cmake --install` into `/usr/local` puts the rule in
 `/usr/local/share/polkit-1/rules.d`, which polkitd does not read: copy it to
@@ -144,4 +153,11 @@ The configuration is kept; the service restarts if it was running.
 ## Removing
 
     sudo apt remove rpiledconfig          # keeps /etc/rpiledconfig and the machine ID
-    sudo apt purge rpiledconfig           # removes those and the service user too
+    sudo apt purge rpiledconfig           # removes those too
+
+Or from the phone: once paired, the app's "Remove RPiLEDConfig from this Pi" asks the
+daemon to start `rpiledconfig-uninstall.service`, which waits 3 seconds and runs
+`apt-get purge rpiledconfig`. The WiFi connections the daemon saved are kept either way,
+so the Pi stays on its network. The journal of the removal:
+
+    sudo journalctl -u rpiledconfig-uninstall

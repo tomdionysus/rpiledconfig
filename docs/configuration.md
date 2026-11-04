@@ -25,6 +25,7 @@ file, not to where the daemon was started.
 | `wifi.driver` | `networkmanager` on Linux, `fake` elsewhere | `networkmanager` over D-Bus; `fake` answers with made-up networks. |
 | `wifi.interface` | `wlan0` | The WiFi interface: its wpa_supplicant control socket (`/run/wpa_supplicant/<interface>`) and its MAC in the Easy Connect URI. |
 | `wifi.easyconnect` | `fake` when `wifi.driver` is `fake`, else `wpa_supplicant` | Wi-Fi Easy Connect: `wpa_supplicant` (Linux only), `fake` (a made-up URI; nothing ever arrives), or `off` (the app is told `easyconnect_unavailable`). |
+| `uninstall.driver` | `systemd` on Linux, `fake` elsewhere | What a phone's `uninstall` does: `systemd` starts `rpiledconfig-uninstall.service`, which purges the package; `fake` logs and removes nothing; `off` answers `uninstall_unavailable`. |
 | `setup.always` | `false` | Stay in setup mode whatever the WiFi state. |
 | `setup.timeout` | `900` | Seconds of setup mode before giving up until the next recheck. |
 | `setup.recheck` | `60` | Seconds between WiFi checks outside setup mode. |
@@ -41,7 +42,7 @@ answering is logged and reported to the app (`wifi_unavailable`), not fatal.
 ## BLE through BlueZ
 
 While setup mode is on the daemon exports a GATT application at
-`/com/tomcully/rpiledconfig` (one service, the six characteristics of
+`/com/tomcully/rpiledconfig` (one service, the seven characteristics of
 docs/protocol.md) and an advertisement at
 `/com/tomcully/rpiledconfig/advertisement0`, on its own bus connection, and registers
 both with BlueZ on `ble.adapter`. They are unregistered when setup mode ends, and BlueZ

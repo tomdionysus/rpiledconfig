@@ -1,11 +1,11 @@
-// The app's one button, in three weights.
+// The app's one button, in three weights, and a fourth for what cannot be undone.
 import { ActivityIndicator, Pressable, StyleSheet, Text, type StyleProp, type ViewStyle } from 'react-native';
 import { colors, radius, space, type as typography, TOUCH_TARGET } from './theme';
 
 interface ButtonProps {
   label: string;
   onPress(): void;
-  variant?: 'primary' | 'secondary' | 'quiet';
+  variant?: 'primary' | 'secondary' | 'quiet' | 'danger';
   disabled?: boolean;
   busy?: boolean;
   style?: StyleProp<ViewStyle>;
@@ -23,12 +23,13 @@ export function Button({ label, onPress, variant = 'primary', disabled, busy, st
         variant === 'primary' && styles.primary,
         variant === 'secondary' && styles.secondary,
         variant === 'quiet' && styles.quiet,
+        variant === 'danger' && styles.danger,
         (disabled || busy) && styles.disabled,
         pressed && styles.pressed,
         style,
       ]}>
       {busy ? <ActivityIndicator color={variant === 'primary' ? colors.onAccent : colors.text} /> : null}
-      <Text style={[styles.label, variant === 'primary' && styles.primaryLabel, variant === 'quiet' && styles.quietLabel]}>{label}</Text>
+      <Text style={[styles.label, variant === 'primary' && styles.primaryLabel, variant === 'quiet' && styles.quietLabel, variant === 'danger' && styles.dangerLabel]}>{label}</Text>
     </Pressable>
   );
 }
@@ -57,6 +58,10 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
     paddingHorizontal: space.md,
   },
+  danger: {
+    backgroundColor: 'transparent',
+    borderColor: colors.danger,
+  },
   disabled: {
     opacity: 0.45,
   },
@@ -72,5 +77,8 @@ const styles = StyleSheet.create({
   },
   quietLabel: {
     color: colors.textDim,
+  },
+  dangerLabel: {
+    color: colors.danger,
   },
 });

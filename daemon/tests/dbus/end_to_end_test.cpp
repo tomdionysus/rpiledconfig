@@ -45,6 +45,7 @@ const std::string auth = "2a7f0004-7e1d-4c3a-9b5e-0f8a6d4c2b10";
 const std::string auth_result = "2a7f0005-7e1d-4c3a-9b5e-0f8a6d4c2b10";
 const std::string request = "2a7f0006-7e1d-4c3a-9b5e-0f8a6d4c2b10";
 const std::string response = "2a7f0007-7e1d-4c3a-9b5e-0f8a6d4c2b10";
+const std::string blink = "2a7f0008-7e1d-4c3a-9b5e-0f8a6d4c2b10";
 
 const machine_id::MachineId machine = machine_id::MachineId::from_value(0x0123456789abcdefULL);
 
@@ -227,13 +228,19 @@ TEST_F(EndToEndTest, AnAppConfiguresWifiAndFinishes) {
   const auto info_json = protocol::Json::parse(util::to_string(info_read.value));
   ASSERT_TRUE(info_json.has_value());
   EXPECT_EQ(info_json->get("fingerprint")->as_string(), protocol::fingerprint(machine));
-  EXPECT_EQ(info_json->get("protocol")->as_number(), 2);
+  EXPECT_EQ(info_json->get("protocol")->as_number(), 3);
 
-  // 2 to 5.
+  // Blink: the LED starts only now.
+  EXPECT_FALSE(daemon.run([this]() { return modulator->running(); }));
+  ASSERT_TRUE(bluez->write(phone.device(), blink, Bytes{0x01}, 185).ok);
+  EXPECT_TRUE(eventually([&]() { return daemon.run([this]() { return modulator->running(); }); }));
+
+  // 2 to 5, and the accepted attempt stops the LED.
   const auto result = phone.authenticate(key);
   ASSERT_EQ(result.size(), 33u);
   EXPECT_EQ(result[0], protocol::auth_accepted);
   ASSERT_TRUE(phone.verified()) << "cB verifies";
+  EXPECT_FALSE(daemon.run([this]() { return modulator->running(); }));
 
   auto status = phone.ask(R"({"op":"status"})");
   ASSERT_TRUE(ok(status)) << text(status);
@@ -322,6 +329,7 @@ TEST_F(EndToEndTest, ThreeRefusalsDropTheConnection) {
 
 TEST_F(EndToEndTest, FiveRefusalsInARowPauseAdvertisingForAMinute) {
   auto first = connect("AA:BB:CC:DD:EE:01", 185);
+  ASSERT_TRUE(bluez->write(first.device(), blink, Bytes{0x01}, 185).ok);
   for (int i = 0; i < 3; ++i) ASSERT_EQ(first.authenticate(wrong_key), Bytes{protocol::auth_refused});
   ASSERT_TRUE(eventually([&]() { return !bluez->connected(first.device()); }));
 
@@ -334,7 +342,7 @@ TEST_F(EndToEndTest, FiveRefusalsInARowPauseAdvertisingForAMinute) {
   EXPECT_TRUE(eventually([&]() { return !bluez->advertisement().has_value(); })) << "five in a row";
   EXPECT_EQ(bluez->advertisement_unregistrations(), 1);
   EXPECT_TRUE(bluez->application().has_value());
-  EXPECT_TRUE(daemon.run([this]() { return modulator->running(); })) << "the LED keeps blinking";
+  EXPECT_TRUE(daemon.run([this]() { return modulator->running(); })) << "a blink asked for carries on";
 
   advance(59s);
   EXPECT_FALSE(bluez->advertisement().has_value());

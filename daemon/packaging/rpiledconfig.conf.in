@@ -36,6 +36,10 @@ wifi.driver: networkmanager
 wifi.interface: wlan0
 wifi.easyconnect: wpa_supplicant
 
+# What a phone's "remove from this Pi" does: systemd purges this package (through
+# rpiledconfig-uninstall.service), fake only logs, off refuses.
+uninstall.driver: systemd
+
 # Setup mode: entered when there is no WiFi connection, left on finish or after this many
 # seconds; WiFi is checked every setup.recheck seconds outside it. setup.always keeps it
 # on for ever.

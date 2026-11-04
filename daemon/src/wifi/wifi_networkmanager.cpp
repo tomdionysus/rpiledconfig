@@ -125,6 +125,7 @@ struct WifiNetworkManager::ConfigureJob {
   types::StatusHandler handler;
   std::string ssid;
   std::string psk;
+  bool hidden = false;
   std::string device;
 
   void succeed() { types::complete(on, handler, types::Status::success()); }
@@ -136,13 +137,63 @@ namespace {
 // The activation after a configure, watched for the log: whether the network was joined
 // is what an operator reading the journal wants to know, and the app finds out by asking
 // status after it reconnects.
-struct ActivationWatch : public std::enable_shared_from_this<ActivationWatch> {
-  std::shared_ptr<loggers::Logger> logger;
-  std::string ssid;
-  dbus::Slot match;
-  std::unique_ptr<boost::asio::steady_timer> timer;
+// NetworkManager's reasons (NMDeviceStateReason and NMActiveConnectionStateReason) that
+// say why a join failed, as the protocol names them. A wrong passphrase ends as the device
+// failing with no-secrets (NetworkManager asked for the secret again and nothing could
+// answer); a name nothing broadcasts as ssid-not-found.
+constexpr std::uint32_t device_state_failed = 120;
+constexpr std::uint32_t device_reason_no_secrets = 7;
+constexpr std::uint32_t device_reason_ssid_not_found = 53;
+constexpr std::uint32_t active_reason_no_secrets = 9;
 
-  static int on_state_changed(sd_bus_message* message, void* userdata, sd_bus_error*) {
+std::string device_reason_name(std::uint32_t reason) {
+  switch (reason) {
+    case device_reason_no_secrets:
+      return "no secrets";
+    case device_reason_ssid_not_found:
+      return "SSID not found";
+    case 8:
+      return "the supplicant disconnected";
+    case 9:
+      return "the supplicant's configuration failed";
+    case 10:
+      return "the supplicant failed";
+    case 11:
+      return "the supplicant timed out";
+    case 15:
+      return "the DHCP lease failed";
+    default:
+      return "reason " + std::to_string(reason);
+  }
+}
+
+std::string join_reason_for(std::uint32_t device_reason) {
+  if (device_reason == device_reason_no_secrets) return protocol::join_reasons::wrong_passphrase;
+  if (device_reason == device_reason_ssid_not_found) return protocol::join_reasons::not_found;
+  return protocol::join_reasons::other;
+}
+
+// One configure's activation, watched until it is activated, deactivated, or the watch
+// times out: the device's StateChanged says why a failure failed, the active connection's
+// says that it did.
+struct ActivationWatch : public std::enable_shared_from_this<ActivationWatch> {
+  std::weak_ptr<WifiNetworkManager> owner;
+  std::string ssid;
+  dbus::Slot active_match;
+  dbus::Slot device_match;
+  std::unique_ptr<boost::asio::steady_timer> timer;
+  bool done = false;
+
+  void finish(const std::string& state, const std::string& reason, const std::string& message) {
+    if (done) return;
+    done = true;
+    if (auto self = owner.lock()) self->_join_outcome(ssid, state, reason, message);
+    // Not from inside the match's own callback: the timer handler holds the last
+    // reference, and cancelling it lets that go once this has returned.
+    timer->cancel();
+  }
+
+  static int on_active_state_changed(sd_bus_message* message, void* userdata, sd_bus_error*) {
     auto* watch = static_cast<ActivationWatch*>(userdata);
 
     std::uint32_t state = 0;
@@ -150,17 +201,25 @@ struct ActivationWatch : public std::enable_shared_from_this<ActivationWatch> {
     if (sd_bus_message_read(message, "uu", &state, &reason) < 0) return 0;
 
     if (state == WifiNetworkManager::active_state_activated) {
-      watch->logger->info("Joined " + watch->ssid);
+      watch->finish(protocol::join_states::joined, "", "");
     } else if (state == WifiNetworkManager::active_state_deactivated) {
-      watch->logger->warn("Could not join " + watch->ssid + " (NetworkManager reason " + std::to_string(reason) +
-                          "; 9 is no secrets, usually a wrong passphrase)");
-    } else {
-      return 0;
+      // The device usually said why first; this is the fallback.
+      const bool secrets = reason == active_reason_no_secrets;
+      watch->finish(protocol::join_states::failed, secrets ? protocol::join_reasons::wrong_passphrase : protocol::join_reasons::other,
+                    secrets ? "NetworkManager: no secrets" : "NetworkManager: the connection was deactivated (reason " + std::to_string(reason) + ")");
     }
+    return 0;
+  }
 
-    // Not from inside the match's own callback: the timer handler holds the last
-    // reference, and cancelling it lets that go once this has returned.
-    watch->timer->cancel();
+  static int on_device_state_changed(sd_bus_message* message, void* userdata, sd_bus_error*) {
+    auto* watch = static_cast<ActivationWatch*>(userdata);
+
+    std::uint32_t new_state = 0;
+    std::uint32_t old_state = 0;
+    std::uint32_t reason = 0;
+    if (sd_bus_message_read(message, "uuu", &new_state, &old_state, &reason) < 0) return 0;
+
+    if (new_state == device_state_failed) watch->finish(protocol::join_states::failed, join_reason_for(reason), "NetworkManager: " + device_reason_name(reason));
     return 0;
   }
 };
@@ -219,6 +278,7 @@ void WifiNetworkManager::status(types::Executor on, types::Handler<WifiStatus> h
   job->handler = std::move(handler);
 
   boost::asio::post(_loop->executor(), [self = shared_from_this(), job]() {
+    job->status.join = self->_last_join;
     self->_find_wifi_device([self, job](types::Result<std::string> device) {
       if (!device) return job->fail(device.code, device.error);
       job->device = device.value;
@@ -438,12 +498,13 @@ void WifiNetworkManager::_scan_access_point(std::shared_ptr<ScanJob> job, std::s
 
 // --- configure -----------------------------------------------------------------------
 
-void WifiNetworkManager::configure(const std::string& ssid, const std::string& psk, types::Executor on, types::StatusHandler handler) {
+void WifiNetworkManager::configure(const std::string& ssid, const std::string& psk, bool hidden, types::Executor on, types::StatusHandler handler) {
   auto job = std::make_shared<ConfigureJob>();
   job->on = std::move(on);
   job->handler = std::move(handler);
   job->ssid = ssid;
   job->psk = psk;
+  job->hidden = hidden;
 
   boost::asio::post(_loop->executor(), [self = shared_from_this(), job]() {
     self->_find_wifi_device([self, job](types::Result<std::string> device) {
@@ -488,6 +549,8 @@ void WifiNetworkManager::_configure_add(std::shared_ptr<ConfigureJob> job) {
   auto wireless_settings = [&]() {
     int q = dbus::append_bytes_entry(m, "ssid", util::to_bytes(job->ssid));
     if (q >= 0) q = dbus::append_string_entry(m, "mode", "infrastructure");
+    // A network typed by hand may not broadcast its SSID: NetworkManager then probes for it.
+    if (q >= 0 && job->hidden) q = dbus::append_bool_entry(m, "hidden", true);
     return q;
   };
   auto security_settings = [&]() {
@@ -504,7 +567,7 @@ void WifiNetworkManager::_configure_add(std::shared_ptr<ConfigureJob> job) {
   if (r >= 0) r = sd_bus_message_append(m, "oo", job->device.c_str(), "/");
   if (r < 0) return job->fail(wifi_failed, std::string("cannot build the connection: ") + std::strerror(-r));
 
-  _logger->info("Asking NetworkManager to join " + job->ssid + (job->psk.empty() ? " (open)" : " (WPA-PSK)") + " as " + id);
+  _logger->info("Asking NetworkManager to join " + job->ssid + (job->psk.empty() ? " (open)" : " (WPA-PSK)") + (job->hidden ? " (hidden)" : "") + " as " + id);
 
   _loop->call(std::move(message), [self = shared_from_this(), job](sd_bus_message* reply, const dbus::CallError* error) {
     if (error) {
@@ -522,7 +585,11 @@ void WifiNetworkManager::_configure_add(std::shared_ptr<ConfigureJob> job) {
     self->_logger->info("Saved " + dbus::basename(saved) + " for " + job->ssid + "; activation " + dbus::basename(active) + " asked for");
     job->succeed();
 
-    self->_watch_activation(active, job->ssid);
+    protocol::JoinState join;
+    join.ssid = job->ssid;
+    join.state = protocol::join_states::joining;
+    self->_last_join = join;
+    self->_watch_activation(active, job->device, job->ssid);
 
     // One rpiledconfig connection at a time: the ones from earlier configures go, so a
     // wrong passphrase tried first does not linger and autoconnect.
@@ -536,22 +603,45 @@ void WifiNetworkManager::_configure_add(std::shared_ptr<ConfigureJob> job) {
   });
 }
 
-void WifiNetworkManager::_watch_activation(const std::string& active, const std::string& ssid) {
+void WifiNetworkManager::_watch_activation(const std::string& active, const std::string& device, const std::string& ssid) {
   auto watch = std::make_shared<ActivationWatch>();
-  watch->logger = _logger;
+  watch->owner = weak_from_this();
   watch->ssid = ssid;
   watch->timer = std::make_unique<boost::asio::steady_timer>(_loop->executor());
   watch->timer->expires_after(_options.activation_watch);
 
   // The timer handler holds the watch; cancelled or expired, it ends it.
-  watch->timer->async_wait([watch](const boost::system::error_code&) { watch->match.reset(); });
+  watch->timer->async_wait([watch](const boost::system::error_code&) {
+    watch->active_match.reset();
+    watch->device_match.reset();
+  });
 
   sd_bus_slot* slot = nullptr;
   if (sd_bus_match_signal_async(_loop->bus(), &slot, nm_service, active.c_str(), active_connection_interface, "StateChanged",
-                                &ActivationWatch::on_state_changed, nullptr, watch.get()) >= 0) {
-    watch->match.reset(slot);
+                                &ActivationWatch::on_active_state_changed, nullptr, watch.get()) >= 0) {
+    watch->active_match.reset(slot);
+  }
+  slot = nullptr;
+  if (sd_bus_match_signal_async(_loop->bus(), &slot, nm_service, device.c_str(), device_interface, "StateChanged", &ActivationWatch::on_device_state_changed,
+                                nullptr, watch.get()) >= 0) {
+    watch->device_match.reset(slot);
   }
   _loop->kick();
+}
+
+void WifiNetworkManager::_join_outcome(const std::string& ssid, const std::string& state, const std::string& reason, const std::string& message) {
+  // A later configure has moved on; its own watch reports for it.
+  if (!_last_join || _last_join->ssid != ssid || _last_join->state != protocol::join_states::joining) return;
+
+  _last_join->state = state;
+  _last_join->reason = reason;
+  _last_join->message = message;
+
+  if (state == protocol::join_states::joined) {
+    _logger->info("Joined " + ssid);
+  } else {
+    _logger->warn("Could not join " + ssid + ": " + message + " (" + reason + ")");
+  }
 }
 
 // --- forget --------------------------------------------------------------------------

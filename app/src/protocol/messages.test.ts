@@ -9,6 +9,10 @@ describe('messages', () => {
     expect(utf8Decode(encodeRequest({ op: 'wifi.configure', ssid: 'Home', psk: 'secret' }))).toBe('{"op":"wifi.configure","ssid":"Home","psk":"secret"}');
     expect(utf8Decode(encodeRequest({ op: 'wifi.configure', ssid: 'Open' }))).toBe('{"op":"wifi.configure","ssid":"Open"}');
     expect(utf8Decode(encodeRequest({ op: 'wifi.configure', ssid: 'Open', psk: '' }))).toBe('{"op":"wifi.configure","ssid":"Open"}');
+    expect(utf8Decode(encodeRequest({ op: 'wifi.configure', ssid: 'Attic', psk: 'secret12', hidden: true }))).toBe(
+      '{"op":"wifi.configure","ssid":"Attic","psk":"secret12","hidden":true}',
+    );
+    expect(utf8Decode(encodeRequest({ op: 'wifi.configure', ssid: 'Attic', hidden: false }))).toBe('{"op":"wifi.configure","ssid":"Attic"}');
     expect(utf8Decode(encodeRequest({ op: 'finish' }))).toBe('{"op":"finish"}');
   });
 

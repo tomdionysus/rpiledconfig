@@ -1,6 +1,5 @@
 // The LED frame encoder: what the daemon blinks for a machine ID. The app
-// never blinks a real LED; this synthesizes samples for the decoder's tests and
-// drives the dev-only virtual LED screen another phone can be pointed at.
+// never blinks a real LED; this synthesizes samples for the decoder's tests.
 import { FRAME_T, ID_BYTES, IDLE_T, SYNC_OFF_T, SYNC_ON_T, T_MS } from '@/protocol/constants';
 import { ledCodeword } from './codeword';
 

@@ -32,7 +32,7 @@ TEST(PairingSessionTest, InfoNamesTheProtocolTheVersionAndTheFingerprint) {
 
   const auto info = protocol::Json::parse(util::to_string(f.read(connection, Characteristic::info)));
   ASSERT_TRUE(info);
-  EXPECT_EQ(info->get("protocol")->as_number(), 2);
+  EXPECT_EQ(info->get("protocol")->as_number(), 3);
   EXPECT_EQ(info->get("version")->as_string(), "0.0.0-test");
   EXPECT_EQ(info->get("fingerprint")->as_string(), f.fingerprint);
   EXPECT_EQ(f.ble->advertised_name(), "RPiLEDConfig-" + f.fingerprint);
@@ -309,6 +309,7 @@ TEST(PairingSessionTest, ConfigureThenFinishLeavesSetupModeAndDisconnects) {
   SetupFixture f;
   f.start();
   const auto connection = f.connect();
+  f.blink(connection);
   ASSERT_EQ(f.authenticate(connection, f.w)[0], protocol::auth_accepted);
 
   auto response = f.request(connection, "{\"op\":\"wifi.configure\",\"ssid\":\"home\",\"psk\":\"secret\"}");
@@ -325,7 +326,7 @@ TEST(PairingSessionTest, ConfigureThenFinishLeavesSetupModeAndDisconnects) {
   EXPECT_FALSE(f.setup->active());
   EXPECT_FALSE(f.ble->started());
   EXPECT_FALSE(f.modulator->running());
-  EXPECT_EQ(f.led->ends(), 1) << "the LED's trigger is given back";
+  EXPECT_EQ(f.led->ends(), 1) << "the LED's trigger was given back, once";
 }
 
 TEST(PairingSessionTest, TheDaemonsCountersGoUpByOnePerResponse) {

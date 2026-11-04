@@ -255,6 +255,11 @@ bool Config::_apply(const std::string& key, const std::string& value, int line, 
     return true;
   }
 
+  if (key == "uninstall.driver") {
+    uninstall_driver = value;
+    return true;
+  }
+
   if (key == "setup.always") return take_bool(setup_always);
   if (key == "setup.timeout") return take_uint(setup_timeout);
   if (key == "setup.recheck") return take_uint(setup_recheck);
@@ -275,6 +280,10 @@ bool Config::_validate() {
   if (wifi_easyconnect.empty()) wifi_easyconnect = wifi_driver == "fake" ? "fake" : "wpa_supplicant";
   if (wifi_easyconnect != "wpa_supplicant" && wifi_easyconnect != "fake" && wifi_easyconnect != "off") {
     return refuse("wifi.easyconnect must be wpa_supplicant, fake or off, not " + wifi_easyconnect);
+  }
+
+  if (uninstall_driver != "systemd" && uninstall_driver != "fake" && uninstall_driver != "off") {
+    return refuse("uninstall.driver must be systemd, fake or off, not " + uninstall_driver);
   }
 
   if (setup_timeout == 0) return refuse("setup.timeout must be at least 1 second");

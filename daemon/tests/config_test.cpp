@@ -199,6 +199,14 @@ TEST(ConfigTest, EasyConnectFollowsTheWifiDriverUnlessSet) {
   EXPECT_FALSE(Loaded("wifi.easyconnect: dpp\n").ok);
 }
 
+TEST(ConfigTest, TheUninstallDriverIsSystemdFakeOrOff) {
+  EXPECT_EQ(Loaded("").config.uninstall_driver, rpiledconfig::Config::default_uninstall_driver);
+  for (const std::string driver : {"systemd", "fake", "off"}) {
+    EXPECT_EQ(Loaded("uninstall.driver: " + driver + "\n").config.uninstall_driver, driver);
+  }
+  EXPECT_FALSE(Loaded("uninstall.driver: apt\n").ok);
+}
+
 TEST(ConfigTest, TheWifiInterfaceIsANameDefaultingToWlan0) {
   EXPECT_EQ(Loaded("").config.wifi_interface, "wlan0");
   EXPECT_EQ(Loaded("wifi.interface: wlan1\n").config.wifi_interface, "wlan1");

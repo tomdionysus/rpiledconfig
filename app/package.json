@@ -1,7 +1,7 @@
 {
   "name": "rpiledconfig",
   "main": "index.js",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "dependencies": {
     "@noble/ciphers": "^2.4.0",
     "@noble/curves": "^2.4.0",
@@ -16,6 +16,7 @@
     "expo-intent-launcher": "~57.0.1",
     "expo-linking": "~57.0.13",
     "expo-router": "~57.0.29",
+    "expo-splash-screen": "~57.0.10",
     "expo-status-bar": "~57.0.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
