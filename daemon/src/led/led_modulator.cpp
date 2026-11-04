@@ -23,37 +23,28 @@ void append(std::vector<Run>& runs, bool on, int length) {
   runs.push_back(Run{on, length});
 }
 
-// Manchester: a 1 is on then off, a 0 is off then on.
-void append_bit(std::vector<Run>& runs, bool bit) {
-  append(runs, bit, 1);
-  append(runs, !bit, 1);
-}
-
 }  // namespace
 
 std::vector<Run> frame_runs(const machine_id::MachineId& id) {
   std::vector<Run> runs;
 
-  // Sync: on 4T, off 4T.
-  append(runs, true, 4);
-  append(runs, false, 4);
+  // Sync: on 5T, off 5T, runs no data can make.
+  append(runs, true, static_cast<int>(protocol::led_sync_on));
+  append(runs, false, static_cast<int>(protocol::led_sync_off));
 
-  // Start bit: a Manchester 1.
-  append_bit(runs, true);
-
-  // The codeword, each byte most significant bit first.
+  // The codeword, each byte as its high nibble's word then its low nibble's, each word first
+  // symbol first.
   for (const auto byte : protocol::led_codeword(id)) {
-    for (int bit = 7; bit >= 0; --bit) append_bit(runs, ((byte >> bit) & 1) != 0);
+    for (const int nibble : {byte >> 4, byte & 0x0F}) {
+      const auto word = protocol::led_words[static_cast<std::size_t>(nibble)];
+      for (int symbol = static_cast<int>(protocol::led_word_symbols) - 1; symbol >= 0; --symbol) append(runs, ((word >> symbol) & 1) != 0, 1);
+    }
   }
-
-  // Idle: off 4T. Merged with the last bit's off half when there is one, which is what a
-  // camera sees anyway.
-  append(runs, false, 4);
 
   return runs;
 }
 
-std::size_t frame_half_bits() { return 8 + 2 + protocol::led_codeword_length * 8 * 2 + 4; }
+std::size_t frame_symbols() { return protocol::led_frame_symbols; }
 
 LedModulator::LedModulator(std::shared_ptr<loggers::Logger> logger, types::Executor executor, std::shared_ptr<Led> led,
                            std::shared_ptr<timers::TimerSource> timers, machine_id::MachineId id)
@@ -74,7 +65,7 @@ types::Status LedModulator::start() {
 
   // Not the id: it is the pairing secret, and the journal is not (docs/installation.md).
   _logger->info("Blinking the machine id on " + _led->describe() + ": " + std::to_string(_runs.size()) + " runs, " +
-                std::to_string(frame_half_bits() * half_bit.count()) + " ms per frame");
+                std::to_string(frame_symbols() * symbol_time.count()) + " ms per frame");
 
   _step();
   return types::Status::success();
@@ -109,7 +100,7 @@ void LedModulator::_step() {
   const Run& run = _runs[_index];
   _led->set(run.on);
 
-  _next += half_bit * run.length;
+  _next += symbol_time * run.length;
   _index = (_index + 1) % _runs.size();
 
   const auto now = _timers->now();

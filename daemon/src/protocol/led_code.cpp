@@ -12,11 +12,13 @@
 namespace rpiledconfig::protocol {
 
 types::Bytes led_message(const machine_id::MachineId& id) {
-  types::Bytes message{led_magic, led_frame_version};
-  const auto id_bytes = id.id_bytes();
-  message.insert(message.end(), id_bytes.begin(), id_bytes.end());
+  types::Bytes message = id.id_bytes();
 
-  const std::uint16_t crc = crc16(message);
+  // The version byte goes into the CRC and not onto the LED: a frame of another version
+  // cannot pass, at no cost in time.
+  types::Bytes checked{led_frame_version};
+  checked.insert(checked.end(), message.begin(), message.end());
+  const std::uint16_t crc = crc16(checked);
   message.push_back(static_cast<std::uint8_t>(crc >> 8));
   message.push_back(static_cast<std::uint8_t>(crc & 0xFF));
   return message;

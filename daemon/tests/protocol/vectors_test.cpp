@@ -28,10 +28,10 @@ TEST(VectorsTest, TheDerivedValuesAreTheOnesComputedByHand) {
   const auto v = vectors::compute();
   EXPECT_EQ(util::to_hex(v.id_bytes), "0123456789abcdef");
   EXPECT_EQ(v.crc16_check, 0x29B1);
-  EXPECT_EQ(util::to_hex(v.led_message), "52050123456789abcdef07a6");
-  EXPECT_EQ(util::to_hex(v.led_codeword), "52050123456789abcdef07a62dbecfdf83914ddbbd24721a");
-  EXPECT_EQ(v.led_frame_runs.rfind("+4,-4,+1,-2,+2,-2,+2,-2,", 0), 0u) << v.led_frame_runs;
-  const std::string end = ",+2,-1,+1,-2,+2,-2,+1,-4";
+  EXPECT_EQ(util::to_hex(v.led_message), "0123456789abcdefebaf");
+  EXPECT_EQ(util::to_hex(v.led_codeword), "0123456789abcdefebaf67a7a555b2c6");
+  EXPECT_EQ(v.led_frame_runs.rfind("+5,-7,+1,-4,+1,-1,+1,-2,", 0), 0u) << v.led_frame_runs;
+  const std::string end = ",+2,-1,+1,-1,+2,-2,+2,-2";
   EXPECT_EQ(v.led_frame_runs.substr(v.led_frame_runs.size() - end.size()), end) << v.led_frame_runs;
   EXPECT_EQ(v.fingerprint, "55c5");
   // docs/protocol.md, computed in Python after it reproduced RFC 9382's vectors.
@@ -104,7 +104,7 @@ TEST(VectorsTest, PrintsOneLabelledHexLineEachInAFixedOrder) {
   EXPECT_NE(text.find("w: d11cf43f75a28b8c30fd3da84ab44c51c0c8755713eed6dcd9b73907be6af3f7\n"), std::string::npos);
   EXPECT_NE(text.find("fingerprint: 55c5\n"), std::string::npos);
   EXPECT_NE(text.find("crc16_check: 29b1\n"), std::string::npos);
-  EXPECT_NE(text.find("led_codeword: 52050123456789abcdef07a62dbecfdf83914ddbbd24721a\n"), std::string::npos);
+  EXPECT_NE(text.find("led_codeword: 0123456789abcdefebaf67a7a555b2c6\n"), std::string::npos);
   EXPECT_EQ(text.find("crc8"), std::string::npos) << "version 1's frame is gone";
 
   // Deterministic: the app's copy is fixed bytes.

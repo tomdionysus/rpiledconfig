@@ -19,14 +19,14 @@
 
 namespace rpiledconfig::led {
 
-// The LED channel of docs/protocol.md: a half-bit period T of 50 ms (the fastest a 30 fps
-// phone camera was measured to read without bit errors), and a frame of sync, start bit,
-// the 14-byte codeword (protocol/led_code.h) in Manchester, then idle, repeated back to
-// back.
-inline constexpr std::chrono::milliseconds half_bit{50};
+// The LED channel of docs/protocol.md, frame version 6: a symbol period T of 50 ms (the
+// shortest run a 30 fps phone camera was measured to read without errors), and a frame of
+// sync and the 16-byte codeword (protocol/led_code.h) as five-symbol words, repeated back
+// to back.
+inline constexpr std::chrono::milliseconds symbol_time{50};
 
-// A stretch of the LED in one state, in units of T. Maximal: two adjacent half bits at
-// the same level are one run, which is what a camera sees.
+// A stretch of the LED in one state, in units of T. Maximal: two adjacent symbols at the
+// same level are one run, which is what a camera sees.
 struct Run {
   bool on;
   int length;
@@ -34,12 +34,12 @@ struct Run {
   bool operator==(const Run& other) const { return on == other.on && length == other.length; }
 };
 
-// One frame for an id, as the runs the LED goes through, starting with the sync's 4T on.
+// One frame for an id, as the runs the LED goes through, starting with the sync's 5T on.
 // Pure, so the protocol's vector is checked against it without a clock.
 std::vector<Run> frame_runs(const machine_id::MachineId& id);
 
-// How many T a frame is: 398, or 19.9 seconds.
-std::size_t frame_half_bits();
+// How many T a frame is: 170, or 8.5 seconds.
+std::size_t frame_symbols();
 
 // Drives an Led through frames until stopped. Runs on its executor; the timer source is
 // the one made for that executor (timers/timer_source.h), so a test steps through a frame
@@ -77,7 +77,7 @@ class LedModulator : public std::enable_shared_from_this<LedModulator> {
   bool _running = false;
 
   // When the current run ends, kept absolute so that late timer callbacks do not add up
-  // over a frame: the 5% the decoder tolerates is 595 ms, and a timer is late by less.
+  // over a frame: the 5% the decoder tolerates is 425 ms, and a timer is late by less.
   std::chrono::steady_clock::time_point _next;
   std::shared_ptr<timers::Timer> _timer;
 };

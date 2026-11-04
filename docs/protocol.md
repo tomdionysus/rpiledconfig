@@ -43,8 +43,8 @@ shares, key confirmations and ciphertext.
   (5 refusals, then a minute's pause) lets through in under an hour. With
   64 bits, 48 stay unknown. Authentication is a PAKE (SPAKE2, below), so a
   recorded pairing gives nothing to test guesses against offline and every
-  guess is a live, rate-limited attempt. The cost is time on the LED: a
-  frame is 19.9 seconds.
+  guess is a live, rate-limited attempt. On the LED it costs 8.5 seconds a
+  frame (frame version 6).
 
 ## The LED channel (daemon to camera)
 
@@ -54,113 +54,131 @@ or `led1`) can be chosen instead with `led.path`. While setup mode is on, the da
 (`none`), drives `brightness` itself, and restores the trigger it found when
 setup mode ends.
 
-Timing is built on a half-bit period **T = 50 ms**: a bit takes 100 ms, so
-the channel runs at 10 bits per second, which a camera at 30 frames per
-second samples 1.5 times per half bit. The decoder is expected to tolerate
-5% clock error over a frame.
+This is frame version 6. Version 1 was an uncoded 64-bit ID and CRC-8; 2 a
+64-bit ID under RS(24, 12); 3 a 48-bit ID, RS(20, 10), T = 100 ms; 4 a
+24-bit ID, RS(14, 7); 5 a 64-bit ID with magic, version and CRC under
+RS(24, 12), Manchester at T = 50 ms, 19.9 seconds a frame. Version 6 reads
+in under ten seconds.
 
-Why this rate: it is the fastest measured to work. A Blackview A85 at 30
-fps, held by hand on a Raspberry Pi 5's LED, read three consecutive T = 50
-ms frames with no bit errors at all once the LED's polarity was right
-(`led.active_low`); the edges blur by up to a camera frame, and the
-per-cell vote absorbs that. T is chosen against the standard camera rate
-of 30 fps; a 24 or 25 fps camera gets 1.2 samples per half bit, which has
-not been tested.
+### Symbols
+
+The LED sends one symbol every **T = 50 ms**: on for a `1`, off for a `0`.
+The decoder is expected to tolerate 5% clock error over a frame.
+
+Why this rate: it is the shortest run measured to work. A Blackview A85 at
+30 fps on a Raspberry Pi 5's LED read frame version 5, whose shortest runs
+were also 50 ms, with no bit errors across whole frames; the edges blur by up
+to a camera frame. A camera at 30 fps samples each symbol 1.5 times.
+
+The symbols are not the data bits. Each 4 bits of data (a nibble) is sent as
+one of the 16 five-symbol words that hold no run of three equal symbols,
+the nibble's value being the word's index in ascending order:
+
+| Nibble | Word | Nibble | Word | Nibble | Word | Nibble | Word |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 0 | `00100` | 4 | `01010` | 8 | `10010` | 12 | `10110` |
+| 1 | `00101` | 5 | `01011` | 9 | `10011` | 13 | `11001` |
+| 2 | `00110` | 6 | `01100` | 10 | `10100` | 14 | `11010` |
+| 3 | `01001` | 7 | `01101` | 11 | `10101` | 15 | `11011` |
+
+A word begins and ends with a run of at most two, so wherever words meet the
+LED holds one state for at most 4T, whatever the data: a camera always has
+edges to keep time by, and a run of 5T or more can only be the sync. The
+code carries 0.8 data bits per symbol, against Manchester's 0.5, which is
+what makes version 6 fast.
+
+### The frame
 
 A frame is, in order:
 
-| Part | On the LED | Length |
+| Part | On the LED | Symbols |
 | --- | --- | --- |
-| Sync | on for 4T, then off for 4T | 400 ms |
-| Start bit | a Manchester `1` (on T, off T) | 100 ms |
-| Codeword | 24 bytes, 192 bits, each byte most significant bit first, Manchester | 19200 ms |
-| Idle | off for 4T | 200 ms |
+| Sync | on for 5T, then off for 5T | 10 |
+| Codeword | 16 bytes, each as its high nibble's word then its low nibble's, each word first symbol first | 160 |
 
-Frames repeat back to back while setup mode is on. One frame is 398T, 19.9
-seconds.
-
-Manchester encoding: a `1` is on for T then off for T; a `0` is off for T then
-on for T. Within data the LED is never in one state for more than 2T, so the
-sync's 4T runs cannot occur inside a frame, and the idle's 4T off followed by
-the sync's 4T on cannot either.
+Frames repeat back to back while setup mode is on. One frame is 170T, 8.5
+seconds. A word next to the sync can lengthen its runs (the last word's
+final `1`s join the sync's on, the first word's leading `0`s its off), so
+the sync's runs are 5T to 7T; nothing else is longer than 4T.
 
 ### The codeword
 
-The 12-byte message is:
-
-| Bytes | Content |
-| --- | --- |
-| 0 | magic, 0x52 (ASCII `R`) |
-| 1 | frame version, 0x05 (version 1 was an uncoded 64-bit ID and CRC-8; 2 a 64-bit ID, RS(24, 12); 3 a 48-bit ID, RS(20, 10), T = 100 ms; 4 a 24-bit ID, RS(14, 7), T = 50 ms) |
-| 2 to 9 | `id_bytes` |
-| 10, 11 | CRC-16 over bytes 0 to 9, big-endian |
+The 10-byte message is `id_bytes` followed by a CRC-16, big-endian, over the
+frame version byte 0x06 and `id_bytes`. The version byte is not sent: it is
+folded into the CRC, so a frame of another version can never pass, and it
+costs no time on the LED.
 
 The CRC is CRC-16/CCITT-FALSE: polynomial 0x1021, initial value 0xFFFF, no
 reflection, no final XOR. Its check value for the ASCII bytes of `123456789`
 is 0x29B1.
 
-The codeword is that message followed by 12 Reed-Solomon parity bytes:
-RS(24, 12) over GF(2^8) with the primitive polynomial 0x11D, the generator
-`g(x) = (x - a^0)(x - a^1)...(x - a^11)` with `a = 2`, systematic, message
-first. It corrects any 6 wrong bytes, or any 12 bytes the decoder marks as
-erased, or any mix with `2 x errors + erasures <= 12`.
+The codeword is that message followed by 6 Reed-Solomon parity bytes:
+RS(16, 10) over GF(2^8) with the primitive polynomial 0x11D, the generator
+`g(x) = (x - a^0)(x - a^1)...(x - a^5)` with `a = 2`, systematic, message
+first. It corrects any 3 wrong bytes, or any 6 bytes the decoder marks as
+erased, or any mix with `2 x errors + erasures <= 6`.
 
-The magic, the version and the CRC are checked after the Reed-Solomon
-decode. Together they reject a miscorrected word (a pattern beyond the
-code's reach that decodes to a different, wrong codeword) and anything that
-is not this protocol's frame, such as another blinking light: a read is
-accepted only when the magic is 0x52, the version is one the app knows, and
-the CRC matches.
+The CRC is checked after the Reed-Solomon decode. It rejects a miscorrected
+word (a pattern beyond the code's reach that decodes to a different, wrong
+codeword) and anything that is not this protocol's frame, such as another
+blinking light; the words add a check of their own, as only 16 of the 32
+five-symbol patterns are words.
 
-Why this much redundancy: a phone held by hand loses bits in bursts (a hand
-shake, a reflection, a missed frame), and with the uncoded frame of version
-1 one bad bit cost the whole frame. Half the codeword is parity, so a single
-frame decodes through several damaged bytes, and two agreeing frames are no
-longer needed. A frame is 19.9 seconds.
+Why this much redundancy: a phone held by hand loses symbols in bursts (a
+hand shake, a reflection, a missed camera frame). A byte is two words, ten
+symbols, half a second; the parity covers three such bytes damaged, or six
+not seen, so a frame decodes through a second or two of trouble, or from a
+little over 7 seconds of looking when the rest is missing.
 
 ### Decoding
 
-As the app does it. Sample the mean luminance of a region around the LED on
-every camera frame, with the frame's timestamp, and subtract an adaptive
-threshold: midway between a running minimum and maximum that decay towards
-the current sample over about 2 seconds, "dark" below a minimum contrast.
+As the app does it. The camera's frames go to a native frame-processor
+plugin, which does all of what follows on the camera's thread and hands the
+app only its state.
 
-Whether the region holds this protocol's LED is judged over the last
-second, from the samples alone and whatever the frame length: the level
-(with 15% hysteresis) changes in runs of 1T to 5T with a camera frame's
-slack and none much longer, at least four of them; and the brightnesses sit
-at two levels, the distance between the medians of the samples above and
-below the middle of the range being at least 4 times the sum of their
-median absolute deviations (2.5 to keep an LED already found). Noise gives
-about 2.
+Finding the LED. The plugin divides each frame's luminance plane into tiles
+and keeps the last second of every tile's brightness (the mean of its
+brightest pixels, so a small LED is not averaged away in a lit room). A tile
+holds this protocol's LED when, over that second, its level (an adaptive
+threshold midway between a running minimum and maximum that decay over
+about 2 seconds, with 15% hysteresis) changes in runs of 1T to 7T with a
+camera frame's slack, at least four of them and none longer; and its
+brightnesses sit at two levels: the distance between the medians of the
+samples above and below the middle of the range is at least 4 times the sum
+of their median absolute deviations, and at least half the samples lie
+within 12% of the range of the 5th or 95th percentile (to keep an LED
+already found, either one, at 2.5 or 0.45). Noise passes both only in
+isolated windows, so a tile is taken only after passing for 800 ms on end.
+The tile taken is the one that passes with the greatest contrast, and the
+decoder reads it until it stops passing; the user can point the camera
+roughly and need not centre the LED.
 
-The frame repeats unchanged, so the stream is cyclic and every sample,
-wherever the camera came in, belongs to one known half-bit of the frame. The
-decoder does not look for edges or wait for a sync. Once it holds half a
-frame of samples, and then about once a second, it folds them onto one cycle
-at clock rates across the 5% tolerance and scores every start: the known
-half-bits (sync, start bit, idle) must agree, and each data cell adds how
-decisive it is. The best few starts are refined in rate and start and read
-out, a bit being `1` when the first half of its cell is brighter than the
-second, weighted towards the middle of each half, with the difference as its
-confidence. Every cycle's samples add together, and so do the samples
-before the first sync the camera saw, which are the tail of the same
-codeword; the latest frame period alone is read as well, so that older
+Reading. The frame repeats unchanged, so the stream is cyclic and every
+sample, wherever the camera came in, belongs to one known symbol of the
+frame. The decoder does not look for edges or wait for a sync. Once it holds
+most of a frame of samples, and then every half second, it folds them onto
+one cycle at clock rates across the 5% tolerance and scores every start: the
+sync's ten symbols must agree, and each data symbol adds how decisive it is.
+The best few starts are refined in rate and start and read out: each word's
+five symbols, weighted towards the middle of each symbol, are matched
+against the 16 words, and the best is its nibble, with the margin over the
+next best as its confidence. Every cycle's samples add together, and so do
+the samples before the first sync the camera saw, which are the tail of the
+same codeword; the latest frame period alone is read as well, so that older
 samples from a bad moment cannot hold a read back.
 
 Then:
 
-- A byte containing a bit whose confidence is below a threshold, or a cell
-  not yet seen, is marked erased rather than guessed, which doubles what the
-  code can repair.
-- Decode with errors and erasures, then check magic, version and CRC.
+- A byte whose words are uncertain, or not yet seen, is marked erased
+  rather than guessed, which doubles what the code can repair.
+- Decode with errors and erasures, then check the CRC.
 
-One frame that passes all three is a read: in about half a frame from
-whenever the camera first sees the LED when the sync is among what it has
-seen, and at most about one frame. The progress shown is only what was
-measured: nothing until the LED is recognised, then the share of the
-frame's half-bit slots a sample has fallen in. The fingerprint is shown so
-the user can see that it matches the Pi they are pointing at.
+One frame that passes is a read: in under one frame, 8.5 seconds, from
+whenever the camera first sees the LED, and sooner when the code can fill
+what is missing. The progress shown is only what was measured: nothing until
+the LED is found, then the share of the frame's symbol slots a sample has
+fallen in. The fingerprint is shown so the user can see that it matches the
+Pi they are pointing at.
 
 ## Keys
 
@@ -400,18 +418,20 @@ The test suites on both sides include, at least:
 
 - CRC-16/CCITT-FALSE of `123456789` is 0x29B1.
 - For machine ID `0x0123456789abcdef`, computed independently of both sides
-  (Python, from the definitions above; its Reed-Solomon reproduced frame
-  version 4's vectors first):
-  - the message: `52050123456789abcdef07a6`
-  - the codeword: `52050123456789abcdef07a62dbecfdf83914ddbbd24721a`
-  - the generator polynomial, highest power first: `0144774376dc1f07545c7fd561`
-  - the frame: 398 T in 294 runs, starting `+4,-4,+1,-2,+2,-2,+2,-2,...` and
-    ending `...,+2,-1,+1,-2,+2,-2,+1,-4`. Runs are physical: adjacent half bits at the
-    same level merge, so the start bit's off half merges with a first bit
-    of `0`, and a last bit of `1` would merge into the idle.
-- The decoder recovers that codeword with 6 bytes changed, with 12 bytes
-  erased, and with 4 changed and 4 erased; and rejects a word with the
-  magic, the version or the CRC wrong.
+  (Python, from the definitions above, after it reproduced frame version
+  5's vectors):
+  - the message: `0123456789abcdefebaf`
+  - the codeword: `0123456789abcdefebaf67a7a555b2c6`
+  - the generator polynomial, highest power first: `013f01da20e326`
+  - the frame's 170 symbols:
+    `11111000000010000101001100100101010010110110001101100101001110100101011011011001110101101111010101011010011011011000110110100011011010001011010110101110101001101011001100`,
+    106 runs, starting `+5,-7,+1,-4,+1,-1,+1,-2` and ending
+    `+2,-1,+1,-1,+2,-2,+2,-2`. Runs are physical: adjacent symbols at the
+    same level merge.
+- The decoder recovers that codeword with 3 bytes changed, with 6 bytes
+  erased, and with 2 changed and 2 erased; and rejects a word whose CRC is
+  wrong, including frame version 6's word with the CRC computed over
+  another version byte.
 - The four P256-SHA256 vectors of RFC 9382, Appendix B (at least the first,
   A = `server`, B = `client`, and the last, both identities empty): `pA`,
   `pB`, `K`, `Ke`, `KcA`, `KcB`, `cA` and `cB` from the given `w`, `x`, `y`.
