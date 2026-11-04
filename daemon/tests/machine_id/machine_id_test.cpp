@@ -8,6 +8,7 @@
 
 #include <gtest/gtest.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include <string>
 
@@ -92,6 +93,27 @@ TEST(MachineIdTest, RegenerateReplacesTheIdForGood) {
   const auto loaded = load(dir.path());
   ASSERT_TRUE(loaded) << loaded.error;
   EXPECT_EQ(loaded.value, second.value);
+}
+
+// Regenerated as root, the file must still be readable by the service's user, who owns the
+// state directory. As root the test hands the directory to nobody first; otherwise it only
+// checks that the file has the directory's owner.
+TEST(MachineIdTest, TheFileBelongsToTheStateDirectorysOwner) {
+  TempDir dir("machine-id");
+  if (::geteuid() == 0) {
+    ASSERT_EQ(::chown(dir.path().c_str(), 65534, 65534), 0);
+  }
+
+  const auto id = generate(dir.path());
+  ASSERT_TRUE(id) << id.error;
+
+  struct stat directory{};
+  struct stat file{};
+  ASSERT_EQ(::stat(dir.path().c_str(), &directory), 0);
+  ASSERT_EQ(::stat(path_in(dir.path()).c_str(), &file), 0);
+  EXPECT_EQ(file.st_uid, directory.st_uid);
+  EXPECT_EQ(file.st_gid, directory.st_gid);
+  EXPECT_EQ(file.st_mode & 0777, 0600u);
 }
 
 TEST(MachineIdTest, AFileThatIsNotAnIdIsRefused) {
