@@ -1,16 +1,14 @@
-plugins {
-  id 'com.android.library'
-  id 'expo-module-gradle-plugin'
-}
-
-group = 'com.tomcully.rpiledconfig'
-version = '0.3.0'
+// The native LED reader: the C++ core in ../cpp, built by CMake, behind the VisionCamera
+// frame-processor plugin in src/main/java. Included from android/settings.gradle as :led-reader.
+apply plugin: 'com.android.library'
+apply plugin: 'org.jetbrains.kotlin.android'
 
 android {
   namespace "com.tomcully.ledreader"
+  compileSdk rootProject.ext.compileSdkVersion
+  ndkVersion rootProject.ext.ndkVersion
   defaultConfig {
-    versionCode 1
-    versionName "0.3.0"
+    minSdkVersion rootProject.ext.minSdkVersion
     externalNativeBuild {
       cmake {
         cppFlags "-std=c++20"
@@ -22,6 +20,9 @@ android {
     cmake {
       path "CMakeLists.txt"
     }
+  }
+  buildFeatures {
+    buildConfig false
   }
 }
 

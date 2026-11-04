@@ -9,7 +9,7 @@
 // CameraX focus-and-metering action at that point, which CameraX lets go
 // after about five seconds. It is run once the camera starts and whenever the
 // reticle is tapped.
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from '@/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View, useWindowDimensions, type LayoutChangeEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -26,11 +26,11 @@ import { DIAGNOSTICS } from '@/util/diagnostics';
 import { hexToBytes } from '@/protocol/bytes';
 import { createLedReader, type LedReaderState } from '../../modules/led-reader';
 
-// The camera's frame rate and the Pi's symbol time. The protocol's T is 50 ms at 30 fps;
-// EXPO_PUBLIC_RPILEDCONFIG_SYMBOL_MS and _FPS build the app for the symbol-time
-// experiment (TODO/ACTIVE.md), against a Pi configured with the same led.symbol_ms.
-const DEFAULT_FPS = Number(process.env.EXPO_PUBLIC_RPILEDCONFIG_FPS ?? 30);
-const DEFAULT_SYMBOL_MS = Number(process.env.EXPO_PUBLIC_RPILEDCONFIG_SYMBOL_MS ?? 50);
+// The camera's frame rate and the Pi's symbol time: the protocol's 45 ms at 30 fps. A
+// diagnostics build takes others from the deep link (rpiledconfig://find?symbolMs=..&fps=..)
+// for the symbol-time experiment (TODO/ACTIVE.md), against a Pi with the same led.symbol_ms.
+const DEFAULT_FPS = 30;
+const DEFAULT_SYMBOL_MS = 45;
 
 /** A positive number from a route parameter, in diagnostics builds only; otherwise the default. */
 function setting(value: string | string[] | undefined, fallback: number): number {

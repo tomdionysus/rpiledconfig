@@ -1,6 +1,6 @@
 // The fallback to the camera: the machine ID typed as 16 hex characters, as
 // `rpiledconfig --show-id` prints it.
-import { useRouter } from 'expo-router';
+import { useRouter } from '@/navigation';
 import { useState } from 'react';
 import { StyleSheet, Text, TextInput } from 'react-native';
 import { hexToBytes } from '@/protocol/bytes';

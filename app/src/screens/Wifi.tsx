@@ -8,7 +8,7 @@
 // a link bluetoothd kept up gives no disconnect), so the screen asks for
 // status every few seconds while idle, and says so in plain words when it
 // fails.
-import { useRouter } from 'expo-router';
+import { useRouter } from '@/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, BackHandler, KeyboardAvoidingView, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { describeCopyOutcome, describeCopyStep, type CopyOutcome, type CopyStep } from '@/pairing/copyWifi';

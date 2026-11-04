@@ -1,11 +1,11 @@
 // The primitives the protocol needs, over the noble libraries (pure
 // TypeScript, so the same code runs in vitest and on the phone). Randomness
-// comes from expo-crypto, which is native; tests stub it.
+// comes from the app's own native module (src/native/random.ts).
 import { gcm } from '@noble/ciphers/aes.js';
 import { hkdf } from '@noble/hashes/hkdf.js';
 import { hmac } from '@noble/hashes/hmac.js';
 import { sha256 as nobleSha256 } from '@noble/hashes/sha2.js';
-import { getRandomValues } from 'expo-crypto';
+import { randomBytes as nativeRandomBytes } from '@/native/random';
 
 export function sha256(data: Uint8Array): Uint8Array {
   return nobleSha256(data);
@@ -30,7 +30,7 @@ export function aes256GcmOpen(key: Uint8Array, nonce: Uint8Array, sealed: Uint8A
 }
 
 export function randomBytes(length: number): Uint8Array {
-  return getRandomValues(new Uint8Array(length));
+  return nativeRandomBytes(length);
 }
 
 /** Compares in time independent of where the first difference is. */

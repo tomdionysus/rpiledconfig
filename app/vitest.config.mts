@@ -16,8 +16,6 @@ export default defineConfig({
       { find: 'react-native-vision-camera', replacement: stub('react-native-vision-camera') },
       { find: 'react-native-worklets-core', replacement: stub('react-native-worklets-core') },
       { find: 'react-native', replacement: stub('react-native') },
-      { find: 'expo-crypto', replacement: stub('expo-crypto') },
-      { find: 'expo-constants', replacement: stub('expo-constants') },
     ],
   },
 });

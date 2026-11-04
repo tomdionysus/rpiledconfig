@@ -1,6 +1,6 @@
 // Standard screen chrome: safe areas, a compact header with an optional back
 // control, and a scrolling or fixed body.
-import { useRouter } from 'expo-router';
+import { useRouter } from '@/navigation';
 import React from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';

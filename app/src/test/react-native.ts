@@ -9,6 +9,9 @@ export const Platform = {
   },
 };
 
+/** No native modules under test: random bytes fall back to node's crypto, the SSID to nothing. */
+export const NativeModules: Record<string, unknown> = {};
+
 /** Grants everything: the permission flow is not what the tests exercise. */
 export const PermissionsAndroid = {
   PERMISSIONS: {
@@ -17,6 +20,9 @@ export const PermissionsAndroid = {
     ACCESS_FINE_LOCATION: 'android.permission.ACCESS_FINE_LOCATION',
   },
   RESULTS: { GRANTED: 'granted', DENIED: 'denied', NEVER_ASK_AGAIN: 'never_ask_again' },
+  async check(_permission: string): Promise<boolean> {
+    return true;
+  },
   async request(_permission: string): Promise<string> {
     return 'granted';
   },

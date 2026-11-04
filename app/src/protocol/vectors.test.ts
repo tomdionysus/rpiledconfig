@@ -1,7 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { ledCodeword, ledMessage } from '@/led/codeword';
-import { crc16 } from '@/led/crc16';
-import { frameRuns } from '@/led/frame';
 import { acceptAuth, appAuth } from './auth';
 import { bytesToHex, hexToBytes, utf8Decode, utf8Encode } from './bytes';
 import { appChannel, daemonChannel } from './channel';
@@ -24,9 +21,6 @@ function compute() {
   return {
     machine_id: MACHINE_ID,
     id_bytes: bytesToHex(idBytes),
-    crc16_check: crc16(utf8Encode('123456789')).toString(16).padStart(4, '0'),
-    led_message: bytesToHex(ledMessage(idBytes)),
-    led_codeword: bytesToHex(ledCodeword(idBytes)),
     fingerprint: fingerprint(idBytes),
     w: bytesToHex(w),
     pA: bytesToHex(app.write.subarray(0, 65)),
@@ -38,10 +32,6 @@ function compute() {
     S: bytesToHex(S),
     status_request_wire: bytesToHex(wire),
     status_request_fragments_mtu20: fragment(wire, 20).map(bytesToHex),
-    // + is on, - is off, in units of T.
-    frame_runs: frameRuns(idBytes)
-      .map((run) => `${run.on ? '+' : '-'}${run.t}`)
-      .join(','),
   };
 }
 

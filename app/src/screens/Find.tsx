@@ -1,7 +1,7 @@
 // Step 1: the Pis in setup mode nearby, over Bluetooth. Choosing one asks it
 // to blink its ID (docs/protocol.md, Blink); its LED is dark until then. The
 // discovery and the Blink write are in pairing/discover.ts.
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from '@/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { setBlinking, watchForPis, type FoundPi } from '@/pairing/discover';
