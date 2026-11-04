@@ -6,12 +6,12 @@
 // is up. A link that survives goes through the same polling, so the user sees
 // one flow either way.
 //
-// What status can and cannot say: it reports `connected`, `ssid` and `ip`, and
-// nothing about why a join failed. So a wrong passphrase is told apart from a
-// slow join only by time: at the deadline, not connected (or connected to some
-// other network, the one NetworkManager fell back to) is a failure, and the
-// most likely cause, a wrong passphrase, is what the user is told to check.
-import type { StatusResponse, WifiStatus } from '@/protocol/messages';
+// What status says: `connected`, `ssid` and `ip`, and `join`, what became of
+// the latest configure (docs/protocol.md, The latest join). A wrong passphrase
+// or a name nothing broadcasts is reported the moment the Pi's NetworkManager
+// gives up, with its reason; only a join that neither lands nor fails runs to
+// the deadline.
+import type { JoinState, StatusResponse, WifiStatus } from '@/protocol/messages';
 import { sleep, type Clock } from '@/util/clock';
 import { PairingError, RequestError, type PairingPhase, type Session } from './session';
 
@@ -30,16 +30,16 @@ export type JoinStep =
   | { kind: 'link_lost'; answered: boolean }
   | { kind: 'reconnecting'; attempt: number; phase: PairingPhase }
   | { kind: 'reconnected' }
-  /** A status answer that is not yet the network asked for. */
-  | { kind: 'waiting'; wifi: WifiStatus; elapsedMs: number; remainingMs: number };
+  /** A status answer that is not yet the network asked for. `deadline` is on the clock the join runs on. */
+  | { kind: 'waiting'; wifi: WifiStatus; elapsedMs: number; remainingMs: number; deadline: number };
 
 export type JoinOutcome =
   /** On the network asked for; `session` is the live one (it may be new). */
   | { kind: 'joined'; session: Session; status: StatusResponse }
   /** The Pi answered configure with an error: nothing was changed. */
   | { kind: 'refused'; session: Session; error: RequestError }
-  /** The deadline passed with the Pi reachable and not on the network asked for. */
-  | { kind: 'not_joined'; session: Session; status: StatusResponse; elapsedMs: number }
+  /** The Pi reported the join failed (`reason`), or the deadline passed with it reachable and not on the network. */
+  | { kind: 'not_joined'; session: Session; status: StatusResponse; elapsedMs: number; reason?: JoinState }
   /** The deadline passed, or authentication failed, without getting back to the Pi. */
   | { kind: 'lost'; error: Error; lastStatus?: StatusResponse };
 
@@ -49,6 +49,8 @@ export interface JoinOptions {
   onStep?(step: JoinStep): void;
   /** Defaults to the session's. */
   clock?: Clock;
+  /** A network typed by hand, which the Pi probes for by name. */
+  hidden?: boolean;
 }
 
 /** What counts as joined: the SSID asked for, or, when the phone chose it, any network the Pi was not on before. */
@@ -74,7 +76,7 @@ export async function joinWifi(session: Session, ssid: string, psk: string | und
   const step = (s: JoinStep) => options.onStep?.(s);
   step({ kind: 'sending' });
   try {
-    await session.wifiConfigure(ssid, psk);
+    await session.wifiConfigure(ssid, psk, options.hidden ?? false);
     step({ kind: 'saved' });
   } catch (error) {
     if (error instanceof RequestError) return { kind: 'refused', session, error };
@@ -118,8 +120,12 @@ export async function followStatus(session: Session, target: JoinTarget, options
     try {
       last = await current.status();
       if (isOn(last, target)) return { kind: 'joined', session: current, status: last };
+      const join = last.wifi.join;
+      if (join && join.state === 'failed' && (target.ssid === undefined || join.ssid === target.ssid)) {
+        return { kind: 'not_joined', session: current, status: last, elapsedMs: clock.now() - begun, reason: join };
+      }
       const now = clock.now();
-      step({ kind: 'waiting', wifi: last.wifi, elapsedMs: now - begun, remainingMs: Math.max(0, deadline - now) });
+      step({ kind: 'waiting', wifi: last.wifi, elapsedMs: now - begun, remainingMs: Math.max(0, deadline - now), deadline });
     } catch (error) {
       // `wifi_unavailable` while NetworkManager is busy is worth asking
       // again; anything else has closed the session, and the next pass
@@ -158,8 +164,8 @@ async function reconnect(previous: Session, deadline: number, timeoutMs: number,
   }
 }
 
-/** What the screen says about one step. */
-export function describeStep(step: JoinStep, ssid: string): string {
+/** What the screen says about one step; `now`, on the join's clock, keeps a countdown moving between polls. */
+export function describeStep(step: JoinStep, ssid: string, now?: number): string {
   switch (step.kind) {
     case 'sending':
       return `Sending ${ssid} to the Pi.`;
@@ -173,8 +179,10 @@ export function describeStep(step: JoinStep, ssid: string): string {
       return `Reconnecting, attempt ${step.attempt}: ${RECONNECT_PHASES[step.phase]}.`;
     case 'reconnected':
       return 'Back in touch and authenticated again.';
-    case 'waiting':
-      return `Waiting for the Pi to join ${ssid}: ${Math.round(step.remainingMs / 1000)} s left.`;
+    case 'waiting': {
+      const left = now === undefined ? step.remainingMs : Math.max(0, step.deadline - now);
+      return `Waiting for the Pi to join ${ssid}: ${Math.ceil(left / 1000)} s left.`;
+    }
   }
 }
 
@@ -221,6 +229,20 @@ export function describeOutcome(outcome: JoinOutcome, ssid: string): Verdict {
     case 'not_joined': {
       const seconds = Math.round(outcome.elapsedMs / 1000);
       const other = outcome.status.wifi.connected ? outcome.status.wifi.ssid : undefined;
+      const back = other ? ` The Pi is back on ${other}.` : '';
+      if (outcome.reason?.reason === 'wrong_passphrase') {
+        return { tone: 'error', title: `Wrong passphrase for ${ssid}`, body: `${ssid} refused the passphrase after ${seconds} seconds.${back} Check it and try again.` };
+      }
+      if (outcome.reason?.reason === 'not_found') {
+        return {
+          tone: 'error',
+          title: `No network called ${ssid}`,
+          body: `The Pi looked for ${seconds} seconds and found no network called ${ssid}.${back} Check the name: it has to match exactly, capitals included.`,
+        };
+      }
+      if (outcome.reason) {
+        return { tone: 'error', title: `Did not join ${ssid}`, body: `The Pi gave up after ${seconds} seconds: ${outcome.reason.message ?? 'no reason given'}.${back}` };
+      }
       return {
         tone: 'error',
         title: `Did not join ${ssid}`,

@@ -6,7 +6,7 @@ import { utf8Decode, utf8Encode } from './bytes';
 export type Request =
   | { op: 'status' }
   | { op: 'wifi.scan' }
-  | { op: 'wifi.configure'; ssid: string; psk?: string }
+  | { op: 'wifi.configure'; ssid: string; psk?: string; hidden?: boolean }
   | { op: 'wifi.forget' }
   | { op: 'wifi.easyconnect' }
   | { op: 'wifi.easyconnect.stop' }
@@ -15,10 +15,20 @@ export type Request =
 
 export type Op = Request['op'];
 
+/** What became of the latest `wifi.configure` (docs/protocol.md, The latest join). */
+export interface JoinState {
+  ssid: string;
+  state: 'joining' | 'joined' | 'failed';
+  /** With `failed` only. */
+  reason?: 'wrong_passphrase' | 'not_found' | 'other';
+  message?: string;
+}
+
 export interface WifiStatus {
   connected: boolean;
   ssid?: string;
   ip?: string;
+  join?: JoinState;
 }
 
 export interface StatusResponse {
@@ -59,12 +69,12 @@ export interface ErrorResponse {
 
 export type Response = StatusResponse | WifiScanResponse | EasyConnectResponse | OkResponse | ErrorResponse;
 
-/** UTF-8 JSON; `psk` is left out for an open network. */
+/** UTF-8 JSON; `psk` is left out for an open network, `hidden` unless it is true. */
 export function encodeRequest(request: Request): Uint8Array {
   let json: string;
   switch (request.op) {
     case 'wifi.configure':
-      json = request.psk ? JSON.stringify({ op: request.op, ssid: request.ssid, psk: request.psk }) : JSON.stringify({ op: request.op, ssid: request.ssid });
+      json = JSON.stringify({ op: request.op, ssid: request.ssid, ...(request.psk ? { psk: request.psk } : {}), ...(request.hidden ? { hidden: true } : {}) });
       break;
     default:
       json = JSON.stringify({ op: request.op });
@@ -102,6 +112,14 @@ export function decodeResponse(bytes: Uint8Array, op: Op): Response {
       const status: WifiStatus = { connected: wifi.connected };
       if (typeof wifi.ssid === 'string') status.ssid = wifi.ssid;
       if (typeof wifi.ip === 'string') status.ip = wifi.ip;
+      const join = wifi.join;
+      if (isRecord(join) && typeof join.ssid === 'string' && (join.state === 'joining' || join.state === 'joined' || join.state === 'failed')) {
+        status.join = { ssid: join.ssid, state: join.state };
+        if (join.state === 'failed') {
+          status.join.reason = join.reason === 'wrong_passphrase' || join.reason === 'not_found' ? join.reason : 'other';
+          if (typeof join.message === 'string') status.join.message = join.message;
+        }
+      }
       return { ok: true, hostname: parsed.hostname, wifi: status };
     }
     case 'wifi.scan': {
@@ -146,6 +164,8 @@ export function decodeRequest(bytes: Uint8Array): { request: Request } | { error
       if (parsed.psk !== undefined && typeof parsed.psk !== 'string') return { error: 'bad_request', message: 'psk must be a string' };
       const request: Request = { op: 'wifi.configure', ssid: parsed.ssid };
       if (parsed.psk) request.psk = parsed.psk;
+      if (parsed.hidden !== undefined && typeof parsed.hidden !== 'boolean') return { error: 'bad_request', message: 'hidden must be true or false' };
+      if (parsed.hidden === true) request.hidden = true;
       return { request };
     }
     default:

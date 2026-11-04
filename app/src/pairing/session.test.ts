@@ -206,10 +206,10 @@ describe('pair', () => {
 
     await expect(session.wifiConfigure('Blackraven')).rejects.toBeInstanceOf(RequestError);
     await session.wifiConfigure('Blackraven', 'correct horse battery staple');
-    expect(daemon.wifi).toEqual({ connected: true, ssid: 'Blackraven', ip: '192.168.1.42' });
+    expect(daemon.wifi).toEqual({ connected: true, ssid: 'Blackraven', ip: '192.168.1.42', join: { ssid: 'Blackraven', state: 'joined' } });
 
     const status = await session.status();
-    expect(status.wifi).toEqual({ connected: true, ssid: 'Blackraven', ip: '192.168.1.42' });
+    expect(status.wifi).toEqual({ connected: true, ssid: 'Blackraven', ip: '192.168.1.42', join: { ssid: 'Blackraven', state: 'joined' } });
 
     await session.wifiForget();
     expect(daemon.wifi).toEqual({ connected: false });

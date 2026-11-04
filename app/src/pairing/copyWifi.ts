@@ -94,14 +94,14 @@ async function stop(session: Session): Promise<void> {
   }
 }
 
-export function describeCopyStep(step: CopyStep, label: string): string {
+export function describeCopyStep(step: CopyStep, label: string, now?: number): string {
   switch (step.kind) {
     case 'asking':
       return 'Asking the Pi for its Easy Connect code.';
     case 'android':
       return "Android's own screen is open: pick the network to share, usually the one this phone is on, and confirm.";
     default:
-      return describeStep(step, label);
+      return describeStep(step, label, now);
   }
 }
 

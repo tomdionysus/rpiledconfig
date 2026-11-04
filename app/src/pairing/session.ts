@@ -150,11 +150,11 @@ export function parseInfo(bytes: Uint8Array): DaemonInfo {
   try {
     parsed = JSON.parse(utf8Decode(bytes));
   } catch {
-    throw new PairingError('protocol', 'The Pi answered with something that is not RPiLEDConfig.');
+    throw new PairingError('protocol', 'The Pi answered with something that is not RPi LED Config.');
   }
   const record = parsed as Record<string, unknown> | null;
   if (!record || typeof record.protocol !== 'number' || typeof record.version !== 'string' || typeof record.fingerprint !== 'string') {
-    throw new PairingError('protocol', 'The Pi answered with something that is not RPiLEDConfig.');
+    throw new PairingError('protocol', 'The Pi answered with something that is not RPi LED Config.');
   }
   return { protocol: record.protocol, version: record.version, fingerprint: record.fingerprint };
 }
@@ -374,8 +374,9 @@ export class Session {
     return this.request({ op: 'wifi.scan' }) as Promise<WifiScanResponse>;
   }
 
-  async wifiConfigure(ssid: string, psk?: string): Promise<void> {
-    await this.request({ op: 'wifi.configure', ssid, psk });
+  /** `hidden`: a network typed by hand, which the Pi probes for by name. */
+  async wifiConfigure(ssid: string, psk?: string, hidden = false): Promise<void> {
+    await this.request({ op: 'wifi.configure', ssid, psk, ...(hidden ? { hidden } : {}) });
   }
 
   async wifiForget(): Promise<void> {

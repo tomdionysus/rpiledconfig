@@ -32,7 +32,7 @@ describe('copyPhoneWifi', () => {
     expect(uris).toEqual([FAKE_DPP_URI]);
     expect(outcome.kind).toBe('joined');
     if (outcome.kind !== 'joined') return;
-    expect(outcome.status.wifi).toEqual({ connected: true, ssid: 'Blackraven', ip: FAKE_IP });
+    expect(outcome.status.wifi).toEqual({ connected: true, ssid: 'Blackraven', ip: FAKE_IP, join: { ssid: 'Blackraven', state: 'joined' } });
     expect(steps.map((step) => step.kind).slice(0, 2)).toEqual(['asking', 'android']);
     expect(describeCopyStep(steps[1], 'Blackraven')).toMatch(/Android's own screen/);
     expect(describeOutcome(outcome, 'the network this phone shared').title).toBe('Joined Blackraven');

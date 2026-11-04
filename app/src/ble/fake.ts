@@ -1,6 +1,6 @@
 // A daemon in TypeScript: the BLE service of docs/protocol.md, behind the
 // BleTransport interface, with a fake WiFi backend. It is what the pairing
-// tests run against and what the app talks to with the fake switch on, and
+// tests run against, and
 // it is the reference the daemon's behaviour is compared with.
 //
 // Time goes through a Clock, so the protocol's limits (30 s to authenticate,
@@ -32,7 +32,7 @@ import {
 import { FragmentError, fragment, fragmentSizeForMtu, Reassembler } from '@/protocol/fragments';
 import { fingerprint, passwordScalar, sessionKey } from '@/protocol/keys';
 import { randomScalar, share } from '@/protocol/spake2';
-import { decodeRequest, encodeResponse, type Network, type Request, type Response, type WifiStatus } from '@/protocol/messages';
+import { decodeRequest, encodeResponse, type JoinState, type Network, type Request, type Response, type WifiStatus } from '@/protocol/messages';
 import { realClock, type Clock } from '@/util/clock';
 import type { BleConnection, BleTransport, Peripheral } from './transport';
 
@@ -360,16 +360,23 @@ export class FakeDaemon implements BleTransport {
     this.cancelJoin = undefined;
     const before = this.wifi.connected && this.wifi.ssid !== ssid ? { ...this.wifi } : { connected: false };
     const wanted = this.passphrases?.[ssid];
-    const accepted = wanted === undefined || wanted === (psk ?? '');
-    const outcome = (): WifiStatus => (accepted ? { connected: true, ssid, ip: FAKE_IP } : before);
+    // As NetworkManager reports it (docs/protocol.md, The latest join): a name nothing
+    // broadcasts is not found; a passphrase the network refuses is wrong.
+    const failure: JoinState | undefined = !network
+      ? { ssid, state: 'failed', reason: 'not_found', message: 'NetworkManager: SSID not found' }
+      : wanted !== undefined && wanted !== (psk ?? '')
+        ? { ssid, state: 'failed', reason: 'wrong_passphrase', message: 'NetworkManager: no secrets' }
+        : undefined;
+    const outcome = (): WifiStatus => (failure ? { ...before, join: failure } : { connected: true, ssid, ip: FAKE_IP, join: { ssid, state: 'joined' } });
+    const joining: JoinState = { ssid, state: 'joining' };
 
     if (this.joinAfterMs === 'never') {
-      this.wifi = { connected: false };
+      this.wifi = { connected: false, join: joining };
     } else if (this.joinAfterMs <= 0) {
       this.wifi = outcome();
     } else {
       // Activating: the old connection is down while the new one is tried.
-      this.wifi = { connected: false };
+      this.wifi = { connected: false, join: joining };
       this.cancelJoin = this.clock.after(this.joinAfterMs, () => {
         this.cancelJoin = undefined;
         this.wifi = outcome();
