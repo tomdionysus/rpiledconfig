@@ -6,7 +6,7 @@
 #
 cmake_minimum_required(VERSION 3.23...4.4)
 
-project(rpiledconfig VERSION 0.2.0 LANGUAGES CXX)
+project(rpiledconfig VERSION 0.3.0 LANGUAGES CXX)
 
 option(RPILEDCONFIG_BUILD_TESTING "Build test targets" OFF)
 set(RPILEDCONFIG_SANITIZE "none" CACHE STRING "Sanitizer to build with: none, address, thread")

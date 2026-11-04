@@ -4,13 +4,13 @@ plugins {
 }
 
 group = 'com.tomcully.rpiledconfig'
-version = '0.2.0'
+version = '0.3.0'
 
 android {
   namespace "com.tomcully.ledreader"
   defaultConfig {
     versionCode 1
-    versionName "0.2.0"
+    versionName "0.3.0"
     externalNativeBuild {
       cmake {
         cppFlags "-std=c++20"

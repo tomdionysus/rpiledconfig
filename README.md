@@ -1,11 +1,11 @@
 # RPiLEDConfig
 
-*v0.2.0 (in development)*
+*v0.3.0*
 
-Two-factor proximity setup for a Raspberry Pi. A daemon on the Pi blinks a
-64-bit machine ID on the activity LED and offers a Bluetooth LE service that
-answers only to someone who knows it. The phone app reads the LED with its
-camera, proves it knows the ID over BLE, and configures the Pi's WiFi over a
+Two-factor proximity setup for a Raspberry Pi. A daemon on the Pi offers a
+Bluetooth LE service that answers only to someone who knows its 64-bit
+machine ID, and blinks that ID on the activity LED when a phone asks. The
+phone app reads the LED with its camera, proves it knows the ID over BLE, and configures the Pi's WiFi over a
 channel encrypted with a key derived from it. Line of sight and Bluetooth
 range are the two factors; nothing is typed and nothing is printed on the
 board.
@@ -20,21 +20,27 @@ board.
 
 ## How it works
 
-1. On a Pi with no WiFi connection the daemon enters setup mode: its
-   activity LED blinks the machine ID (frame version 6: run-limited
-   five-symbol words at 50 ms a symbol, 16 bits per second, Reed-Solomon
-   coded with a CRC, 8.5 seconds a frame) and BLE advertises
-   `RPiLEDConfig-<fingerprint>`.
-2. The app's camera is pointed roughly at the Pi: the reader finds the
+1. On a Pi with no WiFi connection the daemon enters setup mode: BLE
+   advertises `RPiLEDConfig-<fingerprint>`. The LED is left alone.
+2. The app lists the Pis nearby by fingerprint; choosing one asks it, over
+   BLE, to blink. Its activity LED blinks the machine ID (frame version 6:
+   run-limited five-symbol words at 50 ms a symbol, 16 bits per second,
+   Reed-Solomon coded with a CRC, 8.5 seconds a frame) for up to two
+   minutes.
+3. The app's camera is pointed roughly at the Pi: the reader finds the
    blinking LED anywhere in the picture and decodes the ID, in under ten
-   seconds from first sight.
-3. The app connects over BLE, and the two sides prove to each other that
+   seconds from first sight, and checks it is the chosen Pi's.
+4. The app connects over BLE, and the two sides prove to each other that
    they hold the ID with SPAKE2 (RFC 9382), so nothing on the air can be
    used to test guesses of it offline. A session key is derived and
-   everything after is AES-GCM.
-4. The app lists the networks the Pi can see and sends the chosen SSID and
+   everything after is AES-GCM. The LED stops.
+5. The app lists the networks the Pi can see and sends the chosen SSID and
    passphrase. The daemon hands them to NetworkManager, confirms the
    connection, and leaves setup mode.
+
+Once paired, the app can also remove RPiLEDConfig from the Pi altogether:
+the daemon starts a root unit the package ships, which purges the package
+and keeps the WiFi it set up (docs/protocol.md, Uninstalling).
 
 `docs/protocol.md` has every byte of this.
 
@@ -42,7 +48,7 @@ board.
 
 On Raspberry Pi OS (bookworm or later, 64-bit):
 
-    sudo apt install ./rpiledconfig_0.2.0-1_arm64.deb
+    sudo apt install ./rpiledconfig_0.3.0-1_arm64.deb
     sudo systemctl start rpiledconfig
 
 The daemon needs BlueZ and NetworkManager, both of which Raspberry Pi OS
