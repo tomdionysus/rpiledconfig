@@ -25,3 +25,6 @@ app/.kotlin/
 CLAUDE.local.md
 .claude/worktrees/
 basemind.toml
+app/modules/*/cpp/build/
+app/modules/*/android/.cxx/
+app/modules/*/android/build/
