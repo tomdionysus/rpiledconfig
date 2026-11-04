@@ -1,6 +1,6 @@
 # RPiLEDConfig
 
-*v0.1.0 (in development)*
+*v0.2.0 (in development)*
 
 Two-factor proximity setup for a Raspberry Pi. A daemon on the Pi blinks a
 64-bit machine ID on the activity LED and offers a Bluetooth LE service that
@@ -13,7 +13,7 @@ board.
 | Folder | What it is |
 | --- | --- |
 | `daemon/` | The service, `rpiledconfig`. C++20, Boost.Asio, OpenSSL, BlueZ and NetworkManager over sd-bus; systemd. |
-| `app/` | The phone app. Expo (React Native), TypeScript, react-native-ble-plx, react-native-vision-camera. |
+| `app/` | The phone app. Expo (React Native), TypeScript, react-native-ble-plx, react-native-vision-camera. The LED reader is native: `app/modules/led-reader`, C++ behind a VisionCamera frame-processor plugin. |
 | `docs/` | The protocol (`protocol.md`), installation, configuration. |
 | `packaging/` | The Docker build of the Debian package. The package's own files are in `daemon/packaging/`. |
 | `TODO/` | `ACTIVE.md` is the plan; `COMPLETED.md` the record. |
@@ -21,11 +21,13 @@ board.
 ## How it works
 
 1. On a Pi with no WiFi connection the daemon enters setup mode: its
-   activity LED blinks the machine ID (Manchester, 10 bits per second,
-   Reed-Solomon coded with a CRC)
-   and BLE advertises `RPiLEDConfig-<fingerprint>`.
-2. The app's camera is pointed at the LED for about 20 seconds (one 19.9-second frame) and decodes
-   the ID.
+   activity LED blinks the machine ID (frame version 6: run-limited
+   five-symbol words at 50 ms a symbol, 16 bits per second, Reed-Solomon
+   coded with a CRC, 8.5 seconds a frame) and BLE advertises
+   `RPiLEDConfig-<fingerprint>`.
+2. The app's camera is pointed roughly at the Pi: the reader finds the
+   blinking LED anywhere in the picture and decodes the ID, in under ten
+   seconds from first sight.
 3. The app connects over BLE, and the two sides prove to each other that
    they hold the ID with SPAKE2 (RFC 9382), so nothing on the air can be
    used to test guesses of it offline. A session key is derived and
@@ -40,12 +42,13 @@ board.
 
 On Raspberry Pi OS (bookworm or later, 64-bit):
 
-    sudo apt install ./rpiledconfig_0.1.0-1~deb12_arm64.deb
+    sudo apt install ./rpiledconfig_0.2.0-1_arm64.deb
     sudo systemctl start rpiledconfig
 
 The daemon needs BlueZ and NetworkManager, both of which Raspberry Pi OS
-ships. `docs/installation.md` covers the rest. `packaging/build-debs.sh`
-builds the packages in Docker into `dist/`.
+ships. `docs/installation.md` covers the rest. The package is built natively
+on a Pi: `cmake --build build-deb && (cd build-deb && cpack -G DEB)` in
+`daemon/`.
 
 ## Building
 
@@ -59,6 +62,15 @@ The app:
 
     cd app
     npm install && npm run typecheck && npm test
+
+The native LED reader's C++ core and its tests:
+
+    cmake -S app/modules/led-reader/cpp -B app/modules/led-reader/cpp/build -G Ninja
+    cmake --build app/modules/led-reader/cpp/build && app/modules/led-reader/cpp/build/led_reader_tests
+
+The Android app, with the reader built in: `npx expo prebuild`, then
+`./gradlew assembleRelease` in `app/android`. iOS does not have the reader
+yet.
 
 ## License
 
