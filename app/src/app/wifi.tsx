@@ -12,7 +12,7 @@
 // fails.
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { copyPhoneWifi, describeCopyOutcome, describeCopyStep, type CopyOutcome, type CopyStep } from '@/pairing/copyWifi';
 import { collapseSteps, joinWifi, type Verdict } from '@/pairing/join';
 import { LinkLostError, RequestError } from '@/pairing/session';
@@ -28,7 +28,7 @@ import { phoneSsid } from '@/wifi/phoneWifi';
 import { WifiQrScanner } from '@/wifi/WifiQrScanner';
 import type { WifiCredentials } from '@/wifi/wifiQr';
 
-type Busy = 'status' | 'scan' | 'forget' | 'finish' | undefined;
+type Busy = 'status' | 'scan' | 'forget' | 'finish' | 'uninstall' | undefined;
 
 /** One way of getting the Pi onto a network, from the first step to its verdict. */
 interface Attempt {
@@ -64,6 +64,8 @@ export default function WifiScreen() {
   /** The other ways are on show: Easy Connect cannot work here, or did not. */
   const [otherWays, setOtherWays] = useState(!easyConnectSupported());
   const [scanningQr, setScanningQr] = useState(false);
+  /** The Pi answered uninstall: its removal has started. */
+  const [removed, setRemoved] = useState(false);
   // While a join runs, the link dropping is part of the plan, not news.
   const joining = useRef(false);
 
@@ -124,6 +126,18 @@ export default function WifiScreen() {
     return () => clearTimeout(timer);
   }, [session, closed, inProgress, busy, scanningQr, status]);
 
+  if (removed) {
+    return (
+      <Screen title="Removed">
+        <Text style={styles.body}>
+          The Pi is removing RPiLEDConfig: in a few seconds the service stops, and its program, settings and machine ID are deleted. Its WiFi
+          stays as it is.
+        </Text>
+        <Button label="Home" onPress={() => router.replace('/')} style={styles.removedHome} />
+      </Screen>
+    );
+  }
+
   if (!session) {
     return (
       <Screen title="WiFi" showBack>
@@ -137,6 +151,27 @@ export default function WifiScreen() {
     void session.close();
     setSession(undefined);
     router.replace('/');
+  };
+
+  // docs/protocol.md, Uninstalling: destructive and for good, so it is confirmed first.
+  const uninstall = () => {
+    Alert.alert(
+      'Remove RPiLEDConfig from this Pi?',
+      'The service is stopped and deleted with its settings and machine ID. The Pi keeps its WiFi, but cannot be set up from a phone again until the package is reinstalled.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () =>
+            void run('uninstall', async () => {
+              await session.uninstall();
+              setSession(undefined);
+              setRemoved(true);
+            }),
+        },
+      ],
+    );
   };
 
   const pairAgain = () => {
@@ -201,7 +236,7 @@ export default function WifiScreen() {
   if (scanningQr) return <WifiQrScanner onRead={fromQr} onCancel={() => setScanningQr(false)} />;
 
   return (
-    <Screen title="WiFi" eyebrow="Step 3 of 3">
+    <Screen title="WiFi" eyebrow="Step 4 of 4">
       <View style={styles.card}>
         <Text style={styles.cardLabel}>PI</Text>
         <Text style={styles.cardTitle}>{status?.hostname ?? session.info.fingerprint}</Text>
@@ -243,7 +278,7 @@ export default function WifiScreen() {
           <Text style={styles.body}>{attempt.verdict.body}</Text>
           {joined ? (
             <>
-              <Text style={styles.body}>Finish tells the Pi to leave setup mode: the LED stops blinking and Bluetooth goes quiet.</Text>
+              <Text style={styles.body}>Finish tells the Pi to leave setup mode: Bluetooth goes quiet.</Text>
               <Button
                 label="Finish"
                 busy={busy === 'finish'}
@@ -364,11 +399,27 @@ export default function WifiScreen() {
         ) : null}
         <Button label="Disconnect without finishing" variant="quiet" disabled={inProgress} onPress={leave} />
       </View>
+
+      <View style={styles.danger}>
+        <Text style={styles.sectionTitle}>Remove from this Pi</Text>
+        <Text style={styles.body}>Uninstalls RPiLEDConfig from the Pi for good. Its WiFi stays as it is.</Text>
+        <Button label="Remove RPiLEDConfig" variant="secondary" busy={busy === 'uninstall'} disabled={offline || busy !== undefined} onPress={uninstall} />
+      </View>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
+  danger: {
+    marginTop: space.xxl,
+    paddingTop: space.xl,
+    gap: space.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  removedHome: {
+    marginTop: space.xl,
+  },
   body: {
     ...typography.body,
     color: colors.textDim,

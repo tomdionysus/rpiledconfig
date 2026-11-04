@@ -28,8 +28,8 @@ export default function HomeScreen() {
         <View style={styles.factorText}>
           <Text style={styles.factorTitle}>Line of sight</Text>
           <Text style={styles.factorBody}>
-            The Pi blinks its machine ID on its main LED. Point the camera at it for up to twenty seconds and the
-            app reads it.
+            The app finds the Pi over Bluetooth and asks it to blink its machine ID on its main LED. Point the camera at
+            it for up to twenty seconds and the app reads it.
           </Text>
         </View>
       </View>
@@ -44,7 +44,7 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      <Button label="Read the LED" onPress={() => router.push('/scan')} style={styles.start} />
+      <Button label="Find the Pi" onPress={() => router.push('/find')} style={styles.start} />
       <Button label="Type the ID instead" variant="quiet" onPress={() => router.push('/enter')} />
 
       {DIAGNOSTICS ? (

@@ -18,6 +18,7 @@ import {
   CHAR_RESPONSE,
   AUTH_RESULT_ACCEPTED_LENGTH,
   MIN_AUTH_MTU,
+  MIN_PROTOCOL_VERSION,
   PROTOCOL_VERSION,
 } from '@/protocol/constants';
 import { FragmentError, fragment, fragmentSizeForMtu, Reassembler } from '@/protocol/fragments';
@@ -158,6 +159,13 @@ export function parseInfo(bytes: Uint8Array): DaemonInfo {
   return { protocol: record.protocol, version: record.version, fingerprint: record.fingerprint };
 }
 
+/** A daemon this app can talk to: protocol 2 (no Blink) or 3. */
+export function checkProtocol(info: DaemonInfo): void {
+  if (info.protocol < MIN_PROTOCOL_VERSION || info.protocol > PROTOCOL_VERSION) {
+    throw new PairingError('protocol', `The Pi speaks protocol ${info.protocol}; this app speaks ${MIN_PROTOCOL_VERSION} to ${PROTOCOL_VERSION}.`);
+  }
+}
+
 function withTimeout<T>(promise: Promise<T>, ms: number, error: () => Error, clock: Clock): Promise<T> {
   return new Promise((resolve, reject) => {
     const cancel = clock.after(ms, () => reject(error()));
@@ -212,9 +220,7 @@ export async function pair(transport: BleTransport, idBytes: Uint8Array, options
   try {
     phase('checking');
     const info = parseInfo(await connection.read(CHAR_INFO));
-    if (info.protocol !== PROTOCOL_VERSION) {
-      throw new PairingError('protocol', `The Pi speaks protocol ${info.protocol}; this app speaks ${PROTOCOL_VERSION}.`);
-    }
+    checkProtocol(info);
     if (info.fingerprint !== expected) {
       throw new PairingError(
         'fingerprint_mismatch',
@@ -389,6 +395,17 @@ export class Session {
   /** The daemon leaves setup mode and disconnects; the session is closed after. */
   async finish(): Promise<void> {
     await this.request({ op: 'finish' });
+    await this.close();
+  }
+
+  /**
+   * Removes RPiLEDConfig from the Pi for good (docs/protocol.md,
+   * Uninstalling): the daemon starts its removal, answers, and disconnects.
+   * Rejects with `RequestError` (`uninstall_unavailable`, or `unknown_op`
+   * from a protocol 2 daemon) when it cannot; the session stays open then.
+   */
+  async uninstall(): Promise<void> {
+    await this.request({ op: 'uninstall' });
     await this.close();
   }
 

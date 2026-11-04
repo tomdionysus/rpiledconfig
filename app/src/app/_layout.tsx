@@ -21,6 +21,7 @@ export default function RootLayout() {
               animation: 'slide_from_right',
             }}>
             <Stack.Screen name="index" options={{ animation: 'fade' }} />
+            <Stack.Screen name="find" />
             <Stack.Screen name="scan" options={{ animation: 'fade' }} />
             <Stack.Screen name="pair" options={{ gestureEnabled: false }} />
             <Stack.Screen name="wifi" options={{ gestureEnabled: false }} />

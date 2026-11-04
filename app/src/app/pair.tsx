@@ -27,7 +27,7 @@ const PHASE_LABELS: Record<PairingPhase, string> = {
 
 export default function PairScreen() {
   const router = useRouter();
-  const { machineId, services, setSession } = useApp();
+  const { machineId, target, services, setSession } = useApp();
   const [phase, setPhase] = useState<PairingPhase>('scanning');
   const [detail, setDetail] = useState<string | undefined>(undefined);
   const [error, setError] = useState<PairingError | undefined>(undefined);
@@ -38,7 +38,10 @@ export default function PairScreen() {
     setError(undefined);
     setPhase('scanning');
     try {
+      // The Pi chosen and asked to blink, by its platform id, when the LED read was its.
+      const preferId = target && target.fingerprint === fingerprint(machineId) ? target.id : undefined;
       const session = await pair(services.transport, machineId, {
+        preferId,
         onPhase: (next, info) => {
           setPhase(next);
           setDetail(info);
@@ -49,7 +52,7 @@ export default function PairScreen() {
     } catch (caught) {
       setError(caught instanceof PairingError ? caught : new PairingError('bluetooth', 'Something went wrong with Bluetooth. Try again.', caught));
     }
-  }, [machineId, router, services.transport, setSession]);
+  }, [machineId, router, services.transport, setSession, target]);
 
   useEffect(() => {
     void start();
@@ -68,7 +71,7 @@ export default function PairScreen() {
   const step = PHASES.indexOf(phase);
 
   return (
-    <Screen title="Pair" eyebrow="Step 2 of 3" showBack={!!error}>
+    <Screen title="Pair" eyebrow="Step 3 of 4" showBack={!!error}>
       <View style={styles.idCard}>
         <Text style={styles.idLabel}>MACHINE ID</Text>
         <Text style={styles.id}>{bytesToHex(machineId)}</Text>

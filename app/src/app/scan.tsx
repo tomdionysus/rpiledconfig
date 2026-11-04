@@ -45,7 +45,9 @@ export default function ScanScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const window = useWindowDimensions();
-  const { setMachineId, setLastScan, services } = useApp();
+  const { setMachineId, setLastScan, services, target } = useApp();
+  // The fingerprint of an LED read that was not the chosen Pi's.
+  const [otherPi, setOtherPi] = useState<string | undefined>(undefined);
 
   // Look for Pis over Bluetooth while the LED is read, so pairing finds its Pi
   // at once rather than starting a scan after the read.
@@ -144,10 +146,15 @@ export default function ScanScreen() {
   const accept = useCallback(
     (idBytes: Uint8Array) => {
       setActive(false);
+      // Another Pi's LED in view (docs/protocol.md, The idea): not the one asked to blink.
+      if (target && fingerprint(idBytes) !== target.fingerprint) {
+        setOtherPi(fingerprint(idBytes));
+        return;
+      }
       setMachineId(idBytes);
       router.replace('/pair');
     },
-    [router, setMachineId],
+    [router, setMachineId, target],
   );
 
   const idHex = state?.idHex;
@@ -176,6 +183,19 @@ export default function ScanScreen() {
           }}
         />
         <Button label="Cancel" variant="quiet" onPress={() => router.back()} />
+      </View>
+    );
+  }
+
+  if (otherPi && target) {
+    return (
+      <View style={[styles.root, styles.prompt, { paddingTop: insets.top + space.xxl, paddingBottom: insets.bottom + space.xl }]}>
+        <Text style={styles.promptTitle}>Another Pi's LED</Text>
+        <Text style={styles.promptBody}>
+          The LED read belongs to the Pi {otherPi}, not {target.fingerprint}, the one you chose. Point the camera at the Pi you chose.
+        </Text>
+        <Button label="Read again" onPress={() => router.replace('/scan')} />
+        <Button label="Choose another Pi" variant="quiet" onPress={() => router.replace('/find')} />
       </View>
     );
   }

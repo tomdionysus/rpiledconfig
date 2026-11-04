@@ -10,7 +10,8 @@ export type Request =
   | { op: 'wifi.forget' }
   | { op: 'wifi.easyconnect' }
   | { op: 'wifi.easyconnect.stop' }
-  | { op: 'finish' };
+  | { op: 'finish' }
+  | { op: 'uninstall' };
 
 export type Op = Request['op'];
 
@@ -48,7 +49,7 @@ export interface OkResponse {
   ok: true;
 }
 
-export type ErrorCode = 'bad_request' | 'unknown_op' | 'wifi_unavailable' | 'wifi_failed' | 'busy' | 'easyconnect_unavailable';
+export type ErrorCode = 'bad_request' | 'unknown_op' | 'wifi_unavailable' | 'wifi_failed' | 'busy' | 'easyconnect_unavailable' | 'uninstall_unavailable';
 
 export interface ErrorResponse {
   ok: false;
@@ -138,6 +139,7 @@ export function decodeRequest(bytes: Uint8Array): { request: Request } | { error
     case 'wifi.easyconnect':
     case 'wifi.easyconnect.stop':
     case 'finish':
+    case 'uninstall':
       return { request: { op: parsed.op } };
     case 'wifi.configure': {
       if (typeof parsed.ssid !== 'string' || parsed.ssid.length === 0) return { error: 'bad_request', message: 'ssid missing' };

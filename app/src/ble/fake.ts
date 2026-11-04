@@ -17,10 +17,15 @@ import {
   BLE_NAME_PREFIX,
   CHAR_AUTH,
   CHAR_AUTH_RESULT,
+  CHAR_BLINK,
   CHAR_CHALLENGE,
   CHAR_INFO,
   CHAR_REQUEST,
   CHAR_RESPONSE,
+  BLINK_PROTOCOL_VERSION,
+  BLINK_START,
+  BLINK_STOP,
+  BLINK_TIMEOUT_MS,
   PROTOCOL_VERSION,
   REFUSALS_PER_CONNECTION,
 } from '@/protocol/constants';
@@ -72,6 +77,10 @@ export interface FakeDaemonOptions {
   linkDrop?: LinkDrop;
   /** Whether this Pi can do Wi-Fi Easy Connect; `unavailable` answers `easyconnect_unavailable`. Default available. */
   easyConnect?: 'available' | 'unavailable';
+  /** Whether `uninstall` works; `unavailable` answers `uninstall_unavailable`. Default available. */
+  uninstall?: 'available' | 'unavailable';
+  /** The protocol Info says; 2 is a daemon without Blink that blinks all through setup mode. Default 3. */
+  protocol?: number;
 }
 
 /** How long the Pi listens for Android's configurator, as the protocol says. */
@@ -129,6 +138,13 @@ export class FakeDaemon implements BleTransport {
   joinAfterMs: number | 'never';
   linkDrop?: LinkDrop;
   easyConnectMode: 'available' | 'unavailable';
+  uninstallMode: 'available' | 'unavailable';
+  readonly protocol: number;
+  /** Whether the LED is blinking the ID: asked for by Blink (always, at protocol 2, in setup mode). */
+  blinking = false;
+  /** Set by `uninstall`: the package is gone, and nothing answers any more. */
+  uninstalled = false;
+  private cancelBlink?: () => void;
   /** Whether the Pi is listening for an Easy Connect configurator now. */
   easyConnectListening = false;
   private cancelListen?: () => void;
@@ -170,13 +186,16 @@ export class FakeDaemon implements BleTransport {
     this.joinAfterMs = options.joinAfterMs ?? 0;
     this.linkDrop = options.linkDrop;
     this.easyConnectMode = options.easyConnect ?? 'available';
+    this.uninstallMode = options.uninstall ?? 'available';
+    this.protocol = options.protocol ?? PROTOCOL_VERSION;
+    this.blinking = this.protocol < BLINK_PROTOCOL_VERSION;
     this.clock = options.clock ?? realClock;
     this.authTimeoutMs = options.authTimeoutMs ?? AUTH_TIMEOUT_MS;
   }
 
   get advertising(): boolean {
     const now = this.clock.now();
-    return this.setupMode && now >= this.advertisingPausedUntil && now >= this.offAirUntil;
+    return this.setupMode && !this.uninstalled && now >= this.advertisingPausedUntil && now >= this.offAirUntil;
   }
 
   /** Whether a central is connected now. */
@@ -234,8 +253,33 @@ export class FakeDaemon implements BleTransport {
         return { ok: true };
       case 'finish':
         this.setupMode = false;
+        if (this.protocol < BLINK_PROTOCOL_VERSION) this.blinking = false;
+        return { ok: true };
+      case 'uninstall':
+        if (this.uninstallMode === 'unavailable') {
+          return { ok: false, error: 'uninstall_unavailable', message: 'rpiledconfig-uninstall.service does not exist: this daemon was not installed from the package' };
+        }
+        this.uninstalled = true;
+        this.stopBlinking();
         return { ok: true };
     }
+  }
+
+  /** A write of Blink (docs/protocol.md): 0x01 blinks, or restarts the clock; 0x00 stops; anything else is ignored. */
+  blink(value: Uint8Array): void {
+    if (value.length !== 1) return;
+    if (value[0] === BLINK_STOP) this.stopBlinking();
+    if (value[0] !== BLINK_START) return;
+    this.blinking = true;
+    this.cancelBlink?.();
+    this.cancelBlink = this.clock.after(BLINK_TIMEOUT_MS, () => this.stopBlinking());
+  }
+
+  stopBlinking(): void {
+    if (this.protocol < BLINK_PROTOCOL_VERSION) return;
+    this.cancelBlink?.();
+    this.cancelBlink = undefined;
+    this.blinking = false;
   }
 
   /**
@@ -273,6 +317,7 @@ export class FakeDaemon implements BleTransport {
 
   accepted(): void {
     this.refusalsInARow = 0;
+    this.stopBlinking();
   }
 
   /**
@@ -431,7 +476,7 @@ class FakeConnection implements BleConnection {
     this.assertOpen();
     switch (characteristic) {
       case CHAR_INFO:
-        return utf8Encode(JSON.stringify({ protocol: PROTOCOL_VERSION, version: this.daemon.version, fingerprint: this.daemon.fingerprint }));
+        return utf8Encode(JSON.stringify({ protocol: this.daemon.protocol, version: this.daemon.version, fingerprint: this.daemon.fingerprint }));
       case CHAR_CHALLENGE:
         if (this.authenticated) this.startOver();
         return Uint8Array.from(this.pB);
@@ -450,6 +495,10 @@ class FakeConnection implements BleConnection {
         return;
       case CHAR_REQUEST:
         this.request(value);
+        return;
+      case CHAR_BLINK:
+        if (this.daemon.protocol < BLINK_PROTOCOL_VERSION) throw new Error(`characteristic ${characteristic} is not writable`);
+        this.daemon.blink(value);
         return;
       default:
         throw new Error(`characteristic ${characteristic} is not writable`);
@@ -544,7 +593,7 @@ class FakeConnection implements BleConnection {
     const sealed = this.sealer.seal(encodeResponse(response));
     for (const part of fragment(sealed, fragmentSizeForMtu(this.mtu))) this.notify(CHAR_RESPONSE, part);
     if (drop) this.later(() => this.radioDrop(drop.offAirMs));
-    else if (op === 'finish') this.later(() => this.drop(undefined));
+    else if (op === 'finish' || (op === 'uninstall' && response.ok)) this.later(() => this.drop(undefined));
   }
 
   radioDrop(offAirMs: number): void {
