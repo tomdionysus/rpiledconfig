@@ -65,7 +65,7 @@ types::Status LedModulator::start() {
 
   // Not the id: it is the pairing secret, and the journal is not (docs/installation.md).
   _logger->info("Blinking the machine id on " + _led->describe() + ": " + std::to_string(_runs.size()) + " runs, " +
-                std::to_string(frame_symbols() * _symbol.count()) + " ms per frame" + (_symbol == symbol_time ? "" : " (T = " + std::to_string(_symbol.count()) + " ms, not the protocol's 50)"));
+                std::to_string(frame_symbols() * _symbol.count()) + " ms per frame" + (_symbol == symbol_time ? "" : " (T = " + std::to_string(_symbol.count()) + " ms, not the protocol's 45)"));
 
   _step();
   return types::Status::success();

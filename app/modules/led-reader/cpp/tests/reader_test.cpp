@@ -73,6 +73,10 @@ TEST(ReaderTest, ReadsAt24FpsWithTheClockFivePercentOffEitherWayAndAt60Fps) {
 // Calibrated to a Blackview A85 on a Pi 5's LED at 30 fps: a saturated LED blooming over a
 // 33 ms exposure, plus a lit and noisy room, the LED only partly inside the region, and some
 // timing error on the pictures.
+// The phone-camera model's exposure: a bright LED in a dim room has the camera's
+// auto-exposure well under a frame. 33 ms (a whole frame) predicted that nothing under 50 ms
+// would read at 30 fps; the A85 then read 45 and 33 ms symbols (TODO/COMPLETED.md,
+// 2026-11-04), so the model is held to 12 ms, which reads what the phone read.
 TEST(ReaderTest, ReadsWhatARealPhoneCameraSeesInUnderTenSeconds) {
   for (std::uint32_t seed = 1; seed <= 8; ++seed) {
     const auto out = run(test::synthesize(test::id_from(0x64958d1c7ab3e205ULL), {.seconds = 20,
@@ -82,7 +86,7 @@ TEST(ReaderTest, ReadsWhatARealPhoneCameraSeesInUnderTenSeconds) {
                                                                                     .start_ms = 900.0 * seed,
                                                                                     .jitter_ms = 3,
                                                                                     .content_jitter_ms = 8,
-                                                                                    .exposure_ms = 33,
+                                                                                    .exposure_ms = 12,
                                                                                     .saturation = 3,
                                                                                     .seed = seed}));
     ASSERT_EQ(out.ids, std::set<Id>{test::id_from(0x64958d1c7ab3e205ULL)}) << seed;
@@ -148,37 +152,8 @@ TEST(ReaderTest, ProgressIsZeroUntilTheLedAndFullWithinAFrameOfIt) {
   }
 }
 
-// The symbol-time trial (TODO/ACTIVE.md): T = 40 ms on the same phone-camera model.
-TEST(ReaderTest, SymbolTimeTrialAt40Ms) {
-  int read = 0;
-  double slowest = 0;
-  for (std::uint32_t seed = 1; seed <= 8; ++seed) {
-    const auto out = run(test::synthesize(test::id_from(0x64958d1c7ab3e205ULL), {.seconds = 20,
-                                                                                    .symbol = 40,
-                                                                                    .noise = 12,
-                                                                                    .off = 20,
-                                                                                    .on = 69,
-                                                                                    .start_ms = 700.0 * seed,
-                                                                                    .jitter_ms = 3,
-                                                                                    .content_jitter_ms = 8,
-                                                                                    .exposure_ms = 33,
-                                                                                    .saturation = 3,
-                                                                                    .seed = seed}),
-                         ReaderConfig{40});
-    if (out.ids == std::set<Id>{test::id_from(0x64958d1c7ab3e205ULL)}) {
-      ++read;
-      slowest = std::max(slowest, *out.read_at);
-    }
-    EXPECT_LE(out.ids.size(), 1u) << "a wrong ID at seed " << seed;
-  }
-  RecordProperty("read_of_8", read);
-  RecordProperty("slowest_ms", static_cast<int>(slowest));
-  std::printf("[ trial    ] T = 40 ms, phone-camera model: %d of 8 read, slowest at %.0f ms\n", read, slowest);
-}
-
-// The symbol-time experiment (TODO/ACTIVE.md, Next 1), on the model: what each T reads at
-// 30 and 60 fps, with the exposure a frame allows. Printed, not asserted: the live phone
-// decides.
+// The symbol-time experiment (TODO/COMPLETED.md, 2026-11-04), on the model: what each T
+// reads at 30 and 60 fps. Printed, not asserted: the live phone decided (45 ms).
 TEST(ReaderTest, SymbolTimeTrials) {
   for (const double symbol : {50.0, 40.0, 33.0, 25.0, 20.0}) {
     for (const double fps : {30.0, 60.0}) {
@@ -194,7 +169,7 @@ TEST(ReaderTest, SymbolTimeTrials) {
                                                                                         .start_ms = 700.0 * seed,
                                                                                         .jitter_ms = 3,
                                                                                         .content_jitter_ms = fps > 30 ? 4.0 : 8.0,
-                                                                                        .exposure_ms = fps > 30 ? 16.0 : 33.0,
+                                                                                        .exposure_ms = fps > 30 ? 8.0 : 12.0,
                                                                                         .saturation = 3,
                                                                                         .seed = seed}),
                              ReaderConfig{symbol});

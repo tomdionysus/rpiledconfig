@@ -19,11 +19,11 @@
 
 namespace rpiledconfig::led {
 
-// The LED channel of docs/protocol.md, frame version 6: a symbol period T of 50 ms (the
+// The LED channel of docs/protocol.md, frame version 7: a symbol period T of 45 ms (the
 // shortest run a 30 fps phone camera was measured to read without errors), and a frame of
 // sync and the 16-byte codeword (protocol/led_code.h) as five-symbol words, repeated back
 // to back.
-inline constexpr std::chrono::milliseconds symbol_time{50};
+inline constexpr std::chrono::milliseconds symbol_time{45};
 
 // A stretch of the LED in one state, in units of T. Maximal: two adjacent symbols at the
 // same level are one run, which is what a camera sees.
@@ -38,7 +38,7 @@ struct Run {
 // Pure, so the protocol's vector is checked against it without a clock.
 std::vector<Run> frame_runs(const machine_id::MachineId& id);
 
-// How many T a frame is: 170, or 8.5 seconds.
+// How many T a frame is: 170, or 7.65 seconds.
 std::size_t frame_symbols();
 
 // Drives an Led through frames until stopped. Runs on its executor; the timer source is

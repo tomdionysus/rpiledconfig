@@ -200,7 +200,7 @@ TEST(ConfigTest, EasyConnectFollowsTheWifiDriverUnlessSet) {
 }
 
 TEST(ConfigTest, TheSymbolTimeDefaultsToTheProtocolsAndIsBounded) {
-  EXPECT_EQ(Loaded("").config.led_symbol_ms, 50u);
+  EXPECT_EQ(Loaded("").config.led_symbol_ms, 45u);
   EXPECT_EQ(Loaded("led.symbol_ms: 25\n").config.led_symbol_ms, 25u);
   EXPECT_FALSE(Loaded("led.symbol_ms: 5\n").ok);
   EXPECT_FALSE(Loaded("led.symbol_ms: 501\n").ok);

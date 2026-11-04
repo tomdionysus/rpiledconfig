@@ -10,14 +10,14 @@
 #include <cstddef>
 #include <cstdint>
 
-// The LED channel of docs/protocol.md, frame version 6. A change here is a change to the
+// The LED channel of docs/protocol.md, frame version 7. A change here is a change to the
 // document, to daemon/src/protocol/led_code.h and to app/src/protocol/constants.ts.
 namespace rpiledconfig::reader {
 
 // The symbol time T, in milliseconds.
-inline constexpr double symbol_ms = 50.0;
+inline constexpr double symbol_ms = 45.0;
 
-inline constexpr std::uint8_t frame_version = 0x06;
+inline constexpr std::uint8_t frame_version = 0x07;
 inline constexpr std::size_t id_length = 8;
 inline constexpr std::size_t message_length = 10;
 inline constexpr std::size_t parity_length = 6;

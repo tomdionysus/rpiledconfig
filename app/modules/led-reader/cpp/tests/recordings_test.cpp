@@ -4,8 +4,8 @@
 // Copyright (C) 2026 T. Cully
 // Licensed under the Apache License, Version 2.0 - see LICENSE
 //
-// Every recording in app/src/led/fixtures is a test of the reader. A frame version 6
-// recording (a `-v6` in its name) must read the ID in `expected` (within
+// Every recording in app/src/led/fixtures is a test of the reader. A frame version 7
+// recording (a `-v7` in its name) must read the ID in `expected` (within
 // `expected.withinMs` of the first sample, if given); any other recording, of an older frame
 // version or of no LED, must read nothing at all.
 #include <gtest/gtest.h>
@@ -93,13 +93,13 @@ TEST(RecordingsTest, EveryRecordingReadsWhatItShould) {
         if (read_at < 0) read_at = r.t[i] - r.t[0];
       }
     }
-    const bool version6 = name.find("-v6") != std::string::npos;
-    if (version6 && !r.expected.empty()) {
+    const bool version7 = name.find("-v7") != std::string::npos;
+    if (version7 && !r.expected.empty()) {
       EXPECT_EQ(ids, std::vector<std::string>{r.expected}) << name;
       if (r.within_ms > 0) EXPECT_LE(read_at, r.within_ms) << name;
       std::printf("[ recording] %s: read at %.2f s\n", name.c_str(), read_at / 1000);
     } else {
-      EXPECT_TRUE(ids.empty()) << name << " read an ID from a recording that holds none of frame version 6";
+      EXPECT_TRUE(ids.empty()) << name << " read an ID from a recording that holds none of frame version 7";
     }
     ++checked;
   }

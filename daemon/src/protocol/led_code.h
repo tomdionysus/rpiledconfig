@@ -15,12 +15,12 @@
 
 namespace rpiledconfig::protocol {
 
-// What the LED blinks (docs/protocol.md, "The codeword"): frame version 6, a 10-byte
+// What the LED blinks (docs/protocol.md, "The codeword"): frame version 7, a 10-byte
 // message of id_bytes and a CRC-16 over the version byte and id_bytes (the version is
 // folded into the CRC, not sent), followed by 6 Reed-Solomon parity bytes. The daemon only
 // encodes; reading it back is the app's.
 
-inline constexpr std::uint8_t led_frame_version = 0x06;
+inline constexpr std::uint8_t led_frame_version = 0x07;
 inline constexpr std::size_t led_message_length = 10;
 inline constexpr std::size_t led_parity_length = 6;
 inline constexpr std::size_t led_codeword_length = led_message_length + led_parity_length;

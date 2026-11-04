@@ -129,7 +129,7 @@ bool Detector::push(double t, double y) {
     int plausible = 0;
     for (const auto& run : _runs) {
       if (run.length > longest) blinking = false;
-      // Shorter than a symbol less a camera frame's blur: at the protocol's 50 ms, 30 ms.
+      // Shorter than a symbol less a camera frame's blur: at the protocol's 45 ms, 27 ms.
     if (run.length >= 0.6 * _config.symbol) ++plausible;
     }
     blinking = blinking && plausible >= min_runs;
