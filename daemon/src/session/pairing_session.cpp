@@ -203,6 +203,10 @@ void PairingSession::_dispatch(const types::Bytes& plaintext) {
       if (self->_events.finished) self->_events.finished();
       self->_drop("finished");
     }
+
+    // uninstall: answered, and the link goes; the package's removal stops the daemon soon
+    // after. Only an ok: a phone told uninstall_unavailable may still want the rest.
+    if (op == ops::uninstall && json == ok_response()) self->_drop("uninstalling");
   });
 }
 

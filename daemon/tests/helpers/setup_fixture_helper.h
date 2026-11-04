@@ -25,6 +25,7 @@
 #include "protocol/keys.h"
 #include "session/requests.h"
 #include "setup/setup_mode.h"
+#include "system/uninstaller_fake.h"
 #include "timers/timer_source.h"
 #include "util.h"
 #include "wifi/easy_connect_fake.h"
@@ -50,6 +51,7 @@ struct SetupFixture {
   std::shared_ptr<rpiledconfig::ble::BleFake> ble;
   std::shared_ptr<rpiledconfig::wifi::WifiFake> wifi;
   std::shared_ptr<rpiledconfig::wifi::EasyConnectFake> easyconnect;
+  std::shared_ptr<rpiledconfig::system::UninstallerFake> uninstaller;
   std::shared_ptr<rpiledconfig::session::Requests> requests;
   std::shared_ptr<rpiledconfig::setup::SetupMode> setup;
 
@@ -59,7 +61,8 @@ struct SetupFixture {
     ble = std::make_shared<rpiledconfig::ble::BleFake>(logger, io.get_executor());
     wifi = std::make_shared<rpiledconfig::wifi::WifiFake>(logger);
     easyconnect = std::make_shared<rpiledconfig::wifi::EasyConnectFake>(logger);
-    requests = std::make_shared<rpiledconfig::session::Requests>(logger, wifi, "testpi", easyconnect);
+    uninstaller = std::make_shared<rpiledconfig::system::UninstallerFake>(logger);
+    requests = std::make_shared<rpiledconfig::session::Requests>(logger, wifi, "testpi", easyconnect, uninstaller);
 
     rpiledconfig::setup::SetupMode::Identity identity;
     identity.id = id;
@@ -98,6 +101,9 @@ struct SetupFixture {
     drain();
     return connection;
   }
+
+  // A write of Blink (docs/protocol.md): 0x01 to blink, 0x00 to stop.
+  void blink(ConnectionId connection, std::uint8_t value = 0x01) { write(connection, Characteristic::blink, Bytes{value}); }
 
   Bytes read(ConnectionId connection, Characteristic characteristic) { return ble->phone_read(connection, characteristic); }
 

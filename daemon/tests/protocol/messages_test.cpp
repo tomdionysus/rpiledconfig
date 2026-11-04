@@ -61,7 +61,7 @@ TEST(MessagesTest, TheResponsesAreAsTheProtocolShowsThem) {
   down.ssid = "stale";
   EXPECT_EQ(status_response("pi", down), "{\"ok\":true,\"hostname\":\"pi\",\"wifi\":{\"connected\":false}}") << "no ssid or ip when not connected";
 
-  EXPECT_EQ(info_json("0.1.0", "3a9c"), "{\"protocol\":2,\"version\":\"0.1.0\",\"fingerprint\":\"3a9c\"}");
+  EXPECT_EQ(info_json("0.1.0", "3a9c"), "{\"protocol\":3,\"version\":\"0.1.0\",\"fingerprint\":\"3a9c\"}");
 }
 
 TEST(MessagesTest, AScanIsSortedStrongestFirstWithOneEntryPerSsid) {

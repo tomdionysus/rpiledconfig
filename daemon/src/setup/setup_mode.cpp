@@ -87,11 +87,8 @@ void SetupMode::_enter(const std::string& why) {
 
   _logger->info("Entering setup mode: " + why);
 
-  // The LED first, because it is the factor a phone needs before BLE is any use. A refusal
-  // is logged and setup mode goes on without it: a Pi whose udev rule is missing still
-  // answers a phone that already knows its id.
-  if (const auto started = _modulator->start(); !started) _logger->error("The LED cannot be driven: " + started.error);
-
+  // Only BLE: the LED waits for a phone to ask (docs/protocol.md, Blink), so a Pi nobody is
+  // setting up does not show its id to the room.
   if (const auto started = _ble->start(ble::Advertisement{ble::local_name(_identity.fingerprint)}, weak_from_this()); !started) {
     _logger->error("BLE cannot advertise: " + started.error);
   }
@@ -118,7 +115,7 @@ void SetupMode::_leave(const std::string& why) {
   _sessions.clear();
 
   _ble->stop();
-  _modulator->stop();
+  _stop_blinking("setup mode is ending");
 
   _schedule_recheck();
 }
@@ -133,7 +130,55 @@ void SetupMode::_schedule_recheck() {
   });
 }
 
-void SetupMode::_on_authenticated() { _consecutive_refusals = 0; }
+void SetupMode::_on_authenticated() {
+  _consecutive_refusals = 0;
+
+  // The LED has done its work: whoever authenticated read it.
+  _stop_blinking("a phone authenticated");
+}
+
+void SetupMode::_blink(ble::ConnectionId connection, const types::Bytes& value) {
+  if (value.size() != 1 || (value[0] != 0x00 && value[0] != 0x01)) {
+    _logger->debug("A Blink write that is not 0x00 or 0x01 ignored, from connection " + std::to_string(connection));
+    return;
+  }
+
+  if (value[0] == 0x00) return _stop_blinking("connection " + std::to_string(connection) + " asked");
+
+  if (!_blinking) {
+    _blinking = true;
+    _logger->info("Blinking the id, as connection " + std::to_string(connection) + " asked, for up to " +
+                  std::to_string(_options.blink_timeout.count()) + " s");
+  } else {
+    _logger->info("Blink asked for again by connection " + std::to_string(connection) + "; " + std::to_string(_options.blink_timeout.count()) +
+                  " s from now");
+  }
+
+  // Tried again on every ask, the LED having refused before. A refusal is logged and the
+  // rest goes on: a Pi whose udev rule is missing still answers a phone that already knows
+  // its id.
+  if (!_modulator->running()) {
+    if (const auto started = _modulator->start(); !started) _logger->error("The LED cannot be driven: " + started.error);
+  }
+
+  if (_blink_timeout) _blink_timeout->cancel();
+  _blink_timeout = _timers->schedule(_options.blink_timeout, [weak = weak_from_this()]() {
+    auto self = weak.lock();
+    if (!self) return;
+    self->_stop_blinking(std::to_string(self->_options.blink_timeout.count()) + " s passed");
+  });
+}
+
+void SetupMode::_stop_blinking(const std::string& why) {
+  if (_blink_timeout) _blink_timeout->cancel();
+  _blink_timeout.reset();
+
+  if (!_blinking) return;
+  _blinking = false;
+
+  _logger->info("Stopped blinking: " + why);
+  _modulator->stop();
+}
 
 void SetupMode::_on_refused() {
   ++_consecutive_refusals;
@@ -142,7 +187,7 @@ void SetupMode::_on_refused() {
   _paused = true;
   _ble->advertising_pause();
   _logger->warn(std::to_string(_consecutive_refusals) + " refused attempts in a row; advertising paused for " +
-                std::to_string(_options.advertising_pause.count()) + " s (the LED keeps blinking)");
+                std::to_string(_options.advertising_pause.count()) + " s (a blink asked for carries on)");
 
   _pause = _timers->schedule(_options.advertising_pause, [weak = weak_from_this()]() {
     auto self = weak.lock();
@@ -207,6 +252,13 @@ void SetupMode::on_disconnect(ble::ConnectionId connection) {
 }
 
 void SetupMode::on_write(ble::ConnectionId connection, ble::Characteristic characteristic, types::Bytes value) {
+  // Blink is setup mode's, not the session's: it needs no authentication, and it outlives
+  // the connection that wrote it.
+  if (characteristic == ble::Characteristic::blink) {
+    if (_active && _sessions.count(connection) != 0) _blink(connection, value);
+    return;
+  }
+
   auto it = _sessions.find(connection);
   if (it == _sessions.end()) return;
 

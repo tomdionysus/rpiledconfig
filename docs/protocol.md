@@ -1,7 +1,7 @@
 # The RPiLEDConfig protocol
 
-Version 2 (version 1 authenticated with an HMAC challenge; version 2 with
-SPAKE2). This is the contract between the daemon (`daemon/`) and the phone
+Version 3 (version 1 authenticated with an HMAC challenge; version 2 with
+SPAKE2; version 3 blinks only when a phone asks, and can uninstall itself). This is the contract between the daemon (`daemon/`) and the phone
 app (`app/`). Change this document first, then both sides; the constants here
 are the constants in `daemon/src/protocol/` and `app/src/protocol/`, and the
 tests on each side are written from this text.
@@ -10,10 +10,24 @@ tests on each side are written from this text.
 
 Setting up a Raspberry Pi needs two things a stranger in the next room cannot
 have: line of sight to its LED, and Bluetooth range. The daemon generates a
-64-bit machine ID, blinks it out on the Pi's activity LED, and offers a BLE
-service that answers only to someone who knows that ID. The phone reads the
-LED with its camera, proves knowledge of the ID over BLE, and then configures
+64-bit machine ID and offers a BLE service that answers only to someone who
+knows that ID. The phone finds the Pi over BLE and asks it to blink; the
+daemon blinks the ID out on the Pi's activity LED; the phone reads the LED
+with its camera, proves knowledge of the ID over BLE, and then configures
 WiFi over an encrypted channel keyed from it.
+
+In the app, in order:
+
+1. Scan for BLE peripherals named `RPiLEDConfig-<fingerprint>` and list
+   them; the user picks the Pi to set up (each is shown by its
+   fingerprint).
+2. Connect to it, write 0x01 to Blink (BLE, below) and disconnect. The Pi's
+   LED starts blinking its ID, and only that Pi's: a room of Pis in setup
+   mode does not blink at all until somebody asks one.
+3. Read the LED. An ID whose fingerprint is not the chosen Pi's is another
+   Pi's LED, and is not used.
+4. Connect again, authenticate, configure WiFi. The accepted authentication
+   stops the blinking.
 
 Nothing is typed. Nothing is printed on the board. The ID never crosses the
 air in the clear: the LED carries it as light, and BLE carries only SPAKE2
@@ -50,9 +64,11 @@ shares, key confirmations and ciphertext.
 
 The LED is the Pi's activity LED by default (`/sys/class/leds/ACT`, or
 `led0` on older boards), the main LED a user sees; the power LED (`PWR`,
-or `led1`) can be chosen instead with `led.path`. While setup mode is on, the daemon takes its trigger over
+or `led1`) can be chosen instead with `led.path`. While it blinks (a phone
+asked for it with Blink, below), the daemon takes the LED's trigger over
 (`none`), drives `brightness` itself, and restores the trigger it found when
-setup mode ends.
+the blinking stops, so the LED otherwise does what the Pi's own setting
+says.
 
 This is frame version 6. Version 1 was an uncoded 64-bit ID and CRC-8; 2 a
 64-bit ID under RS(24, 12); 3 a 48-bit ID, RS(20, 10), T = 100 ms; 4 a
@@ -96,7 +112,7 @@ A frame is, in order:
 | Sync | on for 5T, then off for 5T | 10 |
 | Codeword | 16 bytes, each as its high nibble's word then its low nibble's, each word first symbol first | 160 |
 
-Frames repeat back to back while setup mode is on. One frame is 170T, 8.5
+Frames repeat back to back while the daemon blinks. One frame is 170T, 8.5
 seconds. A word next to the sync can lengthen its runs (the last word's
 final `1`s join the sync's on, the first word's leading `0`s its off), so
 the sync's runs are 5T to 7T; nothing else is longer than 4T.
@@ -199,7 +215,8 @@ that the Pi they are talking to is the one whose LED they read.
 
 ## BLE
 
-The daemon advertises while setup mode is on, and stops when it is off.
+The daemon advertises while setup mode is on, and stops when it is off. The
+LED is dark (left to its trigger) until a phone writes Blink.
 
 - Local name: `RPiLEDConfig-<fingerprint>`, for example `RPiLEDConfig-3a9c`.
 - Advertised service UUID: the service below.
@@ -214,12 +231,34 @@ base and differ in the first group:
 
 | UUID (first group) | Name | Properties | Content |
 | --- | --- | --- | --- |
-| `2a7f0002` | Info | read | plain UTF-8 JSON: `{"protocol":2,"version":"<daemon version>","fingerprint":"<4 hex>"}` |
+| `2a7f0002` | Info | read | plain UTF-8 JSON: `{"protocol":3,"version":"<daemon version>","fingerprint":"<4 hex>"}` |
 | `2a7f0003` | Challenge | read | `pB`: the daemon's SPAKE2 share, 65 bytes, from a new `y` for every connection and after every Auth write |
 | `2a7f0004` | Auth | write | `pA` (65 bytes) || `cA` (32 bytes) |
 | `2a7f0005` | AuthResult | read, notify | one byte: 0x01 accepted, 0x00 refused; on 0x01 followed by `cB` (32 bytes) |
 | `2a7f0006` | Request | write | a fragment of an encrypted message, app to daemon |
 | `2a7f0007` | Response | notify | a fragment of an encrypted message, daemon to app |
+| `2a7f0008` | Blink | write | one byte: 0x01 blink the ID on the LED, 0x00 stop |
+
+### Blink
+
+Anyone connected may write Blink; it needs no authentication. Blinking shows
+the ID only to someone who can see the LED, which is the first factor
+itself, so asking for it gives a stranger out of sight nothing; what it
+changes is that a Pi does not show its ID to the room when nobody is setting
+it up.
+
+- 0x01 starts the LED's frames from the sync, or, while it already blinks,
+  restarts its clock.
+- 0x00 stops it.
+- Anything else, a write that is not one byte included, is ignored.
+
+The LED stops, and its trigger is given back, on the first of: an accepted
+authentication on any connection, a 0x00 write, 120 seconds after the last
+0x01, and setup mode ending. Disconnecting does not stop it: the app writes
+Blink, disconnects, reads the LED, and connects again to authenticate.
+
+A daemon whose Info says protocol 2 has no Blink and blinks for as long as
+setup mode is on; an app skips the write for it.
 
 ### Authentication
 
@@ -278,8 +317,8 @@ an app that starts again may find itself on an old, authenticated link; it
 always begins by reading Challenge, and this rule makes that a fresh start.
 
 A connection with three refused attempts is dropped. Five refused attempts in
-a row across connections pause advertising for 60 seconds; the LED keeps
-blinking. The count resets on an accepted attempt and when the pause ends.
+a row across connections pause advertising for 60 seconds; a blink already
+asked for carries on. The count resets on an accepted attempt and when the pause ends.
 A connection that has not authenticated within 30 seconds is dropped. A
 Request before AuthResult is 0x01 is ignored and the connection dropped.
 
@@ -335,11 +374,12 @@ Plaintexts are UTF-8 JSON objects. A request carries `op`; a response carries
 | `{"op":"wifi.configure","ssid":"...","psk":"..."}` | `{"ok":true}` once the connection is saved and activation has been asked for; `psk` is absent or empty for an open network |
 | `{"op":"wifi.forget"}` | `{"ok":true}` |
 | `{"op":"finish"}` | `{"ok":true}`; the daemon leaves setup mode and disconnects |
+| `{"op":"uninstall"}` | `{"ok":true}` once the removal has been started; the daemon disconnects, and the package is purged (Uninstalling, below) |
 
 Error codes: `bad_request` (not JSON, no `op`, missing field), `unknown_op`,
 `wifi_unavailable` (no backend, or NetworkManager is not answering),
 `wifi_failed` (the backend refused; `message` says why), `busy`,
-`easyconnect_unavailable`. A Pi with no WiFi device answers
+`easyconnect_unavailable`, `uninstall_unavailable`. A Pi with no WiFi device answers
 `wifi_unavailable`.
 
 `wifi.configure` answering `ok` means the connection is saved and
@@ -349,6 +389,29 @@ SSID.
 
 A request the daemon does not understand gets `unknown_op`, so a newer app
 against an older daemon learns what it cannot do rather than hanging.
+
+### Uninstalling
+
+`uninstall` removes RPiLEDConfig from the Pi for good, from the phone, so a
+Pi that has been set up need not keep a service that answers anyone in
+Bluetooth range. Only an authenticated phone can ask, so only someone who
+read the LED. The app asks the user to confirm first, saying what goes.
+
+The daemon runs as an unprivileged user and cannot remove a package, so the
+package ships a oneshot unit, `rpiledconfig-uninstall.service`, that runs as
+root and purges it, and a polkit rule that lets the service's user start
+that one unit and nothing else. On `uninstall` the daemon asks systemd to
+start the unit (`StartUnit`, mode `replace`) and answers `ok` once systemd
+has taken the job, then disconnects. The unit waits 3 seconds, so the answer
+reaches the phone before the daemon is stopped, and runs `apt-get purge
+rpiledconfig`: the daemon stops and gives the LED back, and the program,
+its units, its udev and polkit rules, its configuration and the machine ID
+are deleted. The WiFi connections it saved are kept, so the Pi stays on the
+network it was set up on.
+
+`uninstall_unavailable` answers a daemon that cannot: one not installed
+from the package (no such unit), one whose `uninstall.driver` is `off`, or
+a refusal from systemd or polkit (`message` says which).
 
 ## Copying the phone's WiFi: Wi-Fi Easy Connect
 
@@ -393,12 +456,14 @@ and sends with `wifi.configure`), and typing.
 
 ## Setup mode
 
-Setup mode is the LED blinking and the BLE service advertising. The daemon
+Setup mode is the BLE service advertising, and the LED blinking whenever a
+phone has asked for it (Blink). The daemon
 enters it at start when there is no WiFi connection (a backend that cannot
 be asked counts as no connection), and stays in it until `finish` is
 received or `setup.timeout` (default 15 minutes) passes. With
 `setup.always: true` it never leaves: `finish` is still answered `ok` and
-the phone disconnected, but the LED and the advertising carry on. Outside
+the phone disconnected, but the advertising carries on (and a blink
+asked for, until it stops as Blink says). Outside
 setup mode the daemon idles, checks WiFi every `setup.recheck` seconds
 (default 60), and re-enters setup mode if the connection has gone.
 

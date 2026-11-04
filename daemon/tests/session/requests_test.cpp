@@ -15,6 +15,7 @@
 
 #include "mocks/logger_mock.h"
 #include "protocol/json.h"
+#include "system/uninstaller_fake.h"
 #include "wifi/easy_connect_fake.h"
 #include "wifi/wifi_fake.h"
 
@@ -226,4 +227,42 @@ TEST(RequestsTest, FinishIsOkAndAnUnknownOpSaysSo) {
   EXPECT_FALSE(unknown.get("ok")->as_boolean());
   EXPECT_EQ(unknown.get("error")->as_string(), "unknown_op");
   EXPECT_NE(unknown.get("message")->as_string().find("reboot"), std::string::npos);
+}
+
+// docs/protocol.md, Uninstalling.
+TEST(RequestsTest, UninstallStartsTheUninstallerAndAnswersOk) {
+  Fixture f;
+  auto uninstaller = std::make_shared<system::UninstallerFake>(f.logger);
+  session::Requests requests{f.logger, f.wifi, "testpi", f.easyconnect, uninstaller};
+
+  std::optional<std::string> response;
+  requests.handle(parse_request("{\"op\":\"uninstall\"}").value, f.io.get_executor(), [&](std::string text) { response = text; });
+  f.drain();
+
+  ASSERT_TRUE(response);
+  EXPECT_EQ(*response, "{\"ok\":true}");
+  EXPECT_EQ(uninstaller->starts(), 1);
+}
+
+TEST(RequestsTest, UninstallWithNoUninstallerIsUnavailable) {
+  Fixture f;
+
+  const auto response = f.handle("{\"op\":\"uninstall\"}");
+  EXPECT_FALSE(response.get("ok")->as_boolean());
+  EXPECT_EQ(response.get("error")->as_string(), errors::uninstall_unavailable);
+}
+
+TEST(RequestsTest, AnUninstallerThatFailsIsUnavailableWithItsReason) {
+  Fixture f;
+  auto uninstaller = std::make_shared<system::UninstallerFake>(f.logger);
+  uninstaller->fail_start("Unit rpiledconfig-uninstall.service not found.");
+  session::Requests requests{f.logger, f.wifi, "testpi", f.easyconnect, uninstaller};
+
+  std::optional<std::string> response;
+  requests.handle(parse_request("{\"op\":\"uninstall\"}").value, f.io.get_executor(), [&](std::string text) { response = text; });
+  f.drain();
+
+  ASSERT_TRUE(response);
+  EXPECT_NE(response->find("\"error\":\"uninstall_unavailable\""), std::string::npos) << *response;
+  EXPECT_NE(response->find("not found"), std::string::npos) << *response;
 }

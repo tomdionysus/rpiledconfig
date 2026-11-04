@@ -17,8 +17,9 @@ namespace rpiledconfig::protocol {
 // op, a response carries ok and, when ok is false, an error code and a message for a
 // person.
 
-// 2: SPAKE2 authentication (1 was an HMAC challenge).
-inline constexpr int protocol_version = 2;
+// 3: the LED blinks only when a phone writes Blink, and uninstall (2 was SPAKE2 with the
+// LED always on in setup mode, 1 an HMAC challenge).
+inline constexpr int protocol_version = 3;
 
 namespace ops {
 
@@ -29,6 +30,7 @@ inline constexpr char wifi_forget[] = "wifi.forget";
 inline constexpr char wifi_easyconnect[] = "wifi.easyconnect";
 inline constexpr char wifi_easyconnect_stop[] = "wifi.easyconnect.stop";
 inline constexpr char finish[] = "finish";
+inline constexpr char uninstall[] = "uninstall";
 
 }  // namespace ops
 
@@ -40,6 +42,7 @@ inline constexpr char wifi_unavailable[] = "wifi_unavailable";
 inline constexpr char wifi_failed[] = "wifi_failed";
 inline constexpr char busy[] = "busy";
 inline constexpr char easyconnect_unavailable[] = "easyconnect_unavailable";
+inline constexpr char uninstall_unavailable[] = "uninstall_unavailable";
 
 }  // namespace errors
 
@@ -81,7 +84,7 @@ std::string scan_response(std::vector<WifiNetwork> networks);
 // wifi.easyconnect's answer: {"ok":true,"uri":"DPP:..."}.
 std::string easyconnect_response(const std::string& uri);
 
-// The Info characteristic: {"protocol":2,"version":"...","fingerprint":"..."}.
+// The Info characteristic: {"protocol":3,"version":"...","fingerprint":"..."}.
 std::string info_json(const std::string& version, const std::string& fingerprint);
 
 }  // namespace rpiledconfig::protocol

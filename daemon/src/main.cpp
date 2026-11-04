@@ -34,6 +34,8 @@
 #include "protocol/vectors.h"
 #include "session/requests.h"
 #include "setup/setup_mode.h"
+#include "system/uninstaller.h"
+#include "system/uninstaller_fake.h"
 #include "timers/timer_source.h"
 #include "wifi/easy_connect.h"
 #include "wifi/easy_connect_fake.h"
@@ -47,6 +49,7 @@
 #if RPILEDCONFIG_HAVE_SD_BUS
 #include "ble/ble_bluez.h"
 #include "dbus/sd_bus_loop.h"
+#include "system/uninstaller_systemd.h"
 #include "wifi/wifi_networkmanager.h"
 #endif
 
@@ -130,6 +133,27 @@ bool make_easyconnect(const std::shared_ptr<loggers::Logger>& logger, const Conf
   (void)executor;
   (void)timers;
   logger->error("wifi.easyconnect is wpa_supplicant, which needs Linux; use wifi.easyconnect: fake or off");
+  return false;
+#endif
+}
+
+// Uninstalling from the phone: off is no uninstaller (the app is told
+// uninstall_unavailable), not an error; systemd on a build without sd-bus is.
+bool make_uninstaller(const std::shared_ptr<loggers::Logger>& logger, const Config& config, const Bus& bus,
+                      std::shared_ptr<system::Uninstaller>& out) {
+  if (config.uninstall_driver == "off") return true;
+
+  if (config.uninstall_driver == "fake") {
+    out = std::make_shared<system::UninstallerFake>(scoped(logger, "uninstall"));
+    return true;
+  }
+
+#if RPILEDCONFIG_HAVE_SD_BUS
+  out = std::make_shared<system::UninstallerSystemd>(scoped(logger, "uninstall"), bus);
+  return true;
+#else
+  (void)bus;
+  logger->error("uninstall.driver is systemd, but this build has no sd-bus (libsystemd was not found, or this is not Linux); use uninstall.driver: fake or off");
   return false;
 #endif
 }
@@ -236,7 +260,7 @@ int main(int argc, char* argv[]) {
   // shared by BlueZ and NetworkManager.
   Bus bus;
 #if RPILEDCONFIG_HAVE_SD_BUS
-  if (config->ble_driver != "fake" || config->wifi_driver != "fake") {
+  if (config->ble_driver != "fake" || config->wifi_driver != "fake" || config->uninstall_driver == "systemd") {
     bus = std::make_shared<dbus::SdBusLoop>(scoped(logger, "dbus"), executor);
 
     types::Status opened = types::Status::failure("not run");
@@ -255,16 +279,20 @@ int main(int argc, char* argv[]) {
   std::shared_ptr<wifi::EasyConnect> easyconnect;
   const bool easyconnect_made = make_easyconnect(logger, *config, executor, timers, easyconnect);
 
-  if (!led_driver || !ble_driver || !wifi_driver || !easyconnect_made) {
+  std::shared_ptr<system::Uninstaller> uninstaller;
+  const bool uninstaller_made = make_uninstaller(logger, *config, bus, uninstaller);
+
+  if (!led_driver || !ble_driver || !wifi_driver || !easyconnect_made || !uninstaller_made) {
     logger->error("Cannot start with the drivers in " + config_path.string());
     return 1;
   }
 
   logger->info("LED: " + led_driver->describe() + "; BLE: " + ble_driver->describe() + "; WiFi: " + wifi_driver->describe() +
-               "; Wi-Fi Easy Connect: " + (easyconnect ? easyconnect->describe() : std::string("off")));
+               "; Wi-Fi Easy Connect: " + (easyconnect ? easyconnect->describe() : std::string("off")) +
+               "; uninstall: " + (uninstaller ? uninstaller->describe() : std::string("off")));
 
   auto modulator = std::make_shared<led::LedModulator>(scoped(logger, "led"), executor, led_driver, timers, id.value);
-  auto requests = std::make_shared<session::Requests>(scoped(logger, "requests"), wifi_driver, hostname(), easyconnect);
+  auto requests = std::make_shared<session::Requests>(scoped(logger, "requests"), wifi_driver, hostname(), easyconnect, uninstaller);
 
   setup::SetupMode::Options setup_options;
   setup_options.always = config->setup_always;

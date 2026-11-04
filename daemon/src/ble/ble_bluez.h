@@ -28,7 +28,7 @@ namespace rpiledconfig::ble {
 //
 //   /com/tomcully/rpiledconfig                 org.freedesktop.DBus.ObjectManager
 //   /com/tomcully/rpiledconfig/service0        org.bluez.GattService1
-//   /com/tomcully/rpiledconfig/service0/charN  org.bluez.GattCharacteristic1, N = 0..5
+//   /com/tomcully/rpiledconfig/service0/charN  org.bluez.GattCharacteristic1, N = 0..6
 //   /com/tomcully/rpiledconfig/advertisement0  org.bluez.LEAdvertisement1
 //
 // and registers the first with GattManager1 and the last with LEAdvertisingManager1 on
@@ -155,7 +155,7 @@ class BleBluez : public BleService, public std::enable_shared_from_this<BleBluez
   dbus::Slot _device_match_slot;
   dbus::Slot _removed_match_slot;
   dbus::Slot _owner_match_slot;
-  std::array<std::unique_ptr<CharacteristicObject>, 6> _characteristics;
+  std::array<std::unique_ptr<CharacteristicObject>, 7> _characteristics;
 
   bool _application_registered = false;
   bool _advertising_wanted = false;

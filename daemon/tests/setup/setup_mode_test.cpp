@@ -36,11 +36,127 @@ TEST(SetupModeTest, EntersAtStartWhenThereIsNoWifi) {
   f.start();
 
   EXPECT_TRUE(f.setup->active());
-  EXPECT_TRUE(f.modulator->running());
-  EXPECT_EQ(f.led->begins(), 1);
   EXPECT_TRUE(f.ble->advertising());
   EXPECT_EQ(f.ble->advertised_name(), "RPiLEDConfig-" + f.fingerprint);
+  EXPECT_FALSE(f.modulator->running()) << "the LED waits for a phone to ask";
+  EXPECT_EQ(f.led->begins(), 0);
+}
+
+// docs/protocol.md, Blink: anyone connected may ask, and the blinking outlives the link.
+TEST(SetupModeTest, TheLedBlinksWhenAPhoneAsksAndGoesOnAfterItHangsUp) {
+  SetupFixture f;
+  f.start();
+
+  const auto connection = f.connect();
+  f.blink(connection);
+  EXPECT_TRUE(f.setup->blinking());
+  EXPECT_TRUE(f.modulator->running());
+  EXPECT_EQ(f.led->begins(), 1);
   EXPECT_TRUE(f.logger->contains("LED frame 1 starts")) << f.logger->text();
+
+  f.ble->phone_disconnect(connection);
+  f.drain();
+  EXPECT_TRUE(f.modulator->running());
+}
+
+TEST(SetupModeTest, AnAcceptedAuthenticationStopsTheBlinkingAndGivesTheLedBack) {
+  SetupFixture f;
+  f.start();
+  const auto connection = f.connect();
+  f.blink(connection);
+
+  // A refusal does not: the phone may have misread, and reads again.
+  f.authenticate(connection, wrong_key());
+  EXPECT_TRUE(f.modulator->running());
+
+  ASSERT_EQ(f.authenticate(connection, f.w)[0], protocol::auth_accepted);
+  EXPECT_FALSE(f.setup->blinking());
+  EXPECT_FALSE(f.modulator->running());
+  EXPECT_EQ(f.led->ends(), 1);
+  EXPECT_FALSE(f.led->on());
+}
+
+TEST(SetupModeTest, ZeroStopsTheBlinkingAndAnythingElseIsIgnored) {
+  SetupFixture f;
+  f.start();
+  const auto connection = f.connect();
+
+  f.write(connection, ble::Characteristic::blink, {0x02});
+  f.write(connection, ble::Characteristic::blink, {0x01, 0x01});
+  f.write(connection, ble::Characteristic::blink, {});
+  EXPECT_FALSE(f.modulator->running());
+
+  f.blink(connection);
+  f.write(connection, ble::Characteristic::blink, {0x07});
+  EXPECT_TRUE(f.modulator->running());
+
+  f.blink(connection, 0x00);
+  EXPECT_FALSE(f.modulator->running());
+  EXPECT_EQ(f.led->ends(), 1);
+
+  // And again.
+  f.blink(connection);
+  EXPECT_TRUE(f.modulator->running());
+  EXPECT_EQ(f.led->begins(), 2);
+}
+
+TEST(SetupModeTest, TheBlinkingStopsTwoMinutesAfterTheLastAsk) {
+  SetupFixture f;
+  f.start();
+  f.blink(f.connect());
+
+  // A connection that has not authenticated is dropped after 30 s; the ask comes on another.
+  f.advance(100s);
+  f.blink(f.connect());
+  EXPECT_EQ(f.led->begins(), 1) << "asking again restarts the clock, not the LED";
+
+  f.advance(119s);
+  EXPECT_TRUE(f.modulator->running());
+  f.advance(1s);
+  EXPECT_FALSE(f.modulator->running());
+  EXPECT_FALSE(f.setup->blinking());
+  EXPECT_TRUE(f.setup->active()) << "setup mode goes on";
+  EXPECT_TRUE(f.ble->advertising());
+}
+
+TEST(SetupModeTest, TheBlinkingStopsWhenSetupModeEnds) {
+  setup::SetupMode::Options options;
+  options.timeout = 60s;
+  SetupFixture f(options);
+  f.start();
+  f.blink(f.connect());
+
+  f.advance(60s);
+  EXPECT_FALSE(f.setup->active());
+  EXPECT_FALSE(f.modulator->running());
+  EXPECT_EQ(f.led->ends(), 1);
+}
+
+// docs/protocol.md, Uninstalling: answered, then the link goes.
+TEST(SetupModeTest, UninstallIsAnsweredAndHangsUp) {
+  SetupFixture f;
+  f.start();
+  const auto connection = f.connect();
+  ASSERT_EQ(f.authenticate(connection, f.w)[0], protocol::auth_accepted);
+
+  const auto answer = f.request(connection, "{\"op\":\"uninstall\"}");
+  ASSERT_TRUE(answer);
+  EXPECT_EQ(*answer, "{\"ok\":true}");
+  EXPECT_EQ(f.uninstaller->starts(), 1);
+  EXPECT_FALSE(f.ble->connected(connection));
+}
+
+TEST(SetupModeTest, AnUninstallThatCannotStartIsReportedAndTheLinkStays) {
+  SetupFixture f;
+  f.uninstaller->fail_start("NoSuchUnit");
+  f.start();
+  const auto connection = f.connect();
+  ASSERT_EQ(f.authenticate(connection, f.w)[0], protocol::auth_accepted);
+
+  const auto answer = f.request(connection, "{\"op\":\"uninstall\"}");
+  ASSERT_TRUE(answer);
+  EXPECT_NE(answer->find("\"error\":\"uninstall_unavailable\""), std::string::npos) << *answer;
+  EXPECT_TRUE(f.ble->connected(connection));
 }
 
 TEST(SetupModeTest, IdlesAtStartWhenWifiIsConnectedAndChecksAgainLater) {
@@ -84,13 +200,10 @@ TEST(SetupModeTest, LeavesAfterTheTimeoutAndComesBackOnTheNextCheck) {
   f.advance(1s);
   EXPECT_FALSE(f.setup->active());
   EXPECT_FALSE(f.ble->started());
-  EXPECT_FALSE(f.modulator->running());
-  EXPECT_EQ(f.led->ends(), 1);
 
-  // Still no WiFi a minute later: setup mode again, LED and all.
+  // Still no WiFi a minute later: setup mode again.
   f.advance(60s);
   EXPECT_TRUE(f.setup->active());
-  EXPECT_EQ(f.led->begins(), 2);
   EXPECT_EQ(f.ble->starts(), 2);
 }
 
@@ -119,6 +232,7 @@ TEST(SetupModeTest, FiveRefusalsInARowPauseAdvertisingForAMinuteWhileTheLedGoesO
 
   // Three on one connection (which is dropped), two on the next.
   auto first = f.connect();
+  f.blink(first);
   for (int i = 0; i < 3; ++i) f.authenticate(first, wrong_key());
   EXPECT_FALSE(f.ble->connected(first));
   EXPECT_TRUE(f.ble->advertising());
@@ -131,7 +245,7 @@ TEST(SetupModeTest, FiveRefusalsInARowPauseAdvertisingForAMinuteWhileTheLedGoesO
   EXPECT_FALSE(f.ble->advertising());
   EXPECT_TRUE(f.setup->advertising_paused());
   EXPECT_TRUE(f.setup->active());
-  EXPECT_TRUE(f.modulator->running()) << "the LED keeps blinking";
+  EXPECT_TRUE(f.modulator->running()) << "a blink asked for carries on";
   EXPECT_EQ(f.connect(), 0u) << "nobody can connect while paused";
 
   f.advance(59s);
@@ -169,6 +283,7 @@ TEST(SetupModeTest, StopLeavesSetupModeAndGivesTheLedBack) {
   f.start();
   const auto connection = f.connect();
   ASSERT_TRUE(f.ble->connected(connection));
+  f.blink(connection);
 
   f.setup->stop();
   f.drain();
@@ -249,8 +364,11 @@ TEST(SetupModeTest, GoesOnWithoutTheLedWhenItCannotBeDriven) {
   f.led->fail_begin("permission denied");
 
   f.start();
+  const auto connection = f.connect();
+  f.blink(connection);
   EXPECT_TRUE(f.setup->active());
   EXPECT_FALSE(f.modulator->running());
+  EXPECT_TRUE(f.ble->connected(connection));
   EXPECT_TRUE(f.ble->advertising());
   EXPECT_TRUE(f.logger->contains("permission denied")) << f.logger->text();
 }
