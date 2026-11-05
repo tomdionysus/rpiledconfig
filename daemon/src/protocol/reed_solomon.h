@@ -16,7 +16,7 @@ namespace rpiledconfig::protocol::rs {
 // Reed-Solomon over GF(2^8) as docs/protocol.md has it for the LED frame: the primitive
 // polynomial 0x11D, a = 2, the generator (x - a^0)(x - a^1)...(x - a^(n-1)) for n parity
 // bytes, systematic with the message first. Written out here rather than taken from a
-// library (TODO/ACTIVE.md, "Decisions"); the daemon only encodes, and the decoder is the
+// library; the daemon only encodes, and the decoder is the
 // app's.
 
 // Polynomials are byte vectors, highest power first, as the protocol's vectors are written.

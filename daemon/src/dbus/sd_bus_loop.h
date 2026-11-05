@@ -46,7 +46,7 @@ struct CallError {
 using ReplyHandler = std::function<void(sd_bus_message* reply, const CallError* error)>;
 
 // The one connection to a bus, and the only thing in the daemon that touches it
-// (TODO/ACTIVE.md, "The shape of it"). sd-bus is single-threaded and must be pumped: the
+// sd-bus is single-threaded and must be pumped: the
 // loop watches sd_bus_get_fd for what sd_bus_get_events asks, honours sd_bus_get_timeout
 // with a timer, and calls sd_bus_process until it has nothing left. All of that runs on
 // the executor it was given, and so does everything that uses bus(): the drivers are

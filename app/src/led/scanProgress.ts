@@ -4,7 +4,7 @@
 // needs what the user is in the middle of. Kept apart from the screen so it
 // can be tested.
 //
-// - Nothing is claimed that was not measured (TODO/ACTIVE.md, Decisions): the
+// - Nothing is claimed that was not measured: the
 //   bar is the share of the code seen, and it falls only when the reader
 //   starts again on another tile.
 // - Once the LED has been seen, a moment out of view is not "no LED": the

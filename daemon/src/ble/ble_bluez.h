@@ -23,7 +23,7 @@
 
 namespace rpiledconfig::ble {
 
-// BlueZ over sd-bus (TODO/ACTIVE.md, milestone 2). While started it exports, on the
+// BlueZ over sd-bus. While started it exports, on the
 // daemon's own connection:
 //
 //   /com/tomcully/rpiledconfig                 org.freedesktop.DBus.ObjectManager

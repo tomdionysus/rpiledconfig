@@ -60,7 +60,7 @@ android {
             // The native libraries' symbols in the bundle, so Play's crash reports name functions.
             ndk { debugSymbolLevel 'SYMBOL_TABLE' }
             // -Prpiledconfig.debuggableRelease=true: a release build the test phone can be driven
-            // on and its logs read without Metro (TODO/ACTIVE.md, Hardware).
+            // on and its logs read without Metro.
             debuggable((findProperty('rpiledconfig.debuggableRelease') ?: 'false').toBoolean())
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"

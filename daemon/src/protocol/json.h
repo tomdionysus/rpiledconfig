@@ -13,7 +13,7 @@
 
 namespace rpiledconfig::protocol {
 
-// A JSON value, written and read by hand (TODO/ACTIVE.md, "Decisions": no JSON library).
+// A JSON value, written and read by hand, as no JSON library is used.
 // The protocol's messages are flat objects of strings, numbers and booleans, with one
 // array of flat objects in wifi.scan's answer, and that is what this is sized for: it
 // parses any JSON, but keeps members in a vector rather than a map because a message has
