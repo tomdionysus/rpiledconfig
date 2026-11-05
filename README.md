@@ -1,8 +1,11 @@
 # RPiLEDConfig
 
-*v0.4.0*
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="app/assets/logo-on-dark.svg">
+  <img src="app/assets/logo-on-light.svg" alt="RPi LED Config logo" width="128">
+</picture>
 
-<img src="app/assets/icon.svg" alt="RPi LED Config icon" width="128">
+*v0.4.0*
 
 Set up a Raspberry Pi's WiFi from a phone, with no keyboard, screen or network
 on the Pi. A service on the Pi offers a Bluetooth LE service that answers only
@@ -14,21 +17,37 @@ and Bluetooth range are the two factors. There is no pairing code to type and
 nothing printed on the board; the key is kept in memory for one pairing, never
 on disk.
 
+## What it's for
+
+Provisioning Pis in the field, and changing their WiFi once they are there: a Pi
+that has been installed somewhere without a screen or keyboard, where the network
+was not known when its card was made, has since changed, or is one the Pi has
+never seen. All it takes on site is a phone, and sight of the Pi's LED.
+
+If you know the network when you flash the card, set it there: Raspberry Pi
+Imager does that, and this project is not trying to replace it. It is for what
+happens after flashing, when the card is already in a Pi that is already in the
+field.
+
+The service has to be on the Pi beforehand, so it goes into the image the Pi is
+flashed with. It offers itself when the Pi has no WiFi connection. To change the
+network of a Pi that is still connected, it needs `setup.always: true`, which
+leaves it advertising over Bluetooth all the time. Once a Pi is settled, the app
+can remove the service from it.
+
 | Folder | What it is |
 | --- | --- |
 | `daemon/` | The service, `rpiledconfig`. C++20, Boost.Asio, OpenSSL, BlueZ and NetworkManager over sd-bus; systemd. |
 | `app/` | The phone app, RPi LED Config. React Native and TypeScript, Android only for now. At run time: react-native-ble-plx, react-native-vision-camera with react-native-worklets-core, react-native-safe-area-context and the noble libraries. The LED reader is native: `app/modules/led-reader`, C++ behind a VisionCamera frame-processor plugin. |
 | `docs/` | The protocol (`protocol.md`), installation, configuration, releasing to Google Play (`play-store.md`), and the app's privacy policy (`privacy.md`). |
 | `packaging/` | A Docker build of the Debian package, kept but not used. The package's own files are in `daemon/packaging/`. |
-| `TODO/` | `ACTIVE.md` is the plan; `COMPLETED.md` the record. |
 
 ## Status
 
 The latest tag, 0.4.0, does not contain the Android project and speaks an older
 protocol, so build from `main`. There is no published package or app store
 release yet. Everything so far has been run on one Raspberry Pi 5 on Raspberry
-Pi OS trixie and one Blackview A85 on Android 12, in one dark room;
-`TODO/COMPLETED.md` has the measurements and `TODO/ACTIVE.md` what is untested.
+Pi OS trixie and one Blackview A85 on Android 12, in one dark room.
 
 ## How it works
 
