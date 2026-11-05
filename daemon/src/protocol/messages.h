@@ -97,6 +97,7 @@ struct WifiNetwork {
 types::Result<Request> parse_request(const std::string& plaintext);
 
 std::string ok_response();
+std::string forgotten_response(int count);
 std::string error_response(const std::string& code, const std::string& message);
 // An empty hostname is left out: the Pi is set not to report it (status.report_hostname).
 std::string status_response(const std::string& hostname, const WifiStatus& wifi);
@@ -109,7 +110,12 @@ std::string scan_response(std::vector<WifiNetwork> networks);
 // wifi.easyconnect's answer: {"ok":true,"uri":"DPP:..."}.
 std::string easyconnect_response(const std::string& uri);
 
-// The Info characteristic: {"protocol":4,"version":"..."}.
-std::string info_json(const std::string& version);
+// The Info characteristic: {"protocol":4,"version":"...","led":"..."}, led being one of led_states.
+namespace led_states {
+inline constexpr char off[] = "off";
+inline constexpr char blinking[] = "blinking";
+inline constexpr char failed[] = "failed";
+}  // namespace led_states
+std::string info_json(const std::string& version, const std::string& led);
 
 }  // namespace rpiledconfig::protocol

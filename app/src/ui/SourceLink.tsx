@@ -9,7 +9,7 @@ export const SOURCE_URL = 'https://github.com/tomdionysus/rpiledconfig';
 export function SourceLink({ style }: { style?: StyleProp<ViewStyle> }) {
   return (
     <View style={[styles.root, style]}>
-      <Text style={styles.text}>RPi LED Config is open source, so what it says it does can be checked: read the code, or build it yourself.</Text>
+      <Text style={styles.text}>RPi LED Config is open source: read what it does, or build it yourself and run that.</Text>
       <Button label="Source code on GitHub" variant="quiet" onPress={() => void Linking.openURL(SOURCE_URL)} />
     </View>
   );

@@ -112,6 +112,7 @@ TEST(RequestsTest, ForgetAsksTheBackend) {
   Fixture f;
   const auto response = f.handle("{\"op\":\"wifi.forget\"}");
   EXPECT_TRUE(response.get("ok")->as_boolean());
+  EXPECT_EQ(response.get("forgotten")->as_number(), 0) << "nothing was saved";
   EXPECT_EQ(f.wifi->forgets(), 1);
 }
 

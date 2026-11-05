@@ -6,6 +6,9 @@
 //
 #pragma once
 
+#include <chrono>
+#include <optional>
+
 #include <cstdint>
 #include <filesystem>
 #include <memory>
@@ -14,6 +17,10 @@
 #include "loggers/logger.h"
 
 namespace rpiledconfig {
+
+// How long the service may still run, for service.stop_after_boot_minutes. Nothing when there is
+// no limit; zero when it has passed.
+std::optional<std::chrono::seconds> time_left_after_boot(std::uint32_t minutes, std::chrono::seconds uptime);
 
 // The configuration, parsed once at startup into flat fields. Every key is documented in
 // config/rpiledconfig.example.conf, and that file and this one have to agree: a key the
@@ -57,6 +64,10 @@ class Config {
   // for a name.
   std::string ble_name_prefix = "RPiLEDConfig";
 
+  // Give the Bluetooth adapter the advertised name while advertising, so that BlueZ does not hand
+  // the hostname to anything that connects. System-wide, so off unless asked for.
+  bool ble_hide_adapter_name = false;
+
   // --- wifi ------------------------------------------------------------------------
 
   // networkmanager talks to NetworkManager over D-Bus (milestone 3); fake answers from a
@@ -89,7 +100,10 @@ class Config {
   // what this does not hide).
   bool status_report_hostname = true;
 
-  bool setup_always = false;
+  // Minutes after the system booted to stop the service for good, until the next boot. 0: never.
+  std::uint32_t service_stop_after_boot_minutes = 0;
+
+  bool setup_always = true;
 
   // Seconds in setup mode before giving up until the next recheck, and seconds between
   // WiFi checks outside it (docs/protocol.md, "Setup mode").

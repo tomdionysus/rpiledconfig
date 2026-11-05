@@ -591,15 +591,8 @@ void WifiNetworkManager::_configure_add(std::shared_ptr<ConfigureJob> job) {
     self->_last_join = join;
     self->_watch_activation(active, job->device, job->ssid);
 
-    // One rpiledconfig connection at a time: the ones from earlier configures go, so a
-    // wrong passphrase tried first does not linger and autoconnect.
-    self->_own_connections(saved, [self](types::Result<std::vector<std::string>> earlier) {
-      if (!earlier || earlier.value.empty()) return;
-      auto paths = std::make_shared<std::vector<std::string>>(std::move(earlier.value));
-      self->_delete_connections(paths, 0, [self](types::Status deleted) {
-        if (!deleted) self->_logger->warn("Could not delete an earlier connection: " + deleted.error);
-      });
-    });
+    // What the earlier ones become is decided by how this one ends (_join_outcome).
+    self->_pending_saved = saved;
   });
 }
 
@@ -637,27 +630,47 @@ void WifiNetworkManager::_join_outcome(const std::string& ssid, const std::strin
   _last_join->reason = reason;
   _last_join->message = message;
 
+  const auto saved = std::move(_pending_saved);
+  _pending_saved.clear();
+  const auto logged = [self = shared_from_this()](types::Status deleted) {
+    if (!deleted) self->_logger->warn("Could not delete a connection: " + deleted.error);
+  };
+
   if (state == protocol::join_states::joined) {
     _logger->info("Joined " + ssid);
+
+    // One rpiledconfig connection at a time, and only now that the new one is known to work: a
+    // typo must not cost a Pi in the field the network it could get back to.
+    _own_connections(saved, [self = shared_from_this(), logged](types::Result<std::vector<std::string>> earlier) {
+      if (!earlier || earlier.value.empty()) return;
+      self->_delete_connections(std::make_shared<std::vector<std::string>>(std::move(earlier.value)), 0, logged);
+    });
   } else {
     _logger->warn("Could not join " + ssid + ": " + message + " (" + reason + ")");
+
+    // The attempt goes and the earlier ones stay, so that it does not autoconnect with a wrong
+    // passphrase, and the Pi can return to what worked.
+    if (!saved.empty()) _delete_connections(std::make_shared<std::vector<std::string>>(std::vector<std::string>{saved}), 0, logged);
   }
 }
 
 // --- forget --------------------------------------------------------------------------
 
-void WifiNetworkManager::forget(types::Executor on, types::StatusHandler handler) {
+void WifiNetworkManager::forget(types::Executor on, types::Handler<int> handler) {
   boost::asio::post(_loop->executor(), [self = shared_from_this(), on = std::move(on), handler = std::move(handler)]() mutable {
     self->_own_connections("", [self, on, handler](types::Result<std::vector<std::string>> own) {
-      if (!own) return types::complete(on, handler, types::Status::failure(own.code, own.error));
+      if (!own) return types::complete(on, handler, types::Result<int>::failure(own.code, own.error));
 
       if (own.value.empty()) {
         self->_logger->info("Nothing to forget: no connection made by rpiledconfig");
-        return types::complete(on, handler, types::Status::success());
+        return types::complete(on, handler, types::Result<int>::success(0));
       }
 
+      const int count = static_cast<int>(own.value.size());
       auto paths = std::make_shared<std::vector<std::string>>(std::move(own.value));
-      self->_delete_connections(paths, 0, [on, handler](types::Status deleted) { types::complete(on, handler, deleted); });
+      self->_delete_connections(paths, 0, [on, handler, count](types::Status deleted) {
+        types::complete(on, handler, deleted ? types::Result<int>::success(count) : types::Result<int>::failure(deleted.code, deleted.error));
+      });
     });
   });
 }

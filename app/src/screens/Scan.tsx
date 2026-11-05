@@ -261,7 +261,7 @@ export default function ScanScreen() {
         {view.height > 0 ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Lock focus and exposure on the square"
+            accessibilityLabel="Focus on the square"
             onPress={() => void lockOnReticle()}
             style={[
               styles.reticle,

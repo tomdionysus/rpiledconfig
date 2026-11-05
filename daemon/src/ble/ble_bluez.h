@@ -132,7 +132,9 @@ class BleBluez : public BleService, public std::enable_shared_from_this<BleBluez
 
   types::Status _export();
   void _unexport();
+  void _refuse(const std::string& device);
   void _power_then_register();
+  void _set_alias_then_register();
   void _register_application();
   void _register_advertisement();
   void _unregister_advertisement();
@@ -141,6 +143,7 @@ class BleBluez : public BleService, public std::enable_shared_from_this<BleBluez
   std::shared_ptr<loggers::Logger> _logger;
   std::shared_ptr<dbus::SdBusLoop> _loop;
   std::string _adapter;
+  bool _alias_set = false;
   std::weak_ptr<BleListener> _listener;
   Advertisement _advertisement;
 
@@ -169,6 +172,7 @@ class BleBluez : public BleService, public std::enable_shared_from_this<BleBluez
   // not yet reported gone. Their reads and writes are refused, so a dropped central
   // whose Disconnect has not landed cannot start over with a fresh challenge.
   std::set<std::string> _refused_devices;
+  static constexpr std::size_t max_refused_devices = 256;
 };
 
 }  // namespace rpiledconfig::ble

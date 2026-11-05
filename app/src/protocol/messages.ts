@@ -38,6 +38,11 @@ export interface StatusResponse {
   wifi: WifiStatus;
 }
 
+export interface ForgetResponse {
+  ok: true;
+  forgotten: number;
+}
+
 export interface Network {
   ssid: string;
   /** 0..100 */
@@ -68,7 +73,7 @@ export interface ErrorResponse {
   message: string;
 }
 
-export type Response = StatusResponse | WifiScanResponse | EasyConnectResponse | OkResponse | ErrorResponse;
+export type Response = StatusResponse | WifiScanResponse | ForgetResponse | EasyConnectResponse | OkResponse | ErrorResponse;
 
 /** UTF-8 JSON; `psk` is left out for an open network, `hidden` unless it is true. */
 export function encodeRequest(request: Request): Uint8Array {
@@ -132,6 +137,10 @@ export function decodeResponse(bytes: Uint8Array, op: Op): Response {
         return { ssid: entry.ssid, signal: Math.max(0, Math.min(100, entry.signal)), secure: entry.secure };
       });
       return { ok: true, networks };
+    }
+    case 'wifi.forget': {
+      if (typeof parsed.forgotten !== 'number') throw new MessageError('forget response has no count');
+      return { ok: true, forgotten: parsed.forgotten };
     }
     case 'wifi.easyconnect': {
       if (typeof parsed.uri !== 'string' || !parsed.uri.startsWith('DPP:')) throw new MessageError('easyconnect response has no DPP uri');

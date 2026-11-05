@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "protocol/keys.h"
+#include "protocol/messages.h"
 #include "protocol/spake2.h"
 
 namespace rpiledconfig::setup {
@@ -94,7 +95,7 @@ void SetupMode::_enter(const std::string& why) {
 
   // Only BLE: the LED waits for a phone to ask (docs/protocol.md, Blink), and there is no key
   // to show until one connects.
-  if (const auto started = _ble->start(ble::Advertisement{_identity.ble_name}, weak_from_this()); !started) {
+  if (const auto started = _ble->start(ble::Advertisement{_identity.ble_name, _options.hide_adapter_name ? _identity.ble_name : std::string()}, weak_from_this()); !started) {
     _logger->error("BLE cannot advertise: " + started.error);
   }
 
@@ -168,7 +169,9 @@ void SetupMode::_blink(ble::ConnectionId connection, const types::Bytes& value) 
   // Tried again on every ask, the LED having refused before. A refusal is logged and the
   // rest goes on: setup mode does not stop for an LED that cannot be driven.
   if (!_modulator->running()) {
-    if (const auto started = _modulator->start(_key->key, *symbol); !started) _logger->error("The LED cannot be driven: " + started.error);
+    const auto started = _modulator->start(_key->key, *symbol);
+    _led_failed = !started;
+    if (!started) _logger->error("The LED cannot be driven: " + started.error);
   }
 
   if (_blink_timeout) _blink_timeout->cancel();
@@ -185,6 +188,7 @@ void SetupMode::_stop_blinking(const std::string& why) {
 
   if (!_blinking) return;
   _blinking = false;
+  _led_failed = false;
 
   _logger->info("Stopped blinking: " + why);
   _modulator->stop();
@@ -209,12 +213,27 @@ bool SetupMode::_ensure_key() {
   // Never the key itself: it is the whole pairing secret.
   _key = Key{drawn.value, std::move(w)};
   _logger->info("A new pairing key, for this pairing only");
+
+  _key_lifetime = _timers->schedule(_options.key_lifetime, [weak = weak_from_this()]() {
+    auto self = weak.lock();
+    if (!self) return;
+
+    // Whoever holds this key, on any connection, is done with it.
+    const auto why = std::to_string(self->_options.key_lifetime.count()) + " s since it was drawn";
+    self->_stop_blinking(why);
+    self->_discard_key(why);
+    std::vector<ble::ConnectionId> connections;
+    for (const auto& [id, session] : self->_sessions) connections.push_back(id);
+    for (const auto id : connections) self->_ble->disconnect(id);
+  });
   return true;
 }
 
 void SetupMode::_discard_key(const std::string& why) {
   if (_key_expiry) _key_expiry->cancel();
   _key_expiry.reset();
+  if (_key_lifetime) _key_lifetime->cancel();
+  _key_lifetime.reset();
 
   if (!_key) return;
   _key.reset();
@@ -292,6 +311,11 @@ void SetupMode::on_connect(ble::ConnectionId connection) {
   session::PairingSession::Options options;
   options.w = _key->w;
   options.version = _identity.version;
+  options.led_state = [weak = weak_from_this()]() -> std::string {
+    auto self = weak.lock();
+    if (!self || !self->_blinking) return protocol::led_states::off;
+    return self->_led_failed ? protocol::led_states::failed : protocol::led_states::blinking;
+  };
   options.auth_timeout = _options.auth_timeout;
   options.max_refusals = _options.max_refusals;
 

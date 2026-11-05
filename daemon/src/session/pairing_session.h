@@ -44,6 +44,9 @@ class PairingSession : public std::enable_shared_from_this<PairingSession> {
     types::Bytes w;
     std::string version;
 
+    // What Info says of the LED, which setup mode knows. Unset: off.
+    std::function<std::string()> led_state;
+
     // Dropped if not authenticated by then.
     std::chrono::milliseconds auth_timeout{30000};
 

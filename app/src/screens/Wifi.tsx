@@ -47,13 +47,14 @@ function describe(error: unknown): string {
 
 export default function WifiScreen() {
   const router = useRouter();
-  const { session, setSession, pairingKey } = useApp();
+  const { session, setSession, pairingKey, setPairingKey } = useApp();
   const [status, setStatus] = useState<StatusResponse | undefined>(undefined);
   const [networks, setNetworks] = useState<Network[] | undefined>(undefined);
   const [choice, setChoice] = useState<JoinChoice | undefined>(undefined);
   const cancelChoice = useCallback(() => setChoice(undefined), []);
   const [busy, setBusy] = useState<Busy>(undefined);
   const [message, setMessage] = useState<string | undefined>(undefined);
+  const [note, setNote] = useState<string | undefined>(undefined);
   const [attempt, setAttempt] = useState<Attempt | undefined>(undefined);
   const [closed, setClosed] = useState<LinkLostError | undefined>(undefined);
   const [phoneNetwork, setPhoneNetwork] = useState<string | undefined>(undefined);
@@ -67,6 +68,7 @@ export default function WifiScreen() {
   const run = useCallback(async (what: Exclude<Busy, undefined>, action: () => Promise<void>) => {
     setBusy(what);
     setMessage(undefined);
+    setNote(undefined);
     try {
       await action();
     } catch (error) {
@@ -125,9 +127,9 @@ export default function WifiScreen() {
 
   if (removed) {
     return (
-      <Screen title="Removed">
+      <Screen title="Removal started">
         <Text style={styles.body}>
-          The Pi is removing RPi LED Config: in a few seconds the service stops, and its program and settings are deleted. Its WiFi stays as it is.
+          The Pi accepted the request and has started removing RPi LED Config: the service stops, and its program and settings are deleted, while its WiFi stays. This app cannot see how that ends. If the Pi is listed again later, the removal did not finish.
         </Text>
         <Button label="Home" onPress={() => router.replace('/')} style={styles.removedHome} />
       </Screen>
@@ -163,6 +165,7 @@ export default function WifiScreen() {
             void run('uninstall', async () => {
               await session.uninstall();
               setSession(undefined);
+              setPairingKey(undefined);
               setRemoved(true);
             }),
         },
@@ -269,6 +272,7 @@ export default function WifiScreen() {
                     void run('finish', async () => {
                       await session.finish();
                       setSession(undefined);
+                      setPairingKey(undefined);
                       router.replace('/');
                     })
                   }
@@ -316,18 +320,24 @@ export default function WifiScreen() {
         <Button label="Other network: type its name" variant="quiet" disabled={offline} onPress={() => choose({ kind: 'typed' })} />
 
         {message ? <Text style={styles.error}>{message}</Text> : null}
+        {note ? <Text style={styles.noteText}>{note}</Text> : null}
 
         <View style={styles.footer}>
-          {status?.wifi.connected && !joined ? (
+          {!joined ? (
             <Button
-              label="Forget the Pi's WiFi"
+              label="Forget networks this app saved"
               variant="secondary"
               busy={busy === 'forget'}
               disabled={offline}
               onPress={() =>
                 void run('forget', async () => {
-                  await session.wifiForget();
+                  const count = await session.wifiForget();
                   setAttempt(undefined);
+                  setNote(
+                    count === 0
+                      ? 'This app has saved no network on this Pi, so nothing changed. A network set up any other way stays.'
+                      : `Forgot ${count === 1 ? 'the network' : `${count} networks`} this app saved. A network set up any other way stays.`,
+                  );
                   setStatus(await session.status());
                 })
               }
@@ -620,6 +630,11 @@ const styles = StyleSheet.create({
   signal: {
     ...typography.label,
     color: colors.textDim,
+  },
+  noteText: {
+    ...typography.body,
+    color: colors.textDim,
+    marginTop: space.lg,
   },
   error: {
     ...typography.body,

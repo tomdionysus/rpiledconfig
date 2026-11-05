@@ -107,6 +107,8 @@ export async function followStatus(session: Session, target: JoinTarget, options
 
   while (clock.now() < deadline) {
     if (current.isClosed) {
+      // An answer that did not verify is not the radio dropping, and is not retried past.
+      if (current.closedBy?.unverified) return { kind: 'lost', error: current.closedBy, lastStatus: last };
       if (!reported) step({ kind: 'link_lost', answered: true });
       try {
         current = await reconnect(current, deadline, timeoutMs, clock, step);
@@ -119,11 +121,14 @@ export async function followStatus(session: Session, target: JoinTarget, options
 
     try {
       last = await current.status();
-      if (isOn(last, target)) return { kind: 'joined', session: current, status: last };
+      // What the Pi says of this join comes first: it can be on a network of that name by another
+      // connection while this attempt has failed, or not yet been decided.
       const join = last.wifi.join;
-      if (join && join.state === 'failed' && (target.ssid === undefined || join.ssid === target.ssid)) {
-        return { kind: 'not_joined', session: current, status: last, elapsedMs: clock.now() - begun, reason: join };
+      const ours = join && (target.ssid === undefined || join.ssid === target.ssid) ? join : undefined;
+      if (ours?.state === 'failed') {
+        return { kind: 'not_joined', session: current, status: last, elapsedMs: clock.now() - begun, reason: ours };
       }
+      if (isOn(last, target) && (!ours || ours.state === 'joined')) return { kind: 'joined', session: current, status: last };
       const now = clock.now();
       step({ kind: 'waiting', wifi: last.wifi, elapsedMs: now - begun, remainingMs: Math.max(0, deadline - now), deadline });
     } catch (error) {
@@ -137,6 +142,8 @@ export async function followStatus(session: Session, target: JoinTarget, options
     if (remaining > 0 && !current.isClosed) await sleep(clock, Math.min(pollMs, remaining));
   }
 
+  // Out of time with the Pi on the network and no failure from it: it is on the network.
+  if (!current.isClosed && last && isOn(last, target) && last.wifi.join?.state !== 'failed') return { kind: 'joined', session: current, status: last };
   if (current.isClosed || !last) {
     return { kind: 'lost', error: new PairingError('timeout', `The Pi did not answer within ${Math.round(timeoutMs / 1000)} seconds.`), lastStatus: last };
   }
@@ -173,7 +180,7 @@ export function describeStep(step: JoinStep, ssid: string, now?: number): string
       return `Saved. The Pi is joining ${ssid}.`;
     case 'link_lost':
       return step.answered
-        ? 'Bluetooth dropped while the Pi switched its radio to WiFi. That is expected; finding it again.'
+        ? 'Bluetooth dropped, as it often does while the Pi switches its radio to WiFi. Finding it again.'
         : 'Bluetooth dropped before the Pi answered. It may have taken the network; finding it again to ask.';
     case 'reconnecting':
       return `Reconnecting, attempt ${step.attempt}: ${RECONNECT_PHASES[step.phase]}.`;
@@ -255,7 +262,7 @@ export function describeOutcome(outcome: JoinOutcome, ssid: string): Verdict {
       return {
         tone: 'error',
         title: 'Lost touch with the Pi',
-        body: `${outcome.error.message} It may still have joined ${ssid}: it stays in setup mode until told to finish, so pair again to ask it.`,
+        body: `${outcome.error.message} It may still have joined ${ssid}. Pair again to ask it; if it is not listed, it has left setup mode.`,
       };
   }
 }

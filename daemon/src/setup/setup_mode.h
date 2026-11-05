@@ -51,6 +51,12 @@ class SetupMode : public ble::BleListener, public std::enable_shared_from_this<S
     // pairing key): long enough for a phone to finish reading the LED and come back, and for
     // the link a WiFi join dropped to return.
     std::chrono::seconds key_idle{120};
+
+    // The most a key lasts, whatever is going on: connections alone must not keep one alive.
+    std::chrono::seconds key_lifetime{900};
+
+    // ble.hide_adapter_name: the adapter takes the advertised name while advertising.
+    bool hide_adapter_name = false;
   };
 
   struct Identity {
@@ -116,6 +122,8 @@ class SetupMode : public ble::BleListener, public std::enable_shared_from_this<S
   int _consecutive_refusals = 0;
   // Asked for and not yet stopped, whether or not the LED could be driven.
   bool _blinking = false;
+  // The LED refused the latest attempt to drive it.
+  bool _led_failed = false;
 
   // The one-time key and its password scalar. From the first connection of a pairing until
   // _discard_key.
@@ -130,6 +138,7 @@ class SetupMode : public ble::BleListener, public std::enable_shared_from_this<S
   std::shared_ptr<timers::Timer> _pause;
   std::shared_ptr<timers::Timer> _blink_timeout;
   std::shared_ptr<timers::Timer> _key_expiry;
+  std::shared_ptr<timers::Timer> _key_lifetime;
 };
 
 }  // namespace rpiledconfig::setup

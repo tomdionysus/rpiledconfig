@@ -74,4 +74,13 @@ std::string zulu_time() {
   return out.str();
 }
 
+
+std::string printable(const std::string& text) {
+  std::string out = text;
+  for (auto& c : out) {
+    if (static_cast<unsigned char>(c) < 0x20 || c == 0x7F) c = '?';
+  }
+  return out;
+}
+
 }  // namespace rpiledconfig::util

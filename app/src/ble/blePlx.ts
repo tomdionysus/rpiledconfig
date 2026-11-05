@@ -4,6 +4,7 @@
 import { PermissionsAndroid, Platform } from 'react-native';
 import { BleManager, ScanMode, State, type Device, type Subscription } from 'react-native-ble-plx';
 import { SERVICE_UUID } from '@/protocol/constants';
+import { adapterMessage, isFinalAdapterState } from './adapterState';
 import { base64Decode, base64Encode } from './base64';
 import type { BleConnection, BleTransport, Peripheral } from './transport';
 
@@ -49,13 +50,16 @@ async function requestPermissions(): Promise<void> {
 
 /** Resolves once the adapter is powered on, or rejects with a readable reason. */
 async function waitForPoweredOn(): Promise<void> {
-  if ((await ble().state()) === State.PoweredOn) return;
+  let latest: string = await ble().state();
+  if (latest === State.PoweredOn) return;
+  if (isFinalAdapterState(latest)) throw unavailable(adapterMessage(latest));
   await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => {
       subscription.remove();
-      reject(unavailable('Bluetooth is off. Turn it on and try again.'));
+      reject(unavailable(adapterMessage(latest)));
     }, POWER_ON_TIMEOUT_MS);
     const subscription = ble().onStateChange((state) => {
+      latest = state;
       if (state === State.PoweredOn) {
         clearTimeout(timer);
         subscription.remove();

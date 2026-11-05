@@ -47,7 +47,7 @@ types::Bytes PairingSession::read(ble::Characteristic characteristic) {
 
   switch (characteristic) {
     case ble::Characteristic::info:
-      return util::to_bytes(info_json(_options.version));
+      return util::to_bytes(info_json(_options.version, _options.led_state ? _options.led_state() : std::string(led_states::off)));
     case ble::Characteristic::challenge:
       // docs/protocol.md: on an authenticated connection a read of Challenge starts over,
       // because an app that starts again may find the operating system kept the old link.

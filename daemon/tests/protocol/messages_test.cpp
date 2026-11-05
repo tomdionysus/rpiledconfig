@@ -76,7 +76,8 @@ TEST(MessagesTest, TheResponsesAreAsTheProtocolShowsThem) {
   EXPECT_EQ(status_response("", down), "{\"ok\":true,\"wifi\":{\"connected\":false}}");
   EXPECT_EQ(status_response("pi", down), "{\"ok\":true,\"hostname\":\"pi\",\"wifi\":{\"connected\":false}}") << "no ssid or ip when not connected";
 
-  EXPECT_EQ(info_json("0.1.0"), "{\"protocol\":4,\"version\":\"0.1.0\"}");
+  EXPECT_EQ(forgotten_response(2), "{\"ok\":true,\"forgotten\":2}");
+  EXPECT_EQ(info_json("0.1.0", led_states::blinking), "{\"protocol\":4,\"version\":\"0.1.0\",\"led\":\"blinking\"}");
 }
 
 TEST(MessagesTest, AScanIsSortedStrongestFirstWithOneEntryPerSsid) {

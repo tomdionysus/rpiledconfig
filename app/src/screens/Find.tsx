@@ -30,7 +30,7 @@ export default function FindScreen() {
 
   useEffect(() => {
     let cancelled = false;
-    setError(undefined);
+    // Not the error: a failed choice restarts the scan, and has only just said why it failed.
     setHint(false);
     const timer = setTimeout(() => setHint(true), HINT_AFTER_MS);
     void services.transport.prepare().then(
@@ -132,10 +132,17 @@ export default function FindScreen() {
 
       {error ? (
         <View style={styles.errorBox}>
-          <Text style={styles.errorTitle}>{error.kind === 'bluetooth' ? 'Bluetooth' : 'That Pi did not answer'}</Text>
+          <Text style={styles.errorTitle}>{error.kind === 'bluetooth' ? 'Bluetooth' : error.kind === 'led' ? 'The LED did not start' : 'That Pi did not answer'}</Text>
           <Text style={styles.errorBody}>{error.message}</Text>
           {DIAGNOSTICS && error.detail ? <Text style={styles.errorDetail}>{error.detail}</Text> : null}
-          <Button label="Look again" variant="secondary" onPress={() => setAttempt((n) => n + 1)} />
+          <Button
+            label="Look again"
+            variant="secondary"
+            onPress={() => {
+              setError(undefined);
+              setAttempt((n) => n + 1);
+            }}
+          />
         </View>
       ) : null}
 

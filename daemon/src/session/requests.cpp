@@ -84,9 +84,9 @@ void Requests::handle(const Request& request, types::Executor on, Done done) {
 
   if (request.op == ops::wifi_forget) {
     _logger->info("Forgetting the WiFi connection");
-    return _wifi->forget(on, [done](types::Status status) {
-      if (!status) return done(error_response(wifi_error_code(status.code), status.error));
-      done(ok_response());
+    return _wifi->forget(on, [done](types::Result<int> forgotten) {
+      if (!forgotten) return done(error_response(wifi_error_code(forgotten.code), forgotten.error));
+      done(forgotten_response(forgotten.value));
     });
   }
 

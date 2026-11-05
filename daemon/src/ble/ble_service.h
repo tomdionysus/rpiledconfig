@@ -51,6 +51,10 @@ class BleListener {
 
 struct Advertisement {
   std::string local_name;
+
+  // Empty leaves the adapter's name alone. Otherwise the adapter takes this name while
+  // advertising, in place of the hostname BlueZ otherwise gives anything connected.
+  std::string adapter_alias;
 };
 
 // A BLE stack: the service registered and advertised while setup mode is on, and stopped

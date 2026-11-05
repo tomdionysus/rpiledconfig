@@ -131,6 +131,14 @@ describe('watchForPis and setBlinking', () => {
     expect(daemon.blinkByte).toBe(byte);
   });
 
+  it('reports an LED the Pi could not drive, rather than sending the user to read it', async () => {
+    const daemon = new FakeDaemon({ pairingKey: ID, ledFails: true });
+    const error = await setBlinking(daemon, await found(daemon)).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(PairingError);
+    expect((error as PairingError).kind).toBe('led');
+    expect(daemon.connected).toBe(false);
+  });
+
   it('the blinking stops on an accepted authentication', async () => {
     const daemon = new FakeDaemon({ pairingKey: ID });
     await setBlinking(daemon, await found(daemon));

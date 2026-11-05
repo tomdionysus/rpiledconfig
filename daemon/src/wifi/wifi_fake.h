@@ -25,7 +25,7 @@ class WifiFake : public Wifi {
   void status(types::Executor on, types::Handler<WifiStatus> handler) override;
   void scan(types::Executor on, types::Handler<std::vector<WifiNetwork>> handler) override;
   void configure(const std::string& ssid, const std::string& psk, bool hidden, types::Executor on, types::StatusHandler handler) override;
-  void forget(types::Executor on, types::StatusHandler handler) override;
+  void forget(types::Executor on, types::Handler<int> handler) override;
   std::string describe() const override { return "fake"; }
 
   // --- What a test sets ----------------------------------------------------------------

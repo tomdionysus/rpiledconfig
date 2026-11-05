@@ -37,7 +37,8 @@ class Wifi {
   virtual void configure(const std::string& ssid, const std::string& psk, bool hidden, types::Executor on, types::StatusHandler handler) = 0;
 
   // Removes the saved connection.
-  virtual void forget(types::Executor on, types::StatusHandler handler) = 0;
+  // How many connections this daemon had made and deleted; 0 is not a failure.
+  virtual void forget(types::Executor on, types::Handler<int> handler) = 0;
 
   virtual std::string describe() const = 0;
 };

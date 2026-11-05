@@ -70,6 +70,7 @@ class MockBluez : public MockService {
   // --- The adapter and the registrations ---
 
   bool powered();
+  std::string alias();
   std::optional<Application> application();
   std::optional<Advertisement> advertisement();
   int advertisement_registrations();
@@ -128,6 +129,7 @@ class MockBluez : public MockService {
   Outcome _call_characteristic(const std::string& uuid, const char* member, const std::function<int(sd_bus_message*)>& append);
 
   bool _powered;
+  std::string _alias;
   std::string _refuse_application;
   std::optional<Application> _application;
   std::optional<Advertisement> _advertisement;

@@ -179,6 +179,22 @@ TEST_F(BleBluezAdapterOffTest, PowersAnAdapterThatIsOff) {
   EXPECT_TRUE(bluez->powered());
 }
 
+TEST_F(BleBluezTest, TheAdapterKeepsItsNameUnlessGivenAnAlias) {
+  start();
+  EXPECT_EQ(bluez->alias(), "");
+}
+
+// ble.hide_adapter_name: the adapter is called something else only while advertising.
+TEST_F(BleBluezTest, TheAdapterTakesTheAliasWhileAdvertisingAndGetsItsNameBack) {
+  const auto started = daemon.run([this]() { return ble->start(ble::Advertisement{"RPiLEDConfig-3a9c", "RPiLEDConfig-3a9c"}, listener); });
+  ASSERT_TRUE(started.ok) << started.error;
+  ASSERT_TRUE(eventually([this]() { return bluez->advertisement().has_value(); })) << logger->text();
+  EXPECT_EQ(bluez->alias(), "RPiLEDConfig-3a9c");
+
+  daemon.run([this]() { ble->stop(); });
+  EXPECT_TRUE(eventually([this]() { return bluez->alias().empty(); }));
+}
+
 TEST_F(BleBluezTest, AReadIsAnsweredByTheListenerAfterTheCentralIsAnnounced) {
   start();
   listener->answer(ble::Characteristic::info, {'{', '}'});

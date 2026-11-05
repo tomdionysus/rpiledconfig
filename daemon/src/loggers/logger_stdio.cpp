@@ -42,7 +42,7 @@ void LoggerStdIO::_write(const char* tag, const std::string& log) {
 
   // Flushed per line: a service that dies takes its buffer with it, and the last line
   // before a crash is the one most worth having.
-  std::cout << util::zulu_time() << ' ' << tag << ' ' << log << std::endl;
+  std::cout << util::zulu_time() << ' ' << tag << ' ' << util::printable(log) << std::endl;
 }
 
 }  // namespace rpiledconfig::loggers

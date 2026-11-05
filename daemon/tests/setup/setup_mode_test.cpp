@@ -11,6 +11,7 @@
 #include <chrono>
 
 #include "helpers/setup_fixture_helper.h"
+#include "protocol/json.h"
 
 using namespace rpiledconfig;
 using namespace std::chrono_literals;
@@ -57,6 +58,25 @@ TEST(SetupModeTest, TheLedBlinksWhenAPhoneAsksAndGoesOnAfterItHangsUp) {
   f.ble->phone_disconnect(connection);
   f.drain();
   EXPECT_TRUE(f.modulator->running());
+}
+
+// A write can still be on its way when its central is gone. It starts nothing, and no key is drawn.
+TEST(SetupModeTest, ABlinkFromACentralThatIsGoneStartsNothing) {
+  SetupFixture f;
+  f.start();
+
+  const auto connection = f.connect();
+  f.ble->phone_disconnect(connection);
+  f.drain();
+  f.setup->on_write(connection, ble::Characteristic::blink, types::Bytes{0x01});
+  f.drain();
+  EXPECT_FALSE(f.modulator->running());
+
+  // And one that has never been.
+  const auto again = f.connect();
+  f.setup->on_write(again + 1000, ble::Characteristic::blink, types::Bytes{0x01});
+  f.drain();
+  EXPECT_FALSE(f.modulator->running());
 }
 
 TEST(SetupModeTest, AnAcceptedAuthenticationStopsTheBlinkingAndGivesTheLedBack) {
@@ -177,9 +197,64 @@ TEST(SetupModeTest, TheKeyStaysWhileAPhoneIsConnected) {
   const auto connection = f.connect();
   ASSERT_EQ(f.authenticate(connection, f.w)[0], protocol::auth_accepted);
 
-  f.advance(1h);
+  f.advance(14min);
   EXPECT_TRUE(f.ble->connected(connection));
   EXPECT_TRUE(f.setup->has_key());
+}
+
+// Connections alone must not keep a key alive: with setup.always on, anyone in range could.
+TEST(SetupModeTest, AKeyLastsFifteenMinutesWhateverIsGoingOn) {
+  setup::SetupMode::Options options;
+  options.always = true;
+  SetupFixture f(options);
+  f.start();
+  const auto first = f.connect();
+  f.blink(first);
+
+  for (int i = 0; i < 28; ++i) {
+    f.advance(30s);
+    f.blink(f.connect());
+  }
+  EXPECT_TRUE(f.setup->has_key());
+  EXPECT_EQ(f.draws, 1);
+
+  f.advance(61s);
+  EXPECT_FALSE(f.modulator->running()) << "the LED must not go on showing a key that has gone";
+  EXPECT_EQ(f.setup->sessions(), 0u) << "nobody is left holding it";
+
+  f.next_key(0x5);
+  f.connect();
+  EXPECT_EQ(f.draws, 2);
+}
+
+// docs/protocol.md, Blink: a write is acknowledged before it is acted on, so Info says what happened.
+TEST(SetupModeTest, InfoSaysWhetherTheLedIsReallyBeingDriven) {
+  SetupFixture f;
+  f.start();
+  const auto connection = f.connect();
+  const auto led = [&]() { return protocol::Json::parse(util::to_string(f.read(connection, ble::Characteristic::info)))->get("led")->as_string(); };
+
+  EXPECT_EQ(led(), "off");
+  f.blink(connection);
+  EXPECT_EQ(led(), "blinking");
+  f.blink(connection, 0x00);
+  EXPECT_EQ(led(), "off");
+
+  f.led->fail_begin("permission denied");
+  f.blink(connection);
+  EXPECT_EQ(led(), "failed");
+}
+
+TEST(SetupModeTest, TheAdapterKeepsItsNameUnlessAskedToHideIt) {
+  SetupFixture plain;
+  plain.start();
+  EXPECT_EQ(plain.ble->adapter_alias(), "");
+
+  setup::SetupMode::Options options;
+  options.hide_adapter_name = true;
+  SetupFixture hidden(options);
+  hidden.start();
+  EXPECT_EQ(hidden.ble->adapter_alias(), hidden.ble_name);
 }
 
 // The LED is showing it, and a phone may be reading it right now.

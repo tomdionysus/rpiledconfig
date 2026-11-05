@@ -145,8 +145,11 @@ void EasyConnectWpaSupplicant::_exchange(Socket& socket, const std::string& comm
 
   // The command's word only: what follows can be long, and is in the debug log anyway.
   const std::string word = command.substr(0, command.find(' '));
-  exchange->timer = _timers->schedule(_options.reply_timeout, [weak = weak_from_this(), exchange, socket = &socket, word]() {
-    if (exchange->done) return;
+  // Weakly: the exchange holds this timer, and a strong reference back would keep both for ever,
+  // a leak on every request. The pending receive above is what keeps the exchange alive.
+  exchange->timer = _timers->schedule(_options.reply_timeout, [weak = weak_from_this(), weak_exchange = std::weak_ptr<Exchange>(exchange), socket = &socket, word]() {
+    auto exchange = weak_exchange.lock();
+    if (!exchange || exchange->done) return;
     exchange->done = true;
     if (auto self = weak.lock()) {
       boost::system::error_code ignored;
