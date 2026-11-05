@@ -1,7 +1,8 @@
 # The RPiLEDConfig protocol
 
-Version 3 (version 1 authenticated with an HMAC challenge; version 2 with
-SPAKE2; version 3 blinks only when a phone asks, and can uninstall itself). This is the contract between the daemon (`daemon/`) and the phone
+Version 4 (version 1 authenticated with an HMAC challenge; version 2 with
+SPAKE2; version 3 blinks only when a phone asks, and can uninstall itself;
+version 4 replaces the machine ID kept on disk with a one-time key). This is the contract between the daemon (`daemon/`) and the phone
 app (`app/`). Change this document first, then both sides; the constants here
 are the constants in `daemon/src/protocol/` and `app/src/protocol/`, and the
 tests on each side are written from this text.
@@ -9,56 +10,56 @@ tests on each side are written from this text.
 ## The idea
 
 Setting up a Raspberry Pi needs two things a stranger in the next room cannot
-have: line of sight to its LED, and Bluetooth range. The daemon generates a
-64-bit machine ID and offers a BLE service that answers only to someone who
-knows that ID. The phone finds the Pi over BLE and asks it to blink; the
-daemon blinks the ID out on the Pi's activity LED; the phone reads the LED
-with its camera, proves knowledge of the ID over BLE, and then configures
-WiFi over an encrypted channel keyed from it.
+have: line of sight to its LED, and Bluetooth range. The daemon offers a BLE
+service that answers only to someone who knows its one-time key, which it
+draws when a phone first connects. The phone finds the Pi over BLE and asks
+it to blink; the daemon blinks the key out on the Pi's activity LED; the
+phone reads the LED with its camera, proves knowledge of the key over BLE,
+and then configures WiFi over an encrypted channel keyed from it.
 
 In the app, in order:
 
-1. Scan for BLE peripherals named `RPiLEDConfig-<fingerprint>` and list
-   them; the user picks the Pi to set up (each is shown by its
-   fingerprint).
-2. Connect to it, write 0x01 to Blink (BLE, below) and disconnect. The Pi's
-   LED starts blinking its ID, and only that Pi's: a room of Pis in setup
-   mode does not blink at all until somebody asks one.
-3. Read the LED. An ID whose fingerprint is not the chosen Pi's is another
-   Pi's LED, and is not used.
+1. Scan for BLE peripherals advertising the service (BLE, below) and list
+   them by their full local name; the user picks the Pi to set up. The list
+   is what is on the air now: a Pi not heard for 8 seconds leaves it.
+2. Connect to it, write 0x01 to Blink (BLE, below) and disconnect. The Pi
+   draws a key for this pairing, and its LED starts blinking it, and only
+   that Pi's: a room of Pis in setup mode does not blink at all until
+   somebody asks one.
+3. Read the LED. Nothing on the air says whose LED it is: a key read from
+   another Pi's LED is refused at the next step.
 4. Connect again, authenticate, configure WiFi. The accepted authentication
    stops the blinking.
 
-Nothing is typed. Nothing is printed on the board. The ID never crosses the
-air in the clear: the LED carries it as light, and BLE carries only SPAKE2
+Nothing is typed. Nothing is printed on the board. Nothing is stored. The key
+never goes over Bluetooth: the LED carries it as light, and BLE carries only SPAKE2
 shares, key confirmations and ciphertext.
 
-## The machine ID
+## The pairing key
 
-- 64 bits from the kernel's random source (`getrandom(2)`, blocking until
-  seeded). The package generates it when it is installed; without the
-  package (or with `state.dir` moved), the daemon's first start does.
-- Kept in `<state dir>/machine-id` as 16 lowercase hex characters and a
-  newline, mode 0600. A later start reads it back; `rpiledconfig --show-id`
+- 64 bits, in the daemon's memory only. No file holds it and no command
   prints it.
-- It is written whole or not at all: to a temporary file in the same
-  directory, synced, then renamed over `machine-id`. An empty `machine-id`
-  (which only a write cut short by a power loss can leave) counts as no ID,
-  and the next start generates one. Any other content that is not 16 hex
-  characters (a 6- or 12-character ID from frame version 4 or 3 included)
-  is an error the daemon will not start past; `--regenerate-id` replaces it.
-- `--regenerate-id` replaces it. The old one is gone for good, and an app that
-  learnt it has to read the LED again.
-- Its byte form, `id_bytes`, is the 8 bytes of the ID in big-endian order.
-  Every derivation below starts from `id_bytes`.
-- Why 64 bits: the advertisement carries a 16-bit fingerprint of the ID
-  (Keys, below), which anyone in radio range can see. Frame version 4's
-  24-bit ID left 8 bits behind it, 256 guesses, which the live rate limit
-  (5 refusals, then a minute's pause) lets through in under an hour. With
-  64 bits, 48 stay unknown. Authentication is a PAKE (SPAKE2, below), so a
-  recorded pairing gives nothing to test guesses against offline and every
-  guess is a live, rate-limited attempt. On the LED it costs 7.65 seconds
-  a frame (frame version 7).
+- All 64 bits are drawn from the kernel's random source (`getrandom(2)`,
+  which blocks until seeded) when a phone connects and there is no key: the
+  first connection of a pairing. Nothing the daemon advertises or answers
+  before authentication depends on it.
+- The key outlives that connection, because a pairing is more than one: the
+  app writes Blink and disconnects, reads the LED and connects again, and
+  joining a network can drop the link and need another authentication
+  (Setup mode, below).
+- It is discarded on the first of: `finish`; setup mode ending; 120 seconds
+  with no phone connected and the LED not blinking; the daemon stopping. The
+  next connection draws a new one, and whoever held the old one has to read
+  the LED again. A refused attempt does not discard it, so a stranger's guess
+  cannot cancel a pairing in progress.
+- Its byte form, `key_bytes`, is the 8 bytes of the key in big-endian order.
+  Every derivation below starts from `key_bytes`.
+- Why 64 bits: none of them are public, so a guess has 2^64 possibilities.
+  Authentication is a PAKE (SPAKE2, below), so a recorded pairing gives
+  nothing to test guesses against offline, and every guess is a live,
+  rate-limited attempt (5 refusals, then a minute's pause) at a key that is
+  gone when the pairing ends. On the LED it costs 8.67 seconds a frame at the
+  normal rate (frame version 7).
 
 ## The LED channel (daemon to camera)
 
@@ -74,22 +75,41 @@ This is frame version 7. Version 1 was an uncoded 64-bit ID and CRC-8; 2 a
 64-bit ID under RS(24, 12); 3 a 48-bit ID, RS(20, 10), T = 100 ms; 4 a
 24-bit ID, RS(14, 7); 5 a 64-bit ID with magic, version and CRC under
 RS(24, 12), Manchester at T = 50 ms, 19.9 seconds a frame; 6 this frame at
-T = 50 ms, 8.5 seconds. Version 7 is version 6 at T = 45 ms.
+T = 50 ms. Version 7 is the same frame with its own version byte, at the
+rate the phone asks for.
 
 ### Symbols
 
-The LED sends one symbol every **T = 45 ms**: on for a `1`, off for a `0`.
-The decoder is expected to tolerate 5% clock error over a frame.
+The LED sends one symbol every T: on for a `1`, off for a `0`. T is one of three
+rates, and the phone chooses (Blink, below):
 
-Why this rate: measured, on 2026-11-04, with a Blackview A85 at 30 fps (the
+| Rate | Blink byte | T | One frame | Camera frames per symbol at 30 fps |
+| --- | --- | --- | --- | --- |
+| Normal | 0x01 | 51 ms | 8.67 s | 1.53 |
+| Fast | 0x02 | 33 ms | 5.61 s | 1.0 |
+| Robust | 0x03 | 77 ms | 13.09 s | 2.31 |
+
+The decoder is told T and is expected to tolerate 5% clock error over a frame; it
+does not search further, so it cannot read a rate other than the one it was told.
+The frame does not say its rate. The phone knows it, having asked.
+
+Why these: measured, on 2026-11-04, with a Blackview A85 at 30 fps (the
 most its camera gives a frame processor) on a Raspberry Pi 5's LED, each
 symbol time run in scripted rounds from the blink to the pairing: 50 ms
 read 5.5 to 8.1 s after first sight; 45 ms 3.6 to 5.8 s, every round; 40 ms
 3.6 to 11.4 s, slower than either neighbour; 33 ms 1.5 to 6.6 s in 13 of 13
 rounds but with exactly one camera frame per symbol, no margin for a
 slower camera or a brighter room; 25 ms worked with rounds of 22 and 30 s.
-45 ms is the fastest with margin: a 30 fps camera samples each symbol 1.35
-times. The edges blur by up to a camera frame.
+Normal has margin; fast is for when a phone turns out to manage it; robust gives
+a camera more than two frames of each symbol. The edges blur by up to a camera
+frame.
+
+Why not round numbers: no frame may be a whole number of camera frames. If it is,
+every repeat is sampled at the same points, and when those points fall on symbol
+edges, repeats add nothing. At 30 fps 50 ms is exactly that (8.5 s, 255 camera
+frames): on the phone-camera model, across every phase of the camera against the
+LED, it read 196 of 204 with the slowest at 28 s, where 48, 51 and 52 ms read all
+204 with the slowest under 9.1 s. These three avoid a whole number at 24, 25, 30 and 60 fps.
 
 The symbols are not the data bits. Each 4 bits of data (a nibble) is sent as
 one of the 16 five-symbol words that hold no run of three equal symbols,
@@ -117,15 +137,14 @@ A frame is, in order:
 | Sync | on for 5T, then off for 5T | 10 |
 | Codeword | 16 bytes, each as its high nibble's word then its low nibble's, each word first symbol first | 160 |
 
-Frames repeat back to back while the daemon blinks. One frame is 170T, 7.65
-seconds. A word next to the sync can lengthen its runs (the last word's
+Frames repeat back to back while the daemon blinks. One frame is 170T. A word next to the sync can lengthen its runs (the last word's
 final `1`s join the sync's on, the first word's leading `0`s its off), so
 the sync's runs are 5T to 7T; nothing else is longer than 4T.
 
 ### The codeword
 
-The 10-byte message is `id_bytes` followed by a CRC-16, big-endian, over the
-frame version byte 0x07 and `id_bytes`. The version byte is not sent: it is
+The 10-byte message is `key_bytes` followed by a CRC-16, big-endian, over the
+frame version byte 0x07 and `key_bytes`. The version byte is not sent: it is
 folded into the CRC, so a frame of another version can never pass, and it
 costs no time on the LED.
 
@@ -147,9 +166,9 @@ five-symbol patterns are words.
 
 Why this much redundancy: a phone held by hand loses symbols in bursts (a
 hand shake, a reflection, a missed camera frame). A byte is two words, ten
-symbols, half a second; the parity covers three such bytes damaged, or six
+symbols, half a second at the normal rate; the parity covers three such bytes damaged, or six
 not seen, so a frame decodes through a second or two of trouble, or from a
-little over 7 seconds of looking when the rest is missing.
+little over 7 seconds of looking when the rest is missing, at the normal rate.
 
 ### Decoding
 
@@ -194,12 +213,15 @@ Then:
   rather than guessed, which doubles what the code can repair.
 - Decode with errors and erasures, then check the CRC.
 
-One frame that passes is a read: in under one frame, 7.65 seconds, from
+One frame that passes the CRC is a read, and nothing else is: in under one frame from
 whenever the camera first sees the LED, and sooner when the code can fill
 what is missing. The progress shown is only what was measured: nothing until
-the LED is found, then the share of the frame's symbol slots a sample has
-fallen in. The fingerprint is shown so the user can see that it matches the
-Pi they are pointing at.
+the LED is found, then the share of one frame's symbol slots a sample has fallen in, placed by
+the rate the app was told. That is how much was watched, not whether it is valid: at a wrong rate
+it fills all the same. A full bar with no read says so, and only a read, which the CRC has passed,
+is called read; the bar then shows full, as the whole code is known. Three frames with no read and the app says so, and offers the next
+slower rate, or to ask for the blinking again at the slowest: a wrong rate, or a
+camera that cannot manage this one, otherwise reads nothing for ever.
 
 ## Keys
 
@@ -207,23 +229,27 @@ All hashes are SHA-256. HKDF is HKDF-SHA256 (RFC 5869).
 
 | Name | Derivation |
 | --- | --- |
-| `w` | HKDF(ikm = `id_bytes`, salt = ASCII `RPiLEDConfig`, info = ASCII `spake2-w v2`, L = 40), as a big-endian integer, mod `n` (the order of P-256) |
-| `fingerprint` | the first 2 bytes of SHA-256(`id_bytes`), as 4 lowercase hex characters |
+| `w` | HKDF(ikm = `key_bytes`, salt = ASCII `RPiLEDConfig`, info = ASCII `spake2-w v2`, L = 40), as a big-endian integer, mod `n` (the order of P-256) |
 | `S` | HKDF(ikm = `Ke`, salt = empty, info = ASCII `session-key v2`, L = 32) |
 
-`w` is the SPAKE2 password scalar, the same for the life of the machine ID;
+`w` is the SPAKE2 password scalar, the same for the life of the key;
 40 bytes reduced mod `n` keeps the bias below 2^-64 (RFC 9382, section 3.2).
 `Ke` is the shared secret of one SPAKE2 run (below), and `S` is that
-session's key. The fingerprint is public: it is in the advertisement so the
-app can tell which Pi is which, and it is shown to the user so they can see
-that the Pi they are talking to is the one whose LED they read.
+session's key.
 
 ## BLE
 
 The daemon advertises while setup mode is on, and stops when it is off. The
 LED is dark (left to its trigger) until a phone writes Blink.
 
-- Local name: `RPiLEDConfig-<fingerprint>`, for example `RPiLEDConfig-3a9c`.
+- Local name: `<prefix>-<suffix>`, for example `RPiLEDConfig-3a9c`. The prefix
+  is `ble.name_prefix` (docs/configuration.md), `RPiLEDConfig` unless
+  configured, at most 24 printable ASCII characters so that the name fits the
+  29 bytes a scan response has for it. The suffix is 4 lowercase hex characters
+  from the kernel's random source, drawn when the daemon starts and unrelated
+  to any key: it tells two Pis of the same prefix apart, and a Pi keeps it
+  through every key it draws. An app recognises a Pi by the service, not by the
+  name.
 - Advertised service UUID: the service below.
 - Connectable, general discoverable for as long as setup mode lasts (the
   advertisement's discoverable timeout is 0; BlueZ's default of 180 s
@@ -236,34 +262,32 @@ base and differ in the first group:
 
 | UUID (first group) | Name | Properties | Content |
 | --- | --- | --- | --- |
-| `2a7f0002` | Info | read | plain UTF-8 JSON: `{"protocol":3,"version":"<daemon version>","fingerprint":"<4 hex>"}` |
+| `2a7f0002` | Info | read | plain UTF-8 JSON: `{"protocol":4,"version":"<daemon version>"}` |
 | `2a7f0003` | Challenge | read | `pB`: the daemon's SPAKE2 share, 65 bytes, from a new `y` for every connection and after every Auth write |
 | `2a7f0004` | Auth | write | `pA` (65 bytes) || `cA` (32 bytes) |
 | `2a7f0005` | AuthResult | read, notify | one byte: 0x01 accepted, 0x00 refused; on 0x01 followed by `cB` (32 bytes) |
 | `2a7f0006` | Request | write | a fragment of an encrypted message, app to daemon |
 | `2a7f0007` | Response | notify | a fragment of an encrypted message, daemon to app |
-| `2a7f0008` | Blink | write | one byte: 0x01 blink the ID on the LED, 0x00 stop |
+| `2a7f0008` | Blink | write | one byte: 0x01, 0x02 or 0x03 blink the key on the LED at that rate (Symbols, above), 0x00 stop |
 
 ### Blink
 
 Anyone connected may write Blink; it needs no authentication. Blinking shows
-the ID only to someone who can see the LED, which is the first factor
+the key only to someone who can see the LED, which is the first factor
 itself, so asking for it gives a stranger out of sight nothing; what it
-changes is that a Pi does not show its ID to the room when nobody is setting
+changes is that a Pi does not show its key to the room when nobody is setting
 it up.
 
-- 0x01 starts the LED's frames from the sync, or, while it already blinks,
-  restarts its clock.
+- 0x01, 0x02 or 0x03 starts the LED's frames from the sync at that rate. While it
+  already blinks at that rate, it restarts only the 120 seconds; at another rate,
+  the frames start again from the sync at the new one, with the same key.
 - 0x00 stops it.
 - Anything else, a write that is not one byte included, is ignored.
 
 The LED stops, and its trigger is given back, on the first of: an accepted
 authentication on any connection, a 0x00 write, 120 seconds after the last
-0x01, and setup mode ending. Disconnecting does not stop it: the app writes
+blink asked for, and setup mode ending. Disconnecting does not stop it: the app writes
 Blink, disconnects, reads the LED, and connects again to authenticate.
-
-A daemon whose Info says protocol 2 has no Blink and blinks for as long as
-setup mode is on; an app skips the write for it.
 
 ### Authentication
 
@@ -275,12 +299,11 @@ are fixed by the protocol, so they are implicit (RFC 9382, section 3.3).
 AAD is ASCII `RPiLEDConfig auth v2`. Points are SEC1 uncompressed, 65 bytes.
 
 The point of a PAKE: a recording of a pairing, or of a failed one, gives an
-attacker nothing to test guesses of the ID against offline. Each guess costs
+attacker nothing to test guesses of the key against offline. Each guess costs
 a live attempt at the daemon, and the daemon limits those (below). A fake
 Pi gets one guess per run the user starts, as with any PAKE.
 
-1. The app connects, reads Info and checks the fingerprint against the ID it
-   read from the LED. A mismatch is shown, and the app goes no further.
+1. The app connects to the Pi the user chose and reads Info.
 2. The app reads Challenge to get `pB = y*P + w*N`. The daemon drew `y`
    uniformly from [1, n).
 3. The app draws `x` the same way, computes `pA = x*P + w*M`,
@@ -425,11 +448,14 @@ package ships a oneshot unit, `rpiledconfig-uninstall.service`, that runs as
 root and purges it, and a polkit rule that lets the service's user start
 that one unit and nothing else. On `uninstall` the daemon asks systemd to
 start the unit (`StartUnit`, mode `replace`) and answers `ok` once systemd
-has taken the job, then disconnects. The unit waits 3 seconds, so the answer
+has taken the job, leaves setup mode, so that it stops advertising at once,
+and disconnects. A Pi being removed is not offered to anyone: the seconds until
+the daemon is stopped are not spent advertising a service about to go. If the
+removal never stops the daemon, the next WiFi check (`setup.recheck`) enters setup
+mode again as usual. The unit waits 3 seconds, so the answer
 reaches the phone before the daemon is stopped, and runs `apt-get purge
 rpiledconfig`: the daemon stops and gives the LED back, and the program,
-its units, its udev and polkit rules, its configuration and the machine ID
-are deleted. The WiFi connections it saved are kept, so the Pi stays on the
+its units, its udev and polkit rules and its configuration are deleted. The WiFi connections it saved are kept, so the Pi stays on the
 network it was set up on.
 
 `uninstall_unavailable` answers a daemon that cannot: one not installed
@@ -443,12 +469,12 @@ Android 10 and later the operating system can send the phone's network to
 another device itself, by Wi-Fi Easy Connect (DPP), after the user
 confirms; the app never sees the password. The daemon is the enrollee, and
 the BLE channel is how the app learns the Pi's bootstrap code, so only a
-phone that has authenticated with the LED's ID can start it.
+phone that has authenticated with the LED's key can start it.
 
 The daemon implements this; the 0.3.0 app does not offer it. On the
 Blackview A85 the configurator took the phone off its network and never
 reached the Pi listening on the Pi's own channel, and until that is
-understood the app joins networks by passphrase or QR code only.
+understood the app joins networks by passphrase only.
 
 | Request | Response when ok |
 | --- | --- |
@@ -477,10 +503,7 @@ is offered first) and confirms, and Android sends it.
 
 `easyconnect_unavailable` answers a daemon that cannot do this: no
 wpa_supplicant control socket it may use, a wpa_supplicant built without
-DPP, or a refusal. The app then offers the other two ways: scanning the
-QR code of Android's own "Share" screen for a saved network (a
-`WIFI:S:<ssid>;T:<WPA|nopass>;P:<passphrase>;;` code, which the app reads
-and sends with `wifi.configure`), and typing.
+DPP, or a refusal. The app then offers typing.
 
 ## Setup mode
 
@@ -500,17 +523,14 @@ and Bluetooth share one radio. The app treats a disconnect after
 `wifi.configure` as expected: it reconnects, authenticates again, and asks
 for `status`. It finds the Pi again by its local name, not its address: a
 phone may see a different BLE address for the same Pi after a reconnect.
-
-`rpiledconfig --show-id` with no ID yet is an error, not a generation: the
-ID is made by the daemon's first start. `--regenerate-id` always writes a
-new one.
+Authentication is what proves it is the same Pi.
 
 ## Test vectors
 
 The test suites on both sides include, at least:
 
 - CRC-16/CCITT-FALSE of `123456789` is 0x29B1.
-- For machine ID `0x0123456789abcdef`, computed independently of both sides
+- For the key `0x0123456789abcdef`, computed independently of both sides
   (Python, from the definitions above, after it reproduced frame version
   6's vectors):
   - the message: `0123456789abcdef008c`
@@ -521,7 +541,7 @@ The test suites on both sides include, at least:
     107 runs, starting `+5,-7,+1,-4,+1,-1,+1,-2` and ending
     `-1,+3,-1,+2,-1,+1,-2,+2`. Runs are physical: adjacent symbols at the
     same level merge.
-  - Frame version 6's message for the same ID was `0123456789abcdefebaf`
+  - Frame version 6's message for the same key was `0123456789abcdefebaf`
     and its codeword `0123456789abcdefebaf67a7a555b2c6`: the CRC is what
     tells the versions apart.
 - The decoder recovers that codeword with 3 bytes changed, with 6 bytes
@@ -533,7 +553,6 @@ The test suites on both sides include, at least:
   `pB`, `K`, `Ke`, `KcA`, `KcB`, `cA` and `cB` from the given `w`, `x`, `y`.
 - For `0x0123456789abcdef`, computed independently of both sides (Python,
   from the definitions above, after it reproduced RFC 9382's vectors):
-  - the fingerprint: `55c5`
   - `w`: `d11cf43f75a28b8c30fd3da84ab44c51c0c8755713eed6dcd9b73907be6af3f7`
   - with `x` the 32 bytes `01..20` and `y` the 32 bytes `21..40`, read big-endian:
     - `pA`: `040dd445d16102c3424f2451006a7aa6e8bfd8a4ccb182905cccf632c27e995012d5f4a0911c67271eb2016e8edc631a1f3633f36ea0f8d67773d127d38697f5a2`

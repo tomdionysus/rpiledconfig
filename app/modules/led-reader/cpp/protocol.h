@@ -14,8 +14,9 @@
 // document, to daemon/src/protocol/led_code.h and to app/src/protocol/constants.ts.
 namespace rpiledconfig::reader {
 
-// The symbol time T, in milliseconds.
-inline constexpr double symbol_ms = 45.0;
+// The symbol time T of the normal rate, in milliseconds. The phone chooses among the
+// protocol's rates (docs/protocol.md, Symbols), and a Reader or Tracker is told which.
+inline constexpr double symbol_ms = 51.0;
 
 inline constexpr std::uint8_t frame_version = 0x07;
 inline constexpr std::size_t id_length = 8;

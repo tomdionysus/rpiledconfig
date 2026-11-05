@@ -10,7 +10,7 @@
 #
 # It runs as root because removing a package needs root, and it is the package's own purge:
 # prerm stops rpiledconfig.service (which gives the LED back), postrm deletes the
-# configuration and the machine id. dpkg deletes this file while the unit runs, which
+# configuration. dpkg deletes this file while the unit runs, which
 # systemd allows. The WiFi connections the daemon saved are NetworkManager's and are kept.
 
 [Unit]

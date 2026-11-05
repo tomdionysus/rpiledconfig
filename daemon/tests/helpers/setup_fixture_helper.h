@@ -16,7 +16,7 @@
 #include "ble/ble_fake.h"
 #include "led/led_fake.h"
 #include "led/led_modulator.h"
-#include "machine_id/machine_id.h"
+#include "pairing_key/pairing_key.h"
 #include "mocks/logger_mock.h"
 #include "protocol/auth.h"
 #include "protocol/channel.h"
@@ -42,9 +42,13 @@ struct SetupFixture {
   boost::asio::io_context io;
   std::shared_ptr<MockLogger> logger = std::make_shared<MockLogger>();
   std::shared_ptr<rpiledconfig::timers::ManualTimerSource> timers = std::make_shared<rpiledconfig::timers::ManualTimerSource>();
-  rpiledconfig::machine_id::MachineId id = rpiledconfig::machine_id::MachineId::from_value(0x0123456789abcdefULL);
+  // What the next draw gives, and how many there have been. A test changes `id` and `w` to see
+  // that a later pairing has another key.
+  rpiledconfig::pairing_key::PairingKey id = rpiledconfig::pairing_key::PairingKey::from_value(0x0123456789abcdefULL);
+  int draws = 0;
+  bool fail_draw = false;
   Bytes w = rpiledconfig::protocol::password_scalar(id);
-  std::string fingerprint = rpiledconfig::protocol::fingerprint(id);
+  std::string ble_name = "RPiLEDConfig-3a9c";
 
   std::shared_ptr<rpiledconfig::led::LedFake> led;
   std::shared_ptr<rpiledconfig::led::LedModulator> modulator;
@@ -57,7 +61,7 @@ struct SetupFixture {
 
   explicit SetupFixture(rpiledconfig::setup::SetupMode::Options options = {}) {
     led = std::make_shared<rpiledconfig::led::LedFake>([this]() { return timers->now(); });
-    modulator = std::make_shared<rpiledconfig::led::LedModulator>(logger, io.get_executor(), led, timers, id);
+    modulator = std::make_shared<rpiledconfig::led::LedModulator>(logger, io.get_executor(), led, timers);
     ble = std::make_shared<rpiledconfig::ble::BleFake>(logger, io.get_executor());
     wifi = std::make_shared<rpiledconfig::wifi::WifiFake>(logger);
     easyconnect = std::make_shared<rpiledconfig::wifi::EasyConnectFake>(logger);
@@ -65,10 +69,13 @@ struct SetupFixture {
     requests = std::make_shared<rpiledconfig::session::Requests>(logger, wifi, "testpi", easyconnect, uninstaller);
 
     rpiledconfig::setup::SetupMode::Identity identity;
-    identity.id = id;
-    identity.w = w;
-    identity.fingerprint = fingerprint;
+    identity.ble_name = ble_name;
     identity.version = "0.0.0-test";
+    identity.draw_key = [this]() {
+      ++draws;
+      if (fail_draw) return rpiledconfig::types::Result<rpiledconfig::pairing_key::PairingKey>::failure("no entropy");
+      return rpiledconfig::types::Result<rpiledconfig::pairing_key::PairingKey>::success(id);
+    };
 
     setup = std::make_shared<rpiledconfig::setup::SetupMode>(logger, io.get_executor(), timers, modulator, ble, wifi, requests, identity, options);
   }
@@ -82,6 +89,12 @@ struct SetupFixture {
   void drain() {
     io.restart();
     io.run();
+  }
+
+  // Another key for the next draw.
+  void next_key(std::uint64_t value) {
+    id = rpiledconfig::pairing_key::PairingKey::from_value(value);
+    w = rpiledconfig::protocol::password_scalar(id);
   }
 
   void advance(std::chrono::milliseconds by) {

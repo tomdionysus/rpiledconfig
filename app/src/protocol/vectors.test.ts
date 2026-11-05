@@ -3,14 +3,14 @@ import { acceptAuth, appAuth } from './auth';
 import { bytesToHex, hexToBytes, utf8Decode, utf8Encode } from './bytes';
 import { appChannel, daemonChannel } from './channel';
 import { fragment } from './fragments';
-import { fingerprint, passwordScalar, sessionKey } from './keys';
+import { passwordScalar, sessionKey } from './keys';
 import { encodeRequest } from './messages';
 import { share } from './spake2';
-import { MACHINE_ID, VECTORS, X, Y } from './vectors';
+import { PAIRING_KEY, VECTORS, X, Y } from './vectors';
 
 /** Everything derived from the fixed inputs, by the code under test. */
 function compute() {
-  const idBytes = hexToBytes(MACHINE_ID);
+  const idBytes = hexToBytes(PAIRING_KEY);
   const w = passwordScalar(idBytes);
   const pB = share('b', w, hexToBytes(Y));
   const app = appAuth(w, pB, hexToBytes(X));
@@ -19,9 +19,8 @@ function compute() {
   const S = sessionKey(daemon.ke);
   const wire = appChannel(S).sealer.seal(encodeRequest({ op: 'status' }));
   return {
-    machine_id: MACHINE_ID,
-    id_bytes: bytesToHex(idBytes),
-    fingerprint: fingerprint(idBytes),
+    pairing_key: PAIRING_KEY,
+    key_bytes: bytesToHex(idBytes),
     w: bytesToHex(w),
     pA: bytesToHex(app.write.subarray(0, 65)),
     pB: bytesToHex(pB),
@@ -71,7 +70,6 @@ describe('protocol vectors', () => {
     expect(hexToBytes(VECTORS.Ke)).toHaveLength(16);
     expect(hexToBytes(VECTORS.S)).toHaveLength(32);
     expect(hexToBytes(VECTORS.cA)).toHaveLength(32);
-    expect(VECTORS.fingerprint).toMatch(/^[0-9a-f]{4}$/);
     // counter 8 + ciphertext 15 + tag 16
     expect(hexToBytes(VECTORS.status_request_wire)).toHaveLength(8 + utf8Encode('{"op":"status"}').length + 16);
     // 39 bytes of wire in 19-byte slices behind a flags byte: 19 + 19 + 1.

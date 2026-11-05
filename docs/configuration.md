@@ -16,13 +16,12 @@ file, not to where the daemon was started.
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `log.level` | `info` | `debug`, `info`, `warn` or `error`. |
-| `state.dir` | `/var/lib/rpiledconfig` | Where `machine-id` lives. |
 | `led.driver` | `sysfs` on Linux, `fake` elsewhere | `sysfs` drives a kernel LED; `fake` logs what it would do. |
 | `led.path` | `/sys/class/leds/ACT` | The LED's sysfs directory: `ACT`, the activity LED (`led0` on Raspberry Pi 3 and earlier), or `PWR`, the power LED (`led1` on older boards). |
-| `led.symbol_ms` | `45` | The LED's symbol time T. The protocol's is 45 (docs/protocol.md, Symbols); anything else is an experiment and needs an app built to match (TODO/ACTIVE.md). 10 to 500. |
 | `led.active_low` | `false` | `true` when the LED lights at brightness 0 (the Raspberry Pi 5's `ACT`); without it the camera reads every frame inverted. |
 | `ble.driver` | `bluez` on Linux, `fake` elsewhere | `bluez` serves GATT through BlueZ over D-Bus; `fake` serves nothing and logs. |
 | `ble.adapter` | `hci0` | The BlueZ adapter to advertise on, by its name under `/org/bluez` (`ls /sys/class/bluetooth`). Powered on at start if it is off. |
+| `ble.name_prefix` | `RPiLEDConfig` | The start of the advertised name, which the app lists: `<prefix>-<4 random hex>`, the hex drawn each time the daemon starts. 1 to 24 printable ASCII characters, which is what fits in the advertisement. |
 | `wifi.driver` | `networkmanager` on Linux, `fake` elsewhere | `networkmanager` over D-Bus; `fake` answers with made-up networks. |
 | `wifi.interface` | `wlan0` | The WiFi interface: its wpa_supplicant control socket (`/run/wpa_supplicant/<interface>`) and its MAC in the Easy Connect URI. |
 | `wifi.easyconnect` | `fake` when `wifi.driver` is `fake`, else `wpa_supplicant` | Wi-Fi Easy Connect: `wpa_supplicant` (Linux only), `fake` (a made-up URI; nothing ever arrives), or `off` (the app is told `easyconnect_unavailable`). |
@@ -30,6 +29,9 @@ file, not to where the daemon was started.
 | `setup.always` | `false` | Stay in setup mode whatever the WiFi state. |
 | `setup.timeout` | `900` | Seconds of setup mode before giving up until the next recheck. |
 | `setup.recheck` | `60` | Seconds between WiFi checks outside setup mode. |
+
+The daemon keeps no state. A `state.dir` line from an older version is ignored with a
+warning, because an upgrade leaves the configuration file as it was.
 
 `fake` drivers are how the daemon is developed and tested on a machine that is not a Pi.
 On a Pi they are useful one at a time: `wifi.driver: fake` lets the LED and BLE be tried

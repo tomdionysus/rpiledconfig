@@ -3,7 +3,7 @@
 // library speaks. Everything with a decision in it is in pairing/session.ts.
 import { PermissionsAndroid, Platform } from 'react-native';
 import { BleManager, ScanMode, State, type Device, type Subscription } from 'react-native-ble-plx';
-import { BLE_NAME_PREFIX, SERVICE_UUID } from '@/protocol/constants';
+import { SERVICE_UUID } from '@/protocol/constants';
 import { base64Decode, base64Encode } from './base64';
 import type { BleConnection, BleTransport, Peripheral } from './transport';
 
@@ -65,8 +65,12 @@ async function waitForPoweredOn(): Promise<void> {
   });
 }
 
-/** Pis seen recently, by device id, from any scan: what `scan` reports first. */
-const RECENT_MS = 60_000;
+/**
+ * Pis seen just now, by device id, from any scan: what `scan` reports first, so a pairing after
+ * a prescan need not wait. Seconds, not a minute: a list made from a longer memory offered a Pi
+ * that had gone, which could not be connected to.
+ */
+const RECENT_MS = 5_000;
 const recent = new Map<string, { peripheral: Peripheral; at: number }>();
 
 /**
@@ -75,9 +79,7 @@ const recent = new Map<string, { peripheral: Peripheral; at: number }>();
  * on a Blackview A85. Every Pi seen goes into `recent`.
  */
 function startScan(onPi: (peripheral: Peripheral) => void, onError: (error: Error) => void): void {
-  // By service as well as by name: the 128-bit UUID and the name may not
-  // both fit in the advertisement, and which one lands in the scan
-  // response depends on the stack.
+  // By service, not by name: the name's prefix is the Pi's own (ble.name_prefix).
   // allowDuplicates: with it off, Android reports a device once per hardware match and a Pi
   // the phone's scanner still remembers from an earlier run of the app can go unreported
   // for a minute or more (seen in the symbol-time trials, 2026-11-04); every report is
@@ -88,10 +90,10 @@ function startScan(onPi: (peripheral: Peripheral) => void, onError: (error: Erro
       return;
     }
     if (!device) return;
-    // The advertised name first: `name` is the GAP name Android caches once it has
-    // connected, which is the Pi's hostname, and preferring it made every scan after
-    // the first connection miss a Pi that was advertising all along.
-    const name = [device.localName, device.name].find((candidate) => candidate?.startsWith(BLE_NAME_PREFIX));
+    // The advertised name only: `name` is the GAP name Android caches once it has connected,
+    // which is the Pi's hostname. The name is in the scan response, so a report without it
+    // is followed by one with it.
+    const name = device.localName;
     if (!name) return;
     const peripheral = { id: device.id, name, rssi: device.rssi ?? undefined };
     recent.set(device.id, { peripheral, at: Date.now() });
@@ -154,22 +156,17 @@ export const blePlxTransport: BleTransport = {
     await waitForPoweredOn();
   },
 
-  scan(namePrefix, onFound, onError) {
+  scan(onFound, onError) {
     let stopped = false;
     // What a prescan already saw: the Pi is usually found before the scan starts.
     const now = Date.now();
-    const known = [...recent.values()].filter((entry) => now - entry.at <= RECENT_MS && entry.peripheral.name.startsWith(namePrefix));
+    const known = [...recent.values()].filter((entry) => now - entry.at <= RECENT_MS);
     if (known.length > 0) {
       queueMicrotask(() => {
         if (!stopped) for (const entry of known) onFound(entry.peripheral);
       });
     }
-    startScan(
-      (peripheral) => {
-        if (peripheral.name.startsWith(namePrefix)) onFound(peripheral);
-      },
-      onError,
-    );
+    startScan(onFound, onError);
     return () => {
       stopped = true;
       void ble().stopDeviceScan();

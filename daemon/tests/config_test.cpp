@@ -36,7 +36,6 @@ TEST(ConfigTest, TheExampleParses) {
   ASSERT_TRUE(config.load_from_file(std::string(RPILEDCONFIG_TEST_SOURCE_DIR) + "/config/rpiledconfig.example.conf")) << logger->text();
 
   EXPECT_EQ(config.log_level, rpiledconfig::loggers::LogLevel::info);
-  EXPECT_EQ(config.state_dir, "/var/lib/rpiledconfig");
   EXPECT_EQ(config.led_driver, "sysfs");
   EXPECT_EQ(config.led_path, "/sys/class/leds/ACT");
   EXPECT_EQ(config.ble_driver, "bluez");
@@ -57,7 +56,6 @@ TEST(ConfigTest, ThePackagedConfigurationParses) {
 
   ASSERT_TRUE(config.load_from_file(RPILEDCONFIG_TEST_PACKAGED_CONFIG)) << logger->text();
 
-  EXPECT_EQ(config.state_dir, "/var/lib/rpiledconfig");
   EXPECT_EQ(config.led_driver, "sysfs");
   EXPECT_EQ(config.led_path, "/sys/class/leds/ACT");
   EXPECT_EQ(config.ble_driver, "bluez");
@@ -70,7 +68,6 @@ TEST(ConfigTest, AnEmptyFileIsTheDefaults) {
   ASSERT_TRUE(loaded.ok) << loaded.logger->text();
 
   EXPECT_EQ(loaded.config.log_level, rpiledconfig::loggers::LogLevel::info);
-  EXPECT_EQ(loaded.config.state_dir, "/var/lib/rpiledconfig");
   EXPECT_EQ(loaded.config.led_path, "/sys/class/leds/ACT");
   EXPECT_EQ(loaded.config.ble_adapter, "hci0");
   EXPECT_FALSE(loaded.config.setup_always);
@@ -105,13 +102,11 @@ TEST(ConfigTest, CommentsBlankLinesAndWhitespaceAreForgiven) {
 TEST(ConfigTest, ValuesMayBeQuoted) {
   Loaded loaded(
       "ble.adapter: \"hci1\"\n"
-      "led.path: '/sys/class/leds/led0'\n"
-      "state.dir: \"/var/lib/with # hash\"\n");
+      "led.path: \"/sys/class/leds/with # hash\"\n");
   ASSERT_TRUE(loaded.ok) << loaded.logger->text();
 
   EXPECT_EQ(loaded.config.ble_adapter, "hci1");
-  EXPECT_EQ(loaded.config.led_path, "/sys/class/leds/led0");
-  EXPECT_EQ(loaded.config.state_dir, "/var/lib/with # hash");
+  EXPECT_EQ(loaded.config.led_path, "/sys/class/leds/with # hash");
 }
 
 TEST(ConfigTest, TheLedMayBeActiveLow) {
@@ -153,14 +148,37 @@ TEST(ConfigTest, AKeySetTwiceIsAnError) {
 
 TEST(ConfigTest, RelativePathsResolveAgainstTheFile) {
   Loaded loaded(
-      "state.dir: .local\n"
       "led.path: ../fake-led\n",
       "/srv/rpiledconfig/etc");
   ASSERT_TRUE(loaded.ok) << loaded.logger->text();
 
-  EXPECT_EQ(loaded.config.state_dir, "/srv/rpiledconfig/etc/.local");
   EXPECT_EQ(loaded.config.led_path, "/srv/rpiledconfig/fake-led");
 }
+
+// A conffile an upgrade left in place still has this line, and the daemon must still start.
+TEST(ConfigTest, TheOldStateDirIsTakenAndWarnedAbout) {
+  Loaded loaded("state.dir: /var/lib/rpiledconfig\n");
+  ASSERT_TRUE(loaded.ok) << loaded.logger->text();
+  EXPECT_TRUE(loaded.logger->contains("state.dir is no longer used")) << loaded.logger->text();
+}
+
+// docs/protocol.md, BLE: what fits in the scan response.
+TEST(ConfigTest, TheNamePrefixIsChecked) {
+  EXPECT_EQ(Loaded("").config.ble_name_prefix, "RPiLEDConfig");
+  EXPECT_EQ(Loaded("ble.name_prefix: Kitchen Pi\n").config.ble_name_prefix, "Kitchen Pi");
+
+  const std::string longest(24, 'x');
+  Loaded fits("ble.name_prefix: " + longest + "\n");
+  EXPECT_TRUE(fits.ok) << fits.logger->text();
+  EXPECT_EQ(fits.config.ble_name_prefix, longest);
+
+  EXPECT_FALSE(Loaded("ble.name_prefix: " + longest + "x\n").ok);
+  EXPECT_FALSE(Loaded("ble.name_prefix: caf\xc3\xa9\n").ok);
+  EXPECT_FALSE(Loaded("ble.name_prefix:\n").ok);
+}
+
+// The phone chooses the rate now (docs/protocol.md, Symbols).
+TEST(ConfigTest, TheSymbolTimeIsNoLongerAKey) { EXPECT_FALSE(Loaded("led.symbol_ms: 50\n").ok); }
 
 TEST(ConfigTest, BooleansAreTrueOrFalseAndNothingElse) {
   EXPECT_TRUE(Loaded("setup.always: false\n").ok);
@@ -197,13 +215,6 @@ TEST(ConfigTest, EasyConnectFollowsTheWifiDriverUnlessSet) {
   EXPECT_EQ(Loaded("wifi.driver: networkmanager\nwifi.easyconnect: off\n").config.wifi_easyconnect, "off");
   EXPECT_EQ(Loaded("wifi.driver: fake\nwifi.easyconnect: wpa_supplicant\n").config.wifi_easyconnect, "wpa_supplicant");
   EXPECT_FALSE(Loaded("wifi.easyconnect: dpp\n").ok);
-}
-
-TEST(ConfigTest, TheSymbolTimeDefaultsToTheProtocolsAndIsBounded) {
-  EXPECT_EQ(Loaded("").config.led_symbol_ms, 45u);
-  EXPECT_EQ(Loaded("led.symbol_ms: 25\n").config.led_symbol_ms, 25u);
-  EXPECT_FALSE(Loaded("led.symbol_ms: 5\n").ok);
-  EXPECT_FALSE(Loaded("led.symbol_ms: 501\n").ok);
 }
 
 TEST(ConfigTest, TheUninstallDriverIsSystemdFakeOrOff) {

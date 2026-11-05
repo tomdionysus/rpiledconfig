@@ -220,10 +220,6 @@ if(NOT DEFINED RPILEDCONFIG_CONFIG_INSTALL_DIR)
     endif()
 endif()
 
-# The state directory the maintainer scripts create and the unit's StateDirectory= names.
-# Fixed by systemd, not by the prefix; the machine id lives in it.
-set(RPILEDCONFIG_STATE_DIR "/var/lib/rpiledconfig")
-
 # The unit and the udev rule under the prefix: /usr/lib/systemd/system and
 # /usr/lib/udev/rules.d for the package, where bookworm and trixie both look, and
 # /usr/local/... for a local install. There is no D-Bus policy: the distributions' own

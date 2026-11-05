@@ -1,4 +1,4 @@
-// Pairing over Bluetooth: scan for the Pi named for the ID's fingerprint,
+// Pairing over Bluetooth: scan for the Pi chosen on the find screen, by its name,
 // connect, check Info, authenticate both ways. The session logic is in
 // pairing/session.ts; this screen only shows where it is.
 import { useRouter } from '@/navigation';
@@ -6,7 +6,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { pair, PairingError, type PairingPhase } from '@/pairing/session';
 import { bytesToHex } from '@/protocol/bytes';
-import { fingerprint } from '@/protocol/keys';
 import { useApp } from '@/state/store';
 import { Button } from '@/ui/Button';
 import { Progress } from '@/ui/Progress';
@@ -19,28 +18,27 @@ const PHASES: PairingPhase[] = ['scanning', 'connecting', 'checking', 'authentic
 const PHASE_LABELS: Record<PairingPhase, string> = {
   scanning: 'Looking for the Pi',
   connecting: 'Connecting',
-  checking: 'Checking its fingerprint',
-  authenticating: 'Proving we both know the ID',
+  checking: 'Checking it is RPi LED Config',
+  authenticating: 'Proving we both know the key',
   ready: 'Paired',
 };
 
 export default function PairScreen() {
   const router = useRouter();
-  const { machineId, target, services, setSession } = useApp();
+  const { pairingKey, target, services, setSession } = useApp();
   const [phase, setPhase] = useState<PairingPhase>('scanning');
   const [detail, setDetail] = useState<string | undefined>(undefined);
   const [error, setError] = useState<PairingError | undefined>(undefined);
   const [attempt, setAttempt] = useState(0);
 
   const start = useCallback(async () => {
-    if (!machineId) return;
+    if (!pairingKey || !target) return;
     setError(undefined);
     setPhase('scanning');
     try {
-      // The Pi chosen and asked to blink, by its platform id, when the LED read was its.
-      const preferId = target && target.fingerprint === fingerprint(machineId) ? target.id : undefined;
-      const session = await pair(services.transport, machineId, {
-        preferId,
+      // The Pi chosen and asked to blink; the authentication proves the key is its.
+      const session = await pair(services.transport, target.name, pairingKey, {
+        preferId: target.id,
         onPhase: (next, info) => {
           setPhase(next);
           setDetail(info);
@@ -51,30 +49,29 @@ export default function PairScreen() {
     } catch (caught) {
       setError(caught instanceof PairingError ? caught : new PairingError('bluetooth', 'Something went wrong with Bluetooth. Try again.', caught));
     }
-  }, [machineId, router, services.transport, setSession, target]);
+  }, [pairingKey, router, services.transport, setSession, target]);
 
   useEffect(() => {
     void start();
   }, [start, attempt]);
 
-  if (!machineId) {
+  if (!pairingKey || !target) {
     return (
       <Screen title="Pair" showBack>
-        <Text style={styles.body}>No machine ID yet. Read the LED first.</Text>
-        <Button label="Read the LED" onPress={() => router.replace('/scan')} />
+        <Text style={styles.body}>No key yet. Choose a Pi and read its LED first.</Text>
+        <Button label="Find the Pi" onPress={() => router.replace('/find')} />
       </Screen>
     );
   }
 
-  const fp = fingerprint(machineId);
   const step = PHASES.indexOf(phase);
 
   return (
     <Screen title="Pair" eyebrow="Step 3 of 4" showBack={!!error}>
       <View style={styles.idCard}>
-        <Text style={styles.idLabel}>PI {fp}</Text>
-        <Text style={styles.id}>{bytesToHex(machineId)}</Text>
-        <Text style={styles.idDetail}>The ID read from its LED. It never crosses the air: both sides prove they know it.</Text>
+        <Text style={styles.idLabel}>{target.name}</Text>
+        <Text style={styles.id}>{bytesToHex(pairingKey)}</Text>
+        <Text style={styles.idDetail}>The one-time key read from its LED. It never goes over Bluetooth: both sides prove they know it.</Text>
       </View>
 
       <Progress value={(step + (error ? 0 : 0.5)) / PHASES.length} label={PHASE_LABELS[phase]} detail={detail} tone={error ? 'warn' : 'accent'} />
@@ -85,7 +82,7 @@ export default function PairScreen() {
           <Text style={styles.errorBody}>{error.message}</Text>
           {DIAGNOSTICS && error.detail ? <Text style={styles.errorDetail}>{error.detail}</Text> : null}
           <Button label="Try again" onPress={() => setAttempt((n) => n + 1)} />
-          <Button label={error.kind === 'fingerprint_mismatch' || error.kind === 'refused' ? 'Read the LED again' : 'Back'} variant="quiet" onPress={() => router.replace('/')} />
+          <Button label={error.kind === 'refused' ? 'Read the LED again' : 'Back'} variant="quiet" onPress={() => router.replace('/')} />
         </View>
       ) : null}
     </Screen>
@@ -96,8 +93,6 @@ function errorTitle(error: PairingError): string {
   switch (error.kind) {
     case 'not_found':
       return 'No Pi found';
-    case 'fingerprint_mismatch':
-      return 'Not the same Pi';
     case 'refused':
       return 'Authentication refused';
     case 'protocol':

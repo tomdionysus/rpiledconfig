@@ -30,13 +30,6 @@ class Config {
 
   loggers::LogLevel log_level = loggers::LogLevel::info;
 
-  // --- state -----------------------------------------------------------------------
-
-  // Where the machine id lives (docs/protocol.md, "The machine ID"). The unit's
-  // StateDirectory= makes it; relative to the configuration file otherwise, so a
-  // development configuration can keep its id beside itself.
-  std::string state_dir = "/var/lib/rpiledconfig";
-
   // --- led -------------------------------------------------------------------------
 
   // sysfs drives the LED through /sys/class/leds; fake records what it would have done.
@@ -51,9 +44,6 @@ class Config {
   // lit for 0 and went dark for max_brightness, so the camera saw every frame inverted.
   bool led_active_low = false;
 
-  // The symbol time T in milliseconds. The protocol's is 45 (docs/protocol.md, Symbols);
-  // any other value is an experiment the app has to be built to match (TODO/ACTIVE.md).
-  std::uint32_t led_symbol_ms = 45;
 
   // --- ble -------------------------------------------------------------------------
 
@@ -61,6 +51,11 @@ class Config {
   // the development Mac.
   std::string ble_driver = default_ble_driver;
   std::string ble_adapter = "hci0";
+
+  // The first part of the advertised name (docs/protocol.md, BLE). At most 24 printable ASCII
+  // characters: with "-" and the 4 hex of the suffix that is the 29 bytes a scan response has
+  // for a name.
+  std::string ble_name_prefix = "RPiLEDConfig";
 
   // --- wifi ------------------------------------------------------------------------
 

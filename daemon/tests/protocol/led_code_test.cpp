@@ -18,7 +18,7 @@ using namespace rpiledconfig;
 
 namespace {
 
-const auto vectors_id = machine_id::MachineId::from_value(0x0123456789abcdefULL);
+const auto vectors_id = pairing_key::PairingKey::from_value(0x0123456789abcdefULL);
 
 }  // namespace
 
@@ -32,8 +32,8 @@ TEST(LedCodeTest, TheMessageIsTheIdAndACrcOverTheVersionAndId) {
 // The version byte is in the CRC and not on the LED: with any other version the CRC differs.
 TEST(LedCodeTest, TheVersionIsFoldedIntoTheCrc) {
   types::Bytes checked{0x05};
-  const auto id_bytes = vectors_id.id_bytes();
-  checked.insert(checked.end(), id_bytes.begin(), id_bytes.end());
+  const auto key_bytes = vectors_id.key_bytes();
+  checked.insert(checked.end(), key_bytes.begin(), key_bytes.end());
   const auto other = protocol::crc16(checked);
   const auto message = protocol::led_message(vectors_id);
   EXPECT_NE(other, (message[8] << 8) | message[9]);
@@ -51,7 +51,7 @@ TEST(LedCodeTest, TheGeneratorIsTheProtocols) {
 
 TEST(LedCodeTest, EveryIdGivesAValidCodeword) {
   for (const auto value : {0ULL, 0xffffffffffffffffULL, 0x8000000000000001ULL}) {
-    const auto codeword = protocol::led_codeword(machine_id::MachineId::from_value(value));
+    const auto codeword = protocol::led_codeword(pairing_key::PairingKey::from_value(value));
     ASSERT_EQ(codeword.size(), 16u);
     EXPECT_EQ(rpiledconfig::protocol::rs::syndromes(codeword, 6), types::Bytes(6, 0)) << value;
   }

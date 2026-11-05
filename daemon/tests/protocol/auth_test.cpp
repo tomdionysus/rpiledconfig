@@ -17,7 +17,7 @@ using namespace rpiledconfig::protocol;
 
 namespace {
 
-types::Bytes vectors_w() { return password_scalar(machine_id::MachineId::from_value(0x0123456789abcdefULL)); }
+types::Bytes vectors_w() { return password_scalar(pairing_key::PairingKey::from_value(0x0123456789abcdefULL)); }
 
 }  // namespace
 
@@ -55,7 +55,7 @@ TEST(AuthTest, TheDaemonRefusesTheWrongIdAnAlteredWriteAndAWrongLength) {
   ASSERT_TRUE(right);
   EXPECT_TRUE(accept_auth(w, y, p_b, right.value.write));
 
-  const auto wrong_id = app_auth(password_scalar(machine_id::MachineId::from_value(0x0123456789abcdeeULL)), spake2::random_scalar(), p_b);
+  const auto wrong_id = app_auth(password_scalar(pairing_key::PairingKey::from_value(0x0123456789abcdeeULL)), spake2::random_scalar(), p_b);
   ASSERT_TRUE(wrong_id);
   EXPECT_FALSE(accept_auth(w, y, p_b, wrong_id.value.write));
 

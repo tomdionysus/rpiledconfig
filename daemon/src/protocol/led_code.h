@@ -10,13 +10,13 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "machine_id/machine_id.h"
+#include "pairing_key/pairing_key.h"
 #include "types/status.h"
 
 namespace rpiledconfig::protocol {
 
 // What the LED blinks (docs/protocol.md, "The codeword"): frame version 7, a 10-byte
-// message of id_bytes and a CRC-16 over the version byte and id_bytes (the version is
+// message of key_bytes and a CRC-16 over the version byte and key_bytes (the version is
 // folded into the CRC, not sent), followed by 6 Reed-Solomon parity bytes. The daemon only
 // encodes; reading it back is the app's.
 
@@ -35,7 +35,7 @@ inline constexpr std::size_t led_sync_off = 5;
 // 170: the sync and the codeword's 32 words.
 inline constexpr std::size_t led_frame_symbols = led_sync_on + led_sync_off + led_codeword_length * 2 * led_word_symbols;
 
-types::Bytes led_message(const machine_id::MachineId& id);
-types::Bytes led_codeword(const machine_id::MachineId& id);
+types::Bytes led_message(const pairing_key::PairingKey& id);
+types::Bytes led_codeword(const pairing_key::PairingKey& id);
 
 }  // namespace rpiledconfig::protocol

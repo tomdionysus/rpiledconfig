@@ -3,7 +3,7 @@
 // same bytes with --print-vectors; vectors.test.ts checks the code still
 // reproduces these, so a change that breaks compatibility fails here.
 
-export const MACHINE_ID = '0123456789abcdef';
+export const PAIRING_KEY = '0123456789abcdef';
 /** x, the app's SPAKE2 scalar: 32 bytes 01..20. */
 export const X = '0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20';
 /** y, the daemon's: 32 bytes 21..40. */
@@ -11,12 +11,11 @@ export const Y = '2122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f
 
 
 export const VECTORS = {
-  machine_id: MACHINE_ID,
-  id_bytes: '0123456789abcdef',
+  pairing_key: PAIRING_KEY,
+  key_bytes: '0123456789abcdef',
   /** CRC-16/CCITT-FALSE of ASCII 123456789. */
-  /** The LED frame's message: magic 0x52, version 0x05, id_bytes, CRC-16 (docs/protocol.md, The codeword). */
+  /** The LED frame's message: magic 0x52, version 0x05, key_bytes, CRC-16 (docs/protocol.md, The codeword). */
   /** The message and its RS(24, 12) parity. */
-  fingerprint: '55c5',
   // SPAKE2 for x and y above, computed in Python (docs/protocol.md) after it
   // reproduced RFC 9382's vectors.
   w: 'd11cf43f75a28b8c30fd3da84ab44c51c0c8755713eed6dcd9b73907be6af3f7',

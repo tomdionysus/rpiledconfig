@@ -109,8 +109,8 @@ void append_with_length(Bytes& out, const Bytes& s) {
 
 }  // namespace
 
-Bytes password_scalar(const Bytes& id_bytes) {
-  const Bytes wide = crypto::hkdf_sha256(id_bytes, util::to_bytes("RPiLEDConfig"), util::to_bytes("spake2-w v2"), 40);
+Bytes password_scalar(const Bytes& key_bytes) {
+  const Bytes wide = crypto::hkdf_sha256(key_bytes, util::to_bytes("RPiLEDConfig"), util::to_bytes("spake2-w v2"), 40);
   if (wide.size() != 40) return {};
 
   Curve curve;

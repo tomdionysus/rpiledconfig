@@ -25,7 +25,7 @@ set(CPACK_PACKAGE_NAME "rpiledconfig")
 set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
 set(CPACK_PACKAGE_VENDOR "T. Cully")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Two-factor proximity WiFi setup for a Raspberry Pi")
-set(CPACK_PACKAGE_DESCRIPTION "A daemon that blinks a 64-bit machine id on the Raspberry Pi's activity LED and offers a Bluetooth LE service that answers only to a phone that has read it. The phone app proves it knows the id and configures the Pi's WiFi through NetworkManager over an encrypted channel. Line of sight and Bluetooth range are the two factors; nothing is typed and nothing is printed on the board.")
+set(CPACK_PACKAGE_DESCRIPTION "A daemon that draws a one-time 64-bit key when a phone connects, blinks it on the Raspberry Pi's activity LED, and offers a Bluetooth LE service that answers only to a phone that has read it. The phone app proves it knows the key and configures the Pi's WiFi through NetworkManager over an encrypted channel. Line of sight and Bluetooth range are the two factors; nothing is typed and nothing is printed on the board.")
 
 # Absolute destinations (/etc/rpiledconfig) are staged under DESTDIR like the rest,
 # rather than written to the build machine's /etc.

@@ -11,8 +11,8 @@
 
 namespace rpiledconfig::protocol {
 
-types::Bytes led_message(const machine_id::MachineId& id) {
-  types::Bytes message = id.id_bytes();
+types::Bytes led_message(const pairing_key::PairingKey& id) {
+  types::Bytes message = id.key_bytes();
 
   // The version byte goes into the CRC and not onto the LED: a frame of another version
   // cannot pass, at no cost in time.
@@ -24,7 +24,7 @@ types::Bytes led_message(const machine_id::MachineId& id) {
   return message;
 }
 
-types::Bytes led_codeword(const machine_id::MachineId& id) {
+types::Bytes led_codeword(const pairing_key::PairingKey& id) {
   auto codeword = led_message(id);
   const auto parity = rs::parity(codeword, led_parity_length);
   codeword.insert(codeword.end(), parity.begin(), parity.end());

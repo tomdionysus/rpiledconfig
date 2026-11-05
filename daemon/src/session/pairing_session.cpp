@@ -47,7 +47,7 @@ types::Bytes PairingSession::read(ble::Characteristic characteristic) {
 
   switch (characteristic) {
     case ble::Characteristic::info:
-      return util::to_bytes(info_json(_options.version, _options.fingerprint));
+      return util::to_bytes(info_json(_options.version));
     case ble::Characteristic::challenge:
       // docs/protocol.md: on an authenticated connection a read of Challenge starts over,
       // because an app that starts again may find the operating system kept the old link.
@@ -206,7 +206,10 @@ void PairingSession::_dispatch(const types::Bytes& plaintext) {
 
     // uninstall: answered, and the link goes; the package's removal stops the daemon soon
     // after. Only an ok: a phone told uninstall_unavailable may still want the rest.
-    if (op == ops::uninstall && json == ok_response()) self->_drop("uninstalling");
+    if (op == ops::uninstall && json == ok_response()) {
+      if (self->_events.uninstalling) self->_events.uninstalling();
+      self->_drop("uninstalling");
+    }
   });
 }
 

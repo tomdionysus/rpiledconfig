@@ -18,9 +18,6 @@
 # debug, info, warn or error. Lines go to the journal: journalctl -u rpiledconfig
 log.level: info
 
-# Where the machine id lives. The unit's StateDirectory= makes it.
-state.dir: @RPILEDCONFIG_STATE_DIR@
-
 # The activity LED, the main one: ACT, or led0 on older boards. For the power LED use
 # /sys/class/leds/PWR (led1 on older boards).
 led.driver: sysfs
@@ -29,6 +26,10 @@ led.path: /sys/class/leds/ACT
 # BLE through BlueZ, on this adapter.
 ble.driver: bluez
 ble.adapter: hci0
+
+# The start of the name this Pi advertises and the app lists: <prefix>-<4 random hex>. At
+# most 24 printable ASCII characters.
+ble.name_prefix: RPiLEDConfig
 
 # WiFi through NetworkManager, and Wi-Fi Easy Connect through wpa_supplicant on this
 # interface.

@@ -32,19 +32,18 @@ types::Bytes y() {
 
 Vectors compute() {
   Vectors v;
-  v.machine_id = machine_id::MachineId::from_value(machine_id_value);
-  v.id_bytes = v.machine_id.id_bytes();
+  v.pairing_key = pairing_key::PairingKey::from_value(pairing_key_value);
+  v.key_bytes = v.pairing_key.key_bytes();
   v.crc16_check = crc16(util::to_bytes(crc16_check_input));
-  v.led_message = led_message(v.machine_id);
-  v.led_codeword = led_codeword(v.machine_id);
+  v.led_message = led_message(v.pairing_key);
+  v.led_codeword = led_codeword(v.pairing_key);
 
-  for (const auto& run : led::frame_runs(v.machine_id)) {
+  for (const auto& run : led::frame_runs(v.pairing_key)) {
     if (!v.led_frame_runs.empty()) v.led_frame_runs += ",";
     v.led_frame_runs += (run.on ? "+" : "-") + std::to_string(run.length);
   }
 
-  v.fingerprint = fingerprint(v.machine_id);
-  v.w = password_scalar(v.machine_id);
+  v.w = password_scalar(v.pairing_key);
   v.p_b = spake2::share(spake2::Role::b, v.w, y());
 
   // Both sides, so that the vectors are only printed when they agree.
@@ -76,15 +75,14 @@ std::string print(const Vectors& v) {
     out += "\n";
   };
 
-  line("machine_id", v.machine_id.to_hex());
-  line("id_bytes", util::to_hex(v.id_bytes));
+  line("pairing_key", v.pairing_key.to_hex());
+  line("key_bytes", util::to_hex(v.key_bytes));
 
   const std::uint8_t crc[2] = {static_cast<std::uint8_t>(v.crc16_check >> 8), static_cast<std::uint8_t>(v.crc16_check & 0xFF)};
   line("crc16_check", util::to_hex(crc, 2));
   line("led_message", util::to_hex(v.led_message));
   line("led_codeword", util::to_hex(v.led_codeword));
   line("led_frame_runs", v.led_frame_runs);
-  line("fingerprint", v.fingerprint);
   line("w", util::to_hex(v.w));
   line("pA", util::to_hex(v.p_a));
   line("pB", util::to_hex(v.p_b));

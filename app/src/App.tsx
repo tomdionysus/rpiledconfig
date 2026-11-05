@@ -1,15 +1,17 @@
 // The root: providers, the status bar, and the screens in the order the setup runs:
-// home, find, scan (or enter), pair, wifi.
-import React from 'react';
+// home, find, scan, pair, wifi; before them all, the permissions the app needs, when any is missing.
+import React, { useEffect, useState } from 'react';
 import { StatusBar, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Navigator } from '@/navigation';
-import EnterScreen from '@/screens/Enter';
 import FindScreen from '@/screens/Find';
 import HomeScreen from '@/screens/Home';
 import PairScreen from '@/screens/Pair';
+import PermissionsScreen from '@/screens/Permissions';
 import ScanScreen from '@/screens/Scan';
 import WifiScreen from '@/screens/Wifi';
+import { permissionsAsked } from '@/native/settings';
+import { checkNeeds, currentNeeds, showAtLaunch } from '@/permissions/permissions';
 import { AppProvider } from '@/state/store';
 import { colors } from '@/ui/theme';
 
@@ -19,16 +21,27 @@ const SCREENS = {
   '/scan': ScanScreen,
   '/pair': PairScreen,
   '/wifi': WifiScreen,
-  '/enter': EnterScreen,
+  '/permissions': PermissionsScreen,
 };
 
 export function App() {
+  // Decided before the first screen, so that Home does not flash up and go. On the splash's
+  // background, for the moment Android takes to answer.
+  const [initial, setInitial] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    const needs = currentNeeds();
+    void checkNeeds(needs).then(
+      (statuses) => setInitial(showAtLaunch(needs, statuses, permissionsAsked()) ? '/permissions' : '/'),
+      () => setInitial('/'),
+    );
+  }, []);
+
   return (
     <View style={styles.root}>
       <SafeAreaProvider>
         <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
         <AppProvider>
-          <Navigator screens={SCREENS} />
+          {initial ? <Navigator screens={SCREENS} initial={initial} /> : null}
         </AppProvider>
       </SafeAreaProvider>
     </View>

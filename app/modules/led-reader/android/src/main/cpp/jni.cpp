@@ -39,6 +39,9 @@ enum Field {
   plane_height,
   candidates,
   sample,
+  has_spot,
+  spot_x,
+  spot_y,
   id_first,
   field_count = id_first + 8,
 };
@@ -47,7 +50,7 @@ enum Field {
 
 extern "C" {
 
-// `symbol_ms` is the protocol's T unless the app was built for an experiment.
+// `symbol_ms` is the T of the rate the phone asked the Pi for.
 JNIEXPORT jlong JNICALL Java_com_tomcully_ledreader_LedReaderPlugin_nativeCreate(JNIEnv*, jclass, jdouble symbol_ms) {
   rpiledconfig::reader::TrackerConfig config;
   if (symbol_ms > 0) config.symbol = symbol_ms;
@@ -95,6 +98,11 @@ JNIEXPORT jboolean JNICALL Java_com_tomcully_ledreader_LedReaderPlugin_nativePus
   v[plane_height] = s.plane_height;
   v[candidates] = s.candidates;
   v[sample] = s.sample;
+  if (s.spot) {
+    v[has_spot] = 1;
+    v[spot_x] = s.spot->x;
+    v[spot_y] = s.spot->y;
+  }
   env->SetDoubleArrayRegion(out, 0, field_count, v);
   return JNI_TRUE;
 }

@@ -3,11 +3,11 @@ import { acceptAuth, appAuth, verifyConfirmation } from './auth';
 import { bytesToHex, hexToBytes, utf8Encode } from './bytes';
 import { AUTH_WRITE_LENGTH } from './constants';
 import { constantTimeEqual, randomBytes } from './crypto';
-import { fingerprint, passwordScalar, sessionKey } from './keys';
+import { passwordScalar, sessionKey } from './keys';
 import { finish, randomScalar, share, Spake2Error } from './spake2';
 import { VECTORS, X, Y } from './vectors';
 
-const ID = hexToBytes(VECTORS.id_bytes);
+const ID = hexToBytes(VECTORS.key_bytes);
 
 // RFC 9382, Appendix B, P256-SHA256-HKDF-HMAC: the first vector (both
 // identities) and the last (neither). No AAD.
@@ -88,9 +88,8 @@ describe('SPAKE2', () => {
 });
 
 describe('keys', () => {
-  it('derives w, the fingerprint and S as the vectors say', () => {
+  it('derives w and S as the vectors say', () => {
     expect(bytesToHex(passwordScalar(ID))).toBe(VECTORS.w);
-    expect(fingerprint(ID)).toBe(VECTORS.fingerprint);
     expect(bytesToHex(sessionKey(hexToBytes(VECTORS.Ke)))).toBe(VECTORS.S);
   });
 });

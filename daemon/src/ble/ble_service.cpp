@@ -48,6 +48,6 @@ const char* name(Characteristic characteristic) {
   return "";
 }
 
-std::string local_name(const std::string& fingerprint) { return "RPiLEDConfig-" + fingerprint; }
+std::string local_name(const std::string& prefix, const std::string& suffix) { return prefix + "-" + suffix; }
 
 }  // namespace rpiledconfig::ble

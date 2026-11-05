@@ -12,13 +12,7 @@
 
 namespace rpiledconfig::protocol {
 
-types::Bytes password_scalar(const machine_id::MachineId& id) { return spake2::password_scalar(id.id_bytes()); }
-
-std::string fingerprint(const machine_id::MachineId& id) {
-  const auto digest = crypto::sha256(id.id_bytes());
-  if (digest.size() < 2) return {};
-  return util::to_hex(digest.data(), 2);
-}
+types::Bytes password_scalar(const pairing_key::PairingKey& id) { return spake2::password_scalar(id.key_bytes()); }
 
 types::Bytes session_key(const types::Bytes& ke) { return crypto::hkdf_sha256(ke, {}, util::to_bytes("session-key v2"), key_length); }
 

@@ -1,5 +1,5 @@
-// The app's side of docs/protocol.md after the LED: find the Pi whose
-// fingerprint matches the ID, check Info, run SPAKE2, derive the session key,
+// The app's side of docs/protocol.md after the LED: find the Pi the user
+// chose by its name, check Info, run SPAKE2, derive the session key,
 // and then carry requests over the encrypted channel in fragments. Transport-agnostic: the same code runs over react-native-ble-plx
 // and over the fake daemon in tests.
 import type { BleConnection, BleTransport, Peripheral } from '@/ble/transport';
@@ -9,7 +9,6 @@ import { appChannel, ChannelError, type Opener, type Sealer } from '@/protocol/c
 import {
   AUTH_ACCEPTED,
   AUTH_REFUSED,
-  BLE_NAME_PREFIX,
   CHAR_AUTH,
   CHAR_AUTH_RESULT,
   CHAR_CHALLENGE,
@@ -18,11 +17,10 @@ import {
   CHAR_RESPONSE,
   AUTH_RESULT_ACCEPTED_LENGTH,
   MIN_AUTH_MTU,
-  MIN_PROTOCOL_VERSION,
   PROTOCOL_VERSION,
 } from '@/protocol/constants';
 import { FragmentError, fragment, fragmentSizeForMtu, Reassembler } from '@/protocol/fragments';
-import { fingerprint, passwordScalar, sessionKey } from '@/protocol/keys';
+import { passwordScalar, sessionKey } from '@/protocol/keys';
 import { Spake2Error } from '@/protocol/spake2';
 import {
   decodeResponse,
@@ -42,10 +40,9 @@ export type PairingPhase = 'scanning' | 'connecting' | 'checking' | 'authenticat
 export interface DaemonInfo {
   protocol: number;
   version: string;
-  fingerprint: string;
 }
 
-export type PairingErrorKind = 'bluetooth' | 'not_found' | 'fingerprint_mismatch' | 'protocol' | 'refused' | 'disconnected' | 'timeout';
+export type PairingErrorKind = 'bluetooth' | 'not_found' | 'protocol' | 'refused' | 'disconnected' | 'timeout';
 
 /** A raw platform error's text, kept for diagnostics and never shown as the message. */
 export function detailOf(cause: unknown): string | undefined {
@@ -96,8 +93,8 @@ export interface PairOptions {
    * The platform id the Pi had last time. A peripheral with the right name
    * and this id is taken at once; one with the right name and another id is
    * taken only if this one has not shown up within a moment (Android may see
-   * a new address, and the name alone is only 16 bits of fingerprint; the
-   * authentication is what proves it is the same Pi).
+   * a new address, and a name proves nothing; the authentication is what
+   * proves it is the same Pi).
    */
   preferId?: string;
 }
@@ -128,7 +125,6 @@ function findPeripheral(transport: BleTransport, name: string, timeoutMs: number
       ),
     );
     const stop = transport.scan(
-      name,
       (peripheral) => {
         if (peripheral.name !== name) return;
         if (!preferId || peripheral.id === preferId) {
@@ -153,16 +149,16 @@ export function parseInfo(bytes: Uint8Array): DaemonInfo {
     throw new PairingError('protocol', 'The Pi answered with something that is not RPi LED Config.');
   }
   const record = parsed as Record<string, unknown> | null;
-  if (!record || typeof record.protocol !== 'number' || typeof record.version !== 'string' || typeof record.fingerprint !== 'string') {
+  if (!record || typeof record.protocol !== 'number' || typeof record.version !== 'string') {
     throw new PairingError('protocol', 'The Pi answered with something that is not RPi LED Config.');
   }
-  return { protocol: record.protocol, version: record.version, fingerprint: record.fingerprint };
+  return { protocol: record.protocol, version: record.version };
 }
 
-/** A daemon this app can talk to: protocol 2 (no Blink) or 3. */
+/** A daemon this app can talk to: the same protocol, as nothing older is in the field. */
 export function checkProtocol(info: DaemonInfo): void {
-  if (info.protocol < MIN_PROTOCOL_VERSION || info.protocol > PROTOCOL_VERSION) {
-    throw new PairingError('protocol', `The Pi speaks protocol ${info.protocol}; this app speaks ${MIN_PROTOCOL_VERSION} to ${PROTOCOL_VERSION}.`);
+  if (info.protocol !== PROTOCOL_VERSION) {
+    throw new PairingError('protocol', `The Pi speaks protocol ${info.protocol} and this app speaks ${PROTOCOL_VERSION}. Update whichever is older.`);
   }
 }
 
@@ -191,13 +187,11 @@ interface SessionOrigin {
 }
 
 /**
- * Pair with the Pi whose LED gave `idBytes`. Resolves to a session over the
+ * Pair with the Pi advertising as `name`, using the key its LED gave. Resolves to a session over the
  * encrypted channel, or rejects with a `PairingError` saying which step
  * failed; the connection is closed on any failure.
  */
-export async function pair(transport: BleTransport, idBytes: Uint8Array, options: PairOptions = {}): Promise<Session> {
-  const expected = fingerprint(idBytes);
-  const name = `${BLE_NAME_PREFIX}${expected}`;
+export async function pair(transport: BleTransport, name: string, idBytes: Uint8Array, options: PairOptions = {}): Promise<Session> {
   const phase = (p: PairingPhase, detail?: string) => options.onPhase?.(p, detail);
   const clock = options.clock ?? realClock;
 
@@ -221,12 +215,6 @@ export async function pair(transport: BleTransport, idBytes: Uint8Array, options
     phase('checking');
     const info = parseInfo(await connection.read(CHAR_INFO));
     checkProtocol(info);
-    if (info.fingerprint !== expected) {
-      throw new PairingError(
-        'fingerprint_mismatch',
-        `The Pi's fingerprint is ${info.fingerprint}, but the LED you read gives ${expected}. It is not the same Pi.`,
-      );
-    }
 
     phase('authenticating');
     // Writes are never long (docs/protocol.md), and pA || cA is 97 bytes.
@@ -270,13 +258,13 @@ export async function pair(transport: BleTransport, idBytes: Uint8Array, options
     );
     stopAuthMonitor();
     if (result.length === 1 && result[0] === AUTH_REFUSED) {
-      throw new PairingError('refused', 'The Pi refused the authentication: the ID read from the LED does not match its own.');
+      throw new PairingError('refused', 'The Pi refused the key the camera read. It may have expired, or be from another Pi\'s LED: read the LED of the Pi you chose again.');
     }
     if (result.length !== AUTH_RESULT_ACCEPTED_LENGTH || result[0] !== AUTH_ACCEPTED) {
       throw new PairingError('protocol', 'The authentication result was malformed.');
     }
     if (!verifyConfirmation(auth.keys, result.subarray(1))) {
-      throw new PairingError('refused', "The Pi's proof did not verify: it does not hold the key for this ID.");
+      throw new PairingError('refused', "The Pi's proof did not verify: it does not hold this key.");
     }
 
     const s = sessionKey(auth.keys.ke);
@@ -363,7 +351,7 @@ export class Session {
    */
   async reconnect(options: Omit<PairOptions, 'clock' | 'preferId'> = {}): Promise<Session> {
     await this.close();
-    return pair(this.origin.transport, this.origin.idBytes, { ...options, clock: this.origin.clock, preferId: this.origin.peripheral.id });
+    return pair(this.origin.transport, this.origin.peripheral.name, this.origin.idBytes, { ...options, clock: this.origin.clock, preferId: this.origin.peripheral.id });
   }
 
   status(): Promise<StatusResponse> {
@@ -402,8 +390,7 @@ export class Session {
   /**
    * Removes RPiLEDConfig from the Pi for good (docs/protocol.md,
    * Uninstalling): the daemon starts its removal, answers, and disconnects.
-   * Rejects with `RequestError` (`uninstall_unavailable`, or `unknown_op`
-   * from a protocol 2 daemon) when it cannot; the session stays open then.
+   * Rejects with `RequestError` (`uninstall_unavailable`) when it cannot; the session stays open then.
    */
   async uninstall(): Promise<void> {
     await this.request({ op: 'uninstall' });

@@ -48,10 +48,6 @@ Options parse(int argc, char* argv[]) {
       options.version = true;
     } else if (argument == "--help" || argument == "-h") {
       options.help = true;
-    } else if (argument == "--show-id") {
-      options.show_id = true;
-    } else if (argument == "--regenerate-id") {
-      options.regenerate_id = true;
     } else if (argument == "--print-vectors") {
       options.print_vectors = true;
     } else if (takes("--config", options.config) || takes("-c", options.config)) {
@@ -70,8 +66,6 @@ std::string usage() {
              "Usage: rpiledconfig [options]\n"
              "\n"
              "  -c, --config PATH     the configuration to read\n"
-             "      --show-id         print the machine id and exit\n"
-             "      --regenerate-id   replace the machine id, print the new one and exit\n"
              "      --print-vectors   print the protocol's test vectors and exit\n"
              "  -v, --version         print the version and exit\n"
              "  -h, --help            print this and exit\n"

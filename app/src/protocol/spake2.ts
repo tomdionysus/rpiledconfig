@@ -44,7 +44,7 @@ function withLength(s: Uint8Array): Uint8Array {
 }
 
 /**
- * w = HKDF(ikm = id_bytes, salt = "RPiLEDConfig", info = "spake2-w v2", L = 40)
+ * w = HKDF(ikm = key_bytes, salt = "RPiLEDConfig", info = "spake2-w v2", L = 40)
  * mod n, as 32 bytes (docs/protocol.md, Keys).
  */
 export function passwordScalar(idBytes: Uint8Array): Uint8Array {

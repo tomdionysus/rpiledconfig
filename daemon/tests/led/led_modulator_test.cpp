@@ -24,7 +24,7 @@ using namespace std::chrono_literals;
 
 namespace {
 
-const auto vectors_id = machine_id::MachineId::from_value(0x0123456789abcdefULL);
+const auto vectors_id = pairing_key::PairingKey::from_value(0x0123456789abcdefULL);
 
 // The frame of docs/protocol.md, frame version 7, as its 170 symbols, computed outside this
 // code base; runs are maximal stretches of one level.
@@ -52,10 +52,19 @@ std::string describe(const std::vector<led::Run>& runs) {
 
 }  // namespace
 
-TEST(LedModulatorTest, AFrameIs170SymbolsOr7650Milliseconds) {
+// docs/protocol.md, Symbols.
+TEST(LedModulatorTest, TheRatesAreTheProtocols) {
+  EXPECT_EQ(led::blink_rate(0x01), 51ms);
+  EXPECT_EQ(led::blink_rate(0x02), 33ms);
+  EXPECT_EQ(led::blink_rate(0x03), 77ms);
+  EXPECT_EQ(led::blink_rate(0x00), std::nullopt);
+  EXPECT_EQ(led::blink_rate(0x04), std::nullopt);
+}
+
+TEST(LedModulatorTest, AFrameIs170SymbolsOr8670MillisecondsAtTheNormalRate) {
   EXPECT_EQ(led::frame_symbols(), 170u);
-  EXPECT_EQ(led::symbol_time, 45ms);
-  EXPECT_EQ(led::symbol_time * led::frame_symbols(), 7650ms);
+  EXPECT_EQ(led::symbol_time, 51ms);
+  EXPECT_EQ(led::symbol_time * led::frame_symbols(), 8670ms);
 }
 
 TEST(LedModulatorTest, TheFrameRunsOfTheVectorsId) {
@@ -81,8 +90,8 @@ TEST(LedModulatorTest, TheFrameRunsOfTheVectorsId) {
 // Words begin and end with runs of at most two, so within data the LED holds one state for
 // at most 4T, whatever the id, and only the sync has runs of 5T or more.
 TEST(LedModulatorTest, NoRunInsideTheDataIsLongerThanFourSymbols) {
-  for (const auto id : {vectors_id, machine_id::MachineId::from_value(0), machine_id::MachineId::from_value(0xffffffffffffffffULL),
-                        machine_id::MachineId::from_value(0x5555555555555555ULL)}) {
+  for (const auto id : {vectors_id, pairing_key::PairingKey::from_value(0), pairing_key::PairingKey::from_value(0xffffffffffffffffULL),
+                        pairing_key::PairingKey::from_value(0x5555555555555555ULL)}) {
     const auto runs = led::frame_runs(id);
     EXPECT_EQ(runs[0].on, true);
     EXPECT_GE(runs[0].length, 5);
@@ -96,9 +105,9 @@ TEST(LedModulatorTest, DrivesTheFakeThroughTheSameRunsOnAManualClock) {
   auto logger = std::make_shared<MockLogger>();
   auto timers = std::make_shared<timers::ManualTimerSource>();
   auto led = std::make_shared<led::LedFake>([timers]() { return timers->now(); });
-  auto modulator = std::make_shared<led::LedModulator>(logger, io.get_executor(), led, timers, vectors_id);
+  auto modulator = std::make_shared<led::LedModulator>(logger, io.get_executor(), led, timers);
 
-  ASSERT_TRUE(modulator->start());
+  ASSERT_TRUE(modulator->start(vectors_id));
   EXPECT_EQ(led->begins(), 1);
   EXPECT_TRUE(led->on()) << "the sync starts with the LED on";
   EXPECT_EQ(modulator->frames_started(), 1u);
@@ -136,18 +145,18 @@ TEST(LedModulatorTest, FramesRepeatBackToBack) {
   auto logger = std::make_shared<MockLogger>();
   auto timers = std::make_shared<timers::ManualTimerSource>();
   auto led = std::make_shared<led::LedFake>([timers]() { return timers->now(); });
-  auto modulator = std::make_shared<led::LedModulator>(logger, io.get_executor(), led, timers, vectors_id);
+  auto modulator = std::make_shared<led::LedModulator>(logger, io.get_executor(), led, timers);
 
-  ASSERT_TRUE(modulator->start());
+  ASSERT_TRUE(modulator->start(vectors_id));
   const auto started = timers->now();
 
-  timers->advance(3 * 7650ms);
+  timers->advance(3 * 8670ms);
   EXPECT_EQ(modulator->frames_started(), 4u);
 
   // The fourth frame's sync began exactly 3 frames after the first: no drift.
   const auto& events = led->events();
   const auto fourth = events[3 * led::frame_runs(vectors_id).size()];
-  EXPECT_EQ(fourth.at - started, 3 * 7650ms);
+  EXPECT_EQ(fourth.at - started, 3 * 8670ms);
   EXPECT_TRUE(fourth.on);
 
   modulator->stop();
@@ -159,9 +168,9 @@ TEST(LedModulatorTest, AnLedThatRefusesStopsTheModulatorBeforeItStarts) {
   auto timers = std::make_shared<timers::ManualTimerSource>();
   auto led = std::make_shared<led::LedFake>();
   led->fail_begin("no such node");
-  auto modulator = std::make_shared<led::LedModulator>(logger, io.get_executor(), led, timers, vectors_id);
+  auto modulator = std::make_shared<led::LedModulator>(logger, io.get_executor(), led, timers);
 
-  const auto started = modulator->start();
+  const auto started = modulator->start(vectors_id);
   EXPECT_FALSE(started);
   EXPECT_EQ(started.error, "no such node");
   EXPECT_FALSE(modulator->running());

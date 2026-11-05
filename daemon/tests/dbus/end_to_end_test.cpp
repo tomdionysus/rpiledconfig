@@ -16,7 +16,7 @@
 #include "dbus_test_helper.h"
 #include "led/led_fake.h"
 #include "led/led_modulator.h"
-#include "machine_id/machine_id.h"
+#include "pairing_key/pairing_key.h"
 #include "mock_bluez.h"
 #include "mock_networkmanager.h"
 #include "mocks/logger_mock.h"
@@ -47,7 +47,7 @@ const std::string request = "2a7f0006-7e1d-4c3a-9b5e-0f8a6d4c2b10";
 const std::string response = "2a7f0007-7e1d-4c3a-9b5e-0f8a6d4c2b10";
 const std::string blink = "2a7f0008-7e1d-4c3a-9b5e-0f8a6d4c2b10";
 
-const machine_id::MachineId machine = machine_id::MachineId::from_value(0x0123456789abcdefULL);
+const pairing_key::PairingKey machine = pairing_key::PairingKey::from_value(0x0123456789abcdefULL);
 
 // The app's side of one connection.
 class Phone {
@@ -162,15 +162,14 @@ class EndToEndTest : public ::testing::Test {
       if (!loop->open()) return;
 
       led = std::make_shared<led::LedFake>([this]() { return timers->now(); });
-      modulator = std::make_shared<led::LedModulator>(logger, daemon.executor(), led, timers, machine);
+      modulator = std::make_shared<led::LedModulator>(logger, daemon.executor(), led, timers);
       ble = std::make_shared<ble::BleBluez>(logger, loop, "hci0");
       wifi = std::make_shared<wifi::WifiNetworkManager>(logger, loop);
       auto requests = std::make_shared<session::Requests>(logger, wifi, "testpi");
 
       setup::SetupMode::Identity identity;
-      identity.id = machine;
-      identity.w = protocol::password_scalar(machine);
-      identity.fingerprint = protocol::fingerprint(machine);
+      identity.ble_name = "RPiLEDConfig-3a9c";
+      identity.draw_key = []() { return types::Result<pairing_key::PairingKey>::success(machine); };
       identity.version = "0.0.0-test";
 
       setup = std::make_shared<setup::SetupMode>(logger, daemon.executor(), timers, modulator, ble, wifi, requests, identity, setup::SetupMode::Options{});
@@ -202,7 +201,7 @@ class EndToEndTest : public ::testing::Test {
   }
 
   Bytes key = protocol::password_scalar(machine);
-  Bytes wrong_key = protocol::password_scalar(machine_id::MachineId::from_value(0x0badf00d0badf00dULL));
+  Bytes wrong_key = protocol::password_scalar(pairing_key::PairingKey::from_value(0x0badf00d0badf00dULL));
 
   std::shared_ptr<MockLogger> logger = std::make_shared<MockLogger>();
   std::shared_ptr<timers::ManualTimerSource> timers = std::make_shared<timers::ManualTimerSource>();
@@ -222,13 +221,12 @@ class EndToEndTest : public ::testing::Test {
 TEST_F(EndToEndTest, AnAppConfiguresWifiAndFinishes) {
   auto phone = connect("AA:BB:CC:DD:EE:01", 185);
 
-  // 1. Info, and the fingerprint the LED's ID gives.
+  // 1. Info.
   const auto info_read = bluez->read_long(phone.device(), info, 185);
   ASSERT_TRUE(info_read.ok) << info_read.error;
   const auto info_json = protocol::Json::parse(util::to_string(info_read.value));
   ASSERT_TRUE(info_json.has_value());
-  EXPECT_EQ(info_json->get("fingerprint")->as_string(), protocol::fingerprint(machine));
-  EXPECT_EQ(info_json->get("protocol")->as_number(), 3);
+  EXPECT_EQ(info_json->get("protocol")->as_number(), 4);
 
   // Blink: the LED starts only now.
   EXPECT_FALSE(daemon.run([this]() { return modulator->running(); }));

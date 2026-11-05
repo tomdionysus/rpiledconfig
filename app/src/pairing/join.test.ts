@@ -12,10 +12,10 @@ import { pair, type Session } from './session';
 const ID = hexToBytes('012345');
 const PSK = 'correct horse battery staple';
 
-async function setUp(options: Omit<FakeDaemonOptions, 'machineId' | 'clock'> = {}) {
+async function setUp(options: Omit<FakeDaemonOptions, 'pairingKey' | 'clock'> = {}) {
   const clock = new ManualClock();
-  const daemon = new FakeDaemon({ machineId: ID, clock, passphrases: { Blackraven: PSK }, ...options });
-  const session = await clock.run(pair(daemon, ID, { clock }));
+  const daemon = new FakeDaemon({ pairingKey: ID, clock, passphrases: { Blackraven: PSK }, ...options });
+  const session = await clock.run(pair(daemon, daemon.name, ID, { clock }));
   const steps: JoinStep[] = [];
   const join = (ssid: string, psk?: string) => clock.run(joinWifi(session, ssid, psk, { onStep: (step) => steps.push(step) }), 120_000, 1_000);
   return { clock, daemon, session, steps, join };
@@ -193,9 +193,8 @@ describe('Session.reconnect', () => {
     return {
       connectedTo,
       prepare: () => daemon.prepare(),
-      scan(prefix, onFound, onError) {
+      scan(onFound, onError) {
         const stop = daemon.scan(
-          prefix,
           (peripheral) => {
             onFound({ ...peripheral, id: lookalikeId });
             if (lookalikeId !== 'moved') onFound(peripheral);
@@ -213,19 +212,19 @@ describe('Session.reconnect', () => {
   }
 
   async function sessionOver(transport: BleTransport, clock: ManualClock): Promise<Session> {
-    return clock.run(pair(transport, ID, { clock }));
+    return clock.run(pair(transport, 'RPiLEDConfig-3a9c', ID, { clock }));
   }
 
   it('prefers the platform id it had over a same-named peripheral', async () => {
     const clock = new ManualClock();
-    const daemon = new FakeDaemon({ machineId: ID, clock });
+    const daemon = new FakeDaemon({ pairingKey: ID, clock });
     const transport = withLookalike(daemon, 'lookalike');
     const session = await sessionOver(transport, clock);
     // With no preference the first same-named peripheral is taken.
     expect(transport.connectedTo).toEqual(['lookalike']);
     await session.close();
 
-    const preferring = await clock.run(pair(transport, ID, { clock, preferId: daemon.id }));
+    const preferring = await clock.run(pair(transport, daemon.name, ID, { clock, preferId: daemon.id }));
     const again = await clock.run(preferring.reconnect());
     expect(transport.connectedTo).toEqual(['lookalike', daemon.id, daemon.id]);
     expect(again.peripheral.id).toBe(daemon.id);
@@ -234,9 +233,9 @@ describe('Session.reconnect', () => {
 
   it('takes the same name at another id when the old id does not show up', async () => {
     const clock = new ManualClock();
-    const daemon = new FakeDaemon({ machineId: ID, clock });
+    const daemon = new FakeDaemon({ pairingKey: ID, clock });
     const transport = withLookalike(daemon, 'moved');
-    const session = await clock.run(pair(transport, ID, { clock, preferId: daemon.id }));
+    const session = await clock.run(pair(transport, daemon.name, ID, { clock, preferId: daemon.id }));
     expect(session.peripheral.id).toBe('moved');
     const again = await clock.run(session.reconnect({ onPhase: () => {} }));
     expect(again.peripheral.id).toBe('moved');

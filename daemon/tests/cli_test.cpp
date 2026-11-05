@@ -28,8 +28,6 @@ TEST(CliTest, NothingIsFine) {
   const auto options = parse({});
   EXPECT_TRUE(options.ok);
   EXPECT_TRUE(options.config.empty());
-  EXPECT_FALSE(options.show_id);
-  EXPECT_FALSE(options.regenerate_id);
   EXPECT_FALSE(options.print_vectors);
 }
 
@@ -51,15 +49,19 @@ TEST(CliTest, AnUnknownOptionStopsTheDaemonRatherThanBeingIgnored) {
   EXPECT_NE(options.error.find("--confg"), std::string::npos);
 }
 
-TEST(CliTest, TheMachineIdAndVectorQuestions) {
-  EXPECT_TRUE(parse({"--show-id"}).show_id);
-  EXPECT_TRUE(parse({"--regenerate-id"}).regenerate_id);
+TEST(CliTest, TheVectorQuestion) {
   EXPECT_TRUE(parse({"--print-vectors"}).print_vectors);
 
-  const auto both = parse({"--show-id", "--config", "/a.conf"});
+  const auto both = parse({"--print-vectors", "--config", "/a.conf"});
   EXPECT_TRUE(both.ok);
-  EXPECT_TRUE(both.show_id);
+  EXPECT_TRUE(both.print_vectors);
   EXPECT_EQ(both.config, "/a.conf");
+}
+
+// docs/protocol.md, The pairing key: no command prints the key, and none makes one.
+TEST(CliTest, ThereIsNoWayToAskForTheKey) {
+  EXPECT_FALSE(parse({"--show-id"}).ok);
+  EXPECT_FALSE(parse({"--regenerate-id"}).ok);
 }
 
 TEST(CliTest, VersionAndHelp) {

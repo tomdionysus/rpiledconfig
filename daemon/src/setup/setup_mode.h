@@ -7,14 +7,16 @@
 #pragma once
 
 #include <chrono>
+#include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "ble/ble_service.h"
 #include "led/led_modulator.h"
 #include "loggers/logger.h"
-#include "machine_id/machine_id.h"
+#include "pairing_key/pairing_key.h"
 #include "session/pairing_session.h"
 #include "session/request_handler.h"
 #include "timers/timer_source.h"
@@ -44,13 +46,18 @@ class SetupMode : public ble::BleListener, public std::enable_shared_from_this<S
 
     // How long the LED blinks after the last 0x01 written to Blink.
     std::chrono::seconds blink_timeout{120};
+
+    // How long the key outlives the last connection and the blinking (docs/protocol.md, The
+    // pairing key): long enough for a phone to finish reading the LED and come back, and for
+    // the link a WiFi join dropped to return.
+    std::chrono::seconds key_idle{120};
   };
 
   struct Identity {
-    machine_id::MachineId id;
-    types::Bytes w;
-    std::string fingerprint;
+    // The advertised name. Unrelated to any key.
+    std::string ble_name;
     std::string version;
+    std::function<types::Result<pairing_key::PairingKey>()> draw_key;
   };
 
   SetupMode(std::shared_ptr<loggers::Logger> logger, types::Executor executor, std::shared_ptr<timers::TimerSource> timers,
@@ -68,6 +75,7 @@ class SetupMode : public ble::BleListener, public std::enable_shared_from_this<S
   std::size_t sessions() const { return _sessions.size(); }
   int consecutive_refusals() const { return _consecutive_refusals; }
   bool blinking() const { return _blinking; }
+  bool has_key() const { return _key.has_value(); }
 
   // --- BleListener -------------------------------------------------------------------
 
@@ -84,8 +92,12 @@ class SetupMode : public ble::BleListener, public std::enable_shared_from_this<S
   void _on_authenticated();
   void _on_refused();
   void _on_finished();
+  void _on_uninstalling();
   void _blink(ble::ConnectionId connection, const types::Bytes& value);
   void _stop_blinking(const std::string& why);
+  bool _ensure_key();
+  void _discard_key(const std::string& why);
+  void _arm_key_expiry();
 
   std::shared_ptr<loggers::Logger> _logger;
   types::Executor _executor;
@@ -105,10 +117,19 @@ class SetupMode : public ble::BleListener, public std::enable_shared_from_this<S
   // Asked for and not yet stopped, whether or not the LED could be driven.
   bool _blinking = false;
 
+  // The one-time key and its password scalar. From the first connection of a pairing until
+  // _discard_key.
+  struct Key {
+    pairing_key::PairingKey key;
+    types::Bytes w;
+  };
+  std::optional<Key> _key;
+
   std::shared_ptr<timers::Timer> _timeout;
   std::shared_ptr<timers::Timer> _recheck;
   std::shared_ptr<timers::Timer> _pause;
   std::shared_ptr<timers::Timer> _blink_timeout;
+  std::shared_ptr<timers::Timer> _key_expiry;
 };
 
 }  // namespace rpiledconfig::setup

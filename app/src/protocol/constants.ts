@@ -1,12 +1,8 @@
 // The protocol's constants, every one from docs/protocol.md. A change here is a
 // change to the document and to daemon/src/protocol/ as well.
 
-/** Protocol version carried in the Info characteristic. 3: Blink and uninstall; 2: SPAKE2. */
-export const PROTOCOL_VERSION = 3;
-/** The oldest daemon the app pairs with: protocol 2 has no Blink and blinks all through setup mode. */
-export const MIN_PROTOCOL_VERSION = 2;
-/** The first protocol with the Blink characteristic. */
-export const BLINK_PROTOCOL_VERSION = 3;
+/** Protocol version carried in the Info characteristic. 4: a one-time key; 3: Blink and uninstall; 2: SPAKE2. */
+export const PROTOCOL_VERSION = 4;
 
 /** Half-bit period of the LED channel, in milliseconds. A bit is 2T. */
 export const T_MS = 50;
@@ -17,11 +13,11 @@ export const SYNC_OFF_T = 4;
 /** Idle after the CRC: off for this many T. */
 export const IDLE_T = 4;
 
-/** The machine ID is 64 bits: 8 id_bytes, 16 hex characters. */
+/** The key is 64 bits: 8 key_bytes, 16 hex characters. */
 export const ID_BYTES = 8;
 export const ID_HEX_LENGTH = 2 * ID_BYTES;
 
-/** The LED frame's 12-byte message: magic, version, id_bytes, CRC-16. */
+/** The LED frame's 12-byte message: magic, version, key_bytes, CRC-16. */
 export const LED_MAGIC = 0x52;
 export const LED_FRAME_VERSION = 0x05;
 export const LED_MESSAGE_BYTES = 12;
@@ -44,7 +40,6 @@ export const CRC16_INIT = 0xffff;
 
 export const SESSION_KEY_INFO = 'session-key v2';
 export const KEY_LENGTH = 32;
-export const FINGERPRINT_BYTES = 2;
 
 /** SPAKE2's AAD (docs/protocol.md, Authentication). */
 export const AUTH_AAD = 'RPiLEDConfig auth v2';
@@ -55,7 +50,6 @@ export const AUTH_RESULT_ACCEPTED_LENGTH = 33;
 /** Writes are never long, so the Auth write needs an MTU of 97 + 3. */
 export const MIN_AUTH_MTU = AUTH_WRITE_LENGTH + 3;
 
-export const BLE_NAME_PREFIX = 'RPiLEDConfig-';
 export const SERVICE_UUID = '2a7f0001-7e1d-4c3a-9b5e-0f8a6d4c2b10';
 export const CHAR_INFO = '2a7f0002-7e1d-4c3a-9b5e-0f8a6d4c2b10';
 export const CHAR_CHALLENGE = '2a7f0003-7e1d-4c3a-9b5e-0f8a6d4c2b10';
@@ -65,10 +59,12 @@ export const CHAR_REQUEST = '2a7f0006-7e1d-4c3a-9b5e-0f8a6d4c2b10';
 export const CHAR_RESPONSE = '2a7f0007-7e1d-4c3a-9b5e-0f8a6d4c2b10';
 export const CHAR_BLINK = '2a7f0008-7e1d-4c3a-9b5e-0f8a6d4c2b10';
 
-/** Blink's values: blink the ID on the LED, or stop. */
-export const BLINK_START = 0x01;
+/** Blink's values: blink the key on the LED at a rate (src/led/rates.ts), or stop. */
+export const BLINK_NORMAL = 0x01;
+export const BLINK_FAST = 0x02;
+export const BLINK_ROBUST = 0x03;
 export const BLINK_STOP = 0x00;
-/** The LED stops this long after the last BLINK_START. */
+/** The LED stops this long after the last rate written. */
 export const BLINK_TIMEOUT_MS = 120_000;
 
 export const AUTH_ACCEPTED = 0x01;

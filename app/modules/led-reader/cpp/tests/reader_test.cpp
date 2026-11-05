@@ -155,7 +155,7 @@ TEST(ReaderTest, ProgressIsZeroUntilTheLedAndFullWithinAFrameOfIt) {
 // The symbol-time experiment (TODO/COMPLETED.md, 2026-11-04), on the model: what each T
 // reads at 30 and 60 fps. Printed, not asserted: the live phone decided (45 ms).
 TEST(ReaderTest, SymbolTimeTrials) {
-  for (const double symbol : {50.0, 40.0, 33.0, 25.0, 20.0}) {
+  for (const double symbol : {77.0, 51.0, 40.0, 33.0, 25.0, 20.0}) {
     for (const double fps : {30.0, 60.0}) {
       int read = 0;
       double slowest = 0;
@@ -181,5 +181,41 @@ TEST(ReaderTest, SymbolTimeTrials) {
       }
       std::printf("[ trial    ] T = %.0f ms at %.0f fps: %d of 8 read, slowest at %.0f ms\n", symbol, fps, read, slowest);
     }
+  }
+}
+
+// A symbol time whose frame is a whole number of camera frames is sampled at the same points on
+// every repeat, so repeats add nothing if those points are bad ones. Every phase of the camera
+// against the LED, on the phone-camera model: how many read, and how long the slowest took.
+TEST(ReaderTest, RatePhaseTrials) {
+  for (const double symbol : {33.0, 50.0, 51.0, 77.0}) {
+    int read = 0;
+    int phases = 0;
+    double slowest = 0;
+    double total = 0;
+    for (int phase = 0; phase < 34; ++phase) {
+      for (const double exposure : {0.0, 12.0}) {
+        for (std::uint32_t seed = 1; seed <= 3; ++seed) {
+          ++phases;
+          const auto out = run(test::synthesize(vectors_id, {.seconds = 4 * 170 * symbol / 1000,
+                                                             .symbol = symbol,
+                                                             .noise = 6,
+                                                             .start_ms = static_cast<double>(phase),
+                                                             .jitter_ms = 3,
+                                                             .exposure_ms = exposure,
+                                                             .saturation = exposure > 0 ? 3.0 : 1.0,
+                                                             .seed = seed * 7 + static_cast<std::uint32_t>(phase)}),
+                               ReaderConfig{symbol});
+          if (out.read_at) {
+            ++read;
+            slowest = std::max(slowest, *out.read_at);
+            total += *out.read_at;
+          }
+        }
+      }
+    }
+    // 50 ms is here as the warning: its frame is 255 camera frames at 30 fps. The rest are the rates.
+    if (symbol != 50.0) EXPECT_EQ(read, phases) << "T = " << symbol;
+    std::printf("[ phases   ] T = %2.0f ms (frame %5.2f s, %6.1f camera frames): %3d of %d read, mean %5.0f ms, slowest %6.0f ms\n", symbol, 170 * symbol / 1000, 170 * symbol * 30 / 1000, read, phases, read ? total / read : 0, slowest);
   }
 }

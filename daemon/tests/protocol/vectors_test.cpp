@@ -21,19 +21,18 @@ using namespace rpiledconfig::protocol;
 TEST(VectorsTest, TheInputsAreTheProtocols) {
   EXPECT_EQ(util::to_hex(vectors::x()), "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20");
   EXPECT_EQ(util::to_hex(vectors::y()), "2122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f40");
-  EXPECT_EQ(vectors::compute().machine_id.to_hex(), "0123456789abcdef");
+  EXPECT_EQ(vectors::compute().pairing_key.to_hex(), "0123456789abcdef");
 }
 
 TEST(VectorsTest, TheDerivedValuesAreTheOnesComputedByHand) {
   const auto v = vectors::compute();
-  EXPECT_EQ(util::to_hex(v.id_bytes), "0123456789abcdef");
+  EXPECT_EQ(util::to_hex(v.key_bytes), "0123456789abcdef");
   EXPECT_EQ(v.crc16_check, 0x29B1);
   EXPECT_EQ(util::to_hex(v.led_message), "0123456789abcdef008c");
   EXPECT_EQ(util::to_hex(v.led_codeword), "0123456789abcdef008cc420bb0f15c9");
   EXPECT_EQ(v.led_frame_runs.rfind("+5,-7,+1,-4,+1,-1,+1,-2,", 0), 0u) << v.led_frame_runs;
   const std::string end = ",-1,+3,-1,+2,-1,+1,-2,+2";
   EXPECT_EQ(v.led_frame_runs.substr(v.led_frame_runs.size() - end.size()), end) << v.led_frame_runs;
-  EXPECT_EQ(v.fingerprint, "55c5");
   // docs/protocol.md, computed in Python after it reproduced RFC 9382's vectors.
   EXPECT_EQ(util::to_hex(v.w), "d11cf43f75a28b8c30fd3da84ab44c51c0c8755713eed6dcd9b73907be6af3f7");
   EXPECT_EQ(util::to_hex(v.p_a),
@@ -82,13 +81,12 @@ TEST(VectorsTest, PrintsOneLabelledHexLineEachInAFixedOrder) {
     EXPECT_EQ(value.find_first_not_of(allowed), std::string::npos) << line;
   }
 
-  const std::vector<std::string> expected{"machine_id",
-                                          "id_bytes",
+  const std::vector<std::string> expected{"pairing_key",
+                                          "key_bytes",
                                           "crc16_check",
                                           "led_message",
                                           "led_codeword",
                                           "led_frame_runs",
-                                          "fingerprint",
                                           "w",
                                           "pA",
                                           "pB",
@@ -102,7 +100,6 @@ TEST(VectorsTest, PrintsOneLabelledHexLineEachInAFixedOrder) {
   EXPECT_EQ(labels, expected);
 
   EXPECT_NE(text.find("w: d11cf43f75a28b8c30fd3da84ab44c51c0c8755713eed6dcd9b73907be6af3f7\n"), std::string::npos);
-  EXPECT_NE(text.find("fingerprint: 55c5\n"), std::string::npos);
   EXPECT_NE(text.find("crc16_check: 29b1\n"), std::string::npos);
   EXPECT_NE(text.find("led_codeword: 0123456789abcdef008cc420bb0f15c9\n"), std::string::npos);
   EXPECT_EQ(text.find("crc8"), std::string::npos) << "version 1's frame is gone";
