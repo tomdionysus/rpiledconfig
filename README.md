@@ -81,7 +81,7 @@ A release of the app has no permission to use the internet (docs/privacy.md).
 There is no package to download yet. Build it natively on a Pi, on 64-bit
 Raspberry Pi OS, from `daemon/`:
 
-    cmake -S . -B build-deb -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -DRPILEDCONFIG_BUILD_TESTING=OFF -DRPILEDCONFIG_DEB_MAINTAINER=T. Cully <tomhughcully@gmail.com> -DRPILEDCONFIG_DEB_RELEASE=1 -DRPILEDCONFIG_INSTALL_SYSTEM_FILES=ON -DRPILEDCONFIG_SANITIZE=none -DRPILEDCONFIG_SYSTEMD_CFLAGS=-I/usr/include -DRPILEDCONFIG_SYSTEMD_FOUND=1 -DRPILEDCONFIG_SYSTEMD_INCLUDEDIR=/usr/include -DRPILEDCONFIG_SYSTEMD_INCLUDE_DIRS=/usr/include -DRPILEDCONFIG_SYSTEMD_LDFLAGS=-L/usr/lib/aarch64-linux-gnu;-lsystemd -DRPILEDCONFIG_SYSTEMD_LIBDIR=/usr/lib/aarch64-linux-gnu -DRPILEDCONFIG_SYSTEMD_LIBRARIES=systemd -DRPILEDCONFIG_SYSTEMD_LIBRARY_DIRS=/usr/lib/aarch64-linux-gnu -DRPILEDCONFIG_SYSTEMD_MODULE_NAME=libsystemd -DRPILEDCONFIG_SYSTEMD_PREFIX=/usr -DRPILEDCONFIG_SYSTEMD_STATIC_CFLAGS=-I/usr/include -DRPILEDCONFIG_SYSTEMD_STATIC_INCLUDE_DIRS=/usr/include -DRPILEDCONFIG_SYSTEMD_STATIC_LDFLAGS=-L/usr/lib/aarch64-linux-gnu;-lsystemd -DRPILEDCONFIG_SYSTEMD_STATIC_LIBRARIES=systemd -DRPILEDCONFIG_SYSTEMD_STATIC_LIBRARY_DIRS=/usr/lib/aarch64-linux-gnu -DRPILEDCONFIG_SYSTEMD_VERSION=257
+    cmake -S . -B build-deb -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -DRPILEDCONFIG_BUILD_TESTING=OFF
     cmake --build build-deb && (cd build-deb && cpack -G DEB)
     sudo apt install ./build-deb/rpiledconfig_0.4.0-1_arm64.deb
 
