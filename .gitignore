@@ -13,7 +13,6 @@ app/node_modules/
 app/.expo/
 app/dist/
 app/ios/
-app/android/
 app/expo-env.d.ts
 app/.kotlin/
 *.tsbuildinfo
@@ -28,3 +27,8 @@ basemind.toml
 app/modules/*/cpp/build/
 app/modules/*/android/.cxx/
 app/modules/*/android/build/
+
+# Signing: the upload key and its passwords never go in git.
+*.jks
+*.keystore
+app/android/keystore.properties

@@ -9,5 +9,6 @@ android/build/
 android/app/build/
 android/.gradle/
 android/.kotlin/
+android/app/.cxx/
 android/local.properties
 *.hprof
