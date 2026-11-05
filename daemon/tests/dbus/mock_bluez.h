@@ -106,6 +106,9 @@ class MockBluez : public MockService {
   Outcome start_notify(const std::string& uuid, std::uint16_t mtu = 23);
   Outcome stop_notify(const std::string& uuid);
 
+  // Any call at all on a characteristic, for what BlueZ should never send.
+  Outcome call_characteristic(const std::string& uuid, const char* member, const std::function<int(sd_bus_message*)>& append) { return _call_characteristic(uuid, member, append); }
+
   // A characteristic's property as the application reports it (Notifying, say).
   std::optional<bool> characteristic_bool(const std::string& uuid, const std::string& property);
 

@@ -422,3 +422,154 @@ TEST_F(BleBluezWithoutBluezTest, StartingSaysWhyNothingIsAdvertised) {
   ASSERT_TRUE(daemon.run([this]() { return ble->start(ble::Advertisement{"RPiLEDConfig-3a9c"}, listener); }).ok);
   EXPECT_TRUE(eventually([this]() { return logger->contains("Cannot reach the adapter /org/bluez/hci0"); })) << logger->text();
 }
+
+// --- What BlueZ should never send -----------------------------------------------------
+//
+// An a{sv} is ours to distrust: wrong types, nonsense values, or the wrong arguments altogether
+// must get an answer or a refusal, and leave the service serving.
+
+namespace {
+
+// An options dictionary of one entry, after the device that makes the call this central's.
+std::function<int(sd_bus_message*)> options_with(const std::string& device, const char* key, const char* type, const char* value) {
+  return [=](sd_bus_message* m) {
+    int r = sd_bus_message_open_container(m, 'a', "{sv}");
+    if (r >= 0) r = sd_bus_message_append(m, "{sv}", "device", "o", device.c_str());
+    if (r >= 0) r = sd_bus_message_append(m, "{sv}", key, type, value);
+    if (r >= 0) r = sd_bus_message_close_container(m);
+    return r;
+  };
+}
+
+}  // namespace
+
+TEST_F(BleBluezTest, OptionsOfTheWrongTypeAreIgnoredAndTheServiceServes) {
+  start();
+  const auto device = bluez->connect_device("AA:BB:CC:DD:EE:01");
+  listener->answer(ble::Characteristic::info, Bytes{1, 2, 3});
+  ASSERT_TRUE(bluez->read(device, info).ok);
+
+  for (const char* key : {"offset", "mtu", "prepare-authorize", "link", "no-such-option"}) {
+    const auto outcome = bluez->call_characteristic(info, "ReadValue", options_with(device, key, "s", "not what it should be"));
+    EXPECT_TRUE(outcome.ok) << key << ": " << outcome.error;
+    EXPECT_EQ(outcome.value, (Bytes{1, 2, 3})) << key;
+  }
+
+  // A device that is not one is somebody else, and is refused.
+  const auto stranger = bluez->call_characteristic(info, "ReadValue", [](sd_bus_message* m) {
+    int r = sd_bus_message_open_container(m, 'a', "{sv}");
+    if (r >= 0) r = sd_bus_message_append(m, "{sv}", "device", "u", 7u);
+    if (r >= 0) r = sd_bus_message_close_container(m);
+    return r;
+  });
+  EXPECT_FALSE(stranger.ok);
+
+  // Nested as far as D-Bus lets a variant go, under a key nobody asked for.
+  const auto nested = bluez->call_characteristic(info, "ReadValue", [&](sd_bus_message* m) {
+    int r = sd_bus_message_open_container(m, 'a', "{sv}");
+    if (r >= 0) r = sd_bus_message_append(m, "{sv}", "device", "o", device.c_str());
+    if (r >= 0) r = sd_bus_message_open_container(m, 'e', "sv");
+    if (r >= 0) r = sd_bus_message_append_basic(m, 's', "deep");
+    for (int depth = 0; r >= 0 && depth < 30; ++depth) r = sd_bus_message_open_container(m, 'v', "v");
+    if (r >= 0) r = sd_bus_message_open_container(m, 'v', "s");
+    if (r >= 0) r = sd_bus_message_append_basic(m, 's', "bottom");
+    for (int depth = 0; r >= 0 && depth < 31; ++depth) r = sd_bus_message_close_container(m);
+    if (r >= 0) r = sd_bus_message_close_container(m);
+    if (r >= 0) r = sd_bus_message_close_container(m);
+    return r;
+  });
+  EXPECT_TRUE(nested.ok) << nested.error;
+
+  EXPECT_TRUE(bluez->read(device, info).ok) << "still serving";
+}
+
+TEST_F(BleBluezTest, TheWrongArgumentsAltogetherAreRefused) {
+  start();
+  const auto device = bluez->connect_device("AA:BB:CC:DD:EE:01");
+  ASSERT_TRUE(bluez->read(device, info).ok);
+
+  const auto nothing = [](sd_bus_message*) { return 0; };
+  const auto a_string = [](sd_bus_message* m) { return sd_bus_message_append_basic(m, 's', "hello"); };
+  const auto bytes_alone = [](sd_bus_message* m) { return sd_bus_message_append_array(m, 'y', "ab", 2); };
+
+  for (const char* member : {"ReadValue", "WriteValue"}) {
+    EXPECT_FALSE(bluez->call_characteristic(auth, member, nothing).ok) << member;
+    EXPECT_FALSE(bluez->call_characteristic(auth, member, a_string).ok) << member;
+  }
+  EXPECT_FALSE(bluez->call_characteristic(auth, "WriteValue", bytes_alone).ok);
+  EXPECT_FALSE(bluez->call_characteristic(response, "ReadValue", nothing).ok) << "not offered";
+  EXPECT_TRUE(listener->writes().empty());
+
+  EXPECT_TRUE(bluez->read(device, info).ok) << "still serving";
+}
+
+TEST_F(BleBluezTest, OffsetsPastTheValueAreRefused) {
+  start();
+  const auto device = bluez->connect_device("AA:BB:CC:DD:EE:01");
+  listener->answer(ble::Characteristic::info, Bytes{1, 2, 3});
+
+  EXPECT_EQ(bluez->read(device, info, 23, 3).value, Bytes{}) << "exactly at the end is the empty rest";
+  for (const std::uint16_t offset : {std::uint16_t{4}, std::uint16_t{65535}}) {
+    const auto outcome = bluez->read(device, info, 23, offset);
+    EXPECT_FALSE(outcome.ok) << offset;
+    EXPECT_NE(outcome.error.find("InvalidOffset"), std::string::npos) << outcome.error;
+  }
+
+  listener->answer(ble::Characteristic::info, Bytes{});
+  EXPECT_TRUE(bluez->read(device, info).ok) << "an empty value at 0";
+  EXPECT_FALSE(bluez->read(device, info, 23, 1).ok);
+}
+
+TEST_F(BleBluezTest, WritesOfAnySizeArriveWholeOrNotAtAll) {
+  start();
+  const auto device = bluez->connect_device("AA:BB:CC:DD:EE:01");
+
+  EXPECT_TRUE(bluez->write(device, request, Bytes{}).ok);
+  EXPECT_TRUE(bluez->write(device, request, Bytes(1024 * 1024, 0xAA)).ok);
+
+  ASSERT_TRUE(eventually([this]() { return listener->writes().size() == 2; })) << logger->text();
+  EXPECT_TRUE(listener->writes()[0].value.empty());
+  EXPECT_EQ(listener->writes()[1].value.size(), 1024u * 1024u);
+
+  const auto at_an_offset = bluez->call_characteristic(request, "WriteValue", [&](sd_bus_message* m) {
+    int r = sd_bus_message_append_array(m, 'y', "ab", 2);
+    if (r >= 0) r = sd_bus_message_open_container(m, 'a', "{sv}");
+    if (r >= 0) r = sd_bus_message_append(m, "{sv}", "device", "o", device.c_str());
+    if (r >= 0) r = sd_bus_message_append(m, "{sv}", "offset", "q", std::uint16_t{1});
+    if (r >= 0) r = sd_bus_message_close_container(m);
+    return r;
+  });
+  EXPECT_FALSE(at_an_offset.ok);
+  EXPECT_EQ(listener->writes().size(), 2u);
+}
+
+// An MTU is what the other end says it is. The session floors it, so nothing here divides up a
+// message with room for none of it, and the top is capped at what phones take.
+TEST_F(BleBluezTest, AnMtuOfAnySizeIsHeldToTheCap) {
+  start();
+  const auto device = bluez->connect_device("AA:BB:CC:DD:EE:01");
+
+  ASSERT_TRUE(bluez->read(device, info, 65535).ok);
+  ASSERT_TRUE(eventually([this]() { return only_connection() != 0; }));
+  const auto connection = only_connection();
+  EXPECT_EQ(daemon.run([&]() { return ble->mtu(connection); }), ble::max_fragment_mtu);
+
+  ASSERT_TRUE(bluez->read(device, info, 1).ok);
+  EXPECT_EQ(daemon.run([&]() { return ble->mtu(connection); }), 1u);
+}
+
+// A first call without a device is not one BlueZ makes, and cannot be hung up on, so what matters
+// is that the service still comes back to serving when it is stopped.
+TEST_F(BleBluezTest, ACentralWithNoDeviceBreaksNothing) {
+  start();
+  const auto no_options = [](sd_bus_message* m) {
+    int r = sd_bus_message_open_container(m, 'a', "{sv}");
+    if (r >= 0) r = sd_bus_message_close_container(m);
+    return r;
+  };
+  EXPECT_TRUE(bluez->call_characteristic(info, "ReadValue", no_options).ok);
+  EXPECT_TRUE(listener->saw("connect 1"));
+
+  EXPECT_TRUE(daemon.run([this]() { ble->disconnect(only_connection()); return true; }));
+  EXPECT_TRUE(eventually([this]() { return listener->saw("disconnect 1"); })) << logger->text();
+}
