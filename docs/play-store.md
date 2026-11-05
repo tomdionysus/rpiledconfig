@@ -83,7 +83,7 @@ Full description:
 | Content rating | Utility. No user-generated content, no sharing between users. |
 | Target audience | 18 and over. |
 | News, government, health, financial | None of these. |
-| Data safety: collected or shared | Nothing. The WiFi passphrase goes to the user's own Pi over Bluetooth and never to the developer or a third party, which Play's definition of collection does not cover. |
+| Data safety: collected or shared | Nothing. The WiFi passphrase goes to the user's own Pi over Bluetooth, and never to the developer or a third party. |
 | Data safety: encrypted in transit | Yes. |
 | Data safety: deletion | Not applicable: nothing is collected. |
 
@@ -97,7 +97,7 @@ Instructions for the reviewer:
 
     This app configures a Raspberry Pi and does nothing without one. A video of a whole pairing
     is at <URL>. To test it yourself you need a Raspberry Pi 4 or 5 running Raspberry Pi OS with
-    the rpiledconfig package installed and setup.always set to true. Open the app, choose Find
+    the rpiledconfig package installed. Open the app, choose Find
     the Pi, tap the Pi, and point the camera at the Pi's activity LED.
 
 ## Tracks

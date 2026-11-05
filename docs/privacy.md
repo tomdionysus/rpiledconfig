@@ -26,7 +26,8 @@ settings so that it can join the network. They go nowhere else, and the app does
 them.
 
 The one-time key read from the LED is held in memory for the pairing and is not saved. The
-only thing the app saves is the LED speed you chose, on your phone.
+app saves two things, on your phone: the LED speed you chose, and that it has asked for its
+permissions.
 
 ## Children
 
