@@ -19,11 +19,6 @@ struct Options {
   bool version = false;
   bool help = false;
 
-  // The machine id, read or replaced, then exit: for the person at the console who wants
-  // to know what the LED is saying without pointing a camera at it.
-  bool show_id = false;
-  bool regenerate_id = false;
-
   // docs/protocol.md's test vectors as hex, one per line, then exit. The app's tests hold
   // the same bytes, and this is how the two are compared.
   bool print_vectors = false;

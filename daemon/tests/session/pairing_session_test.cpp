@@ -20,11 +20,11 @@ using Characteristic = ble::Characteristic;
 
 namespace {
 
-types::Bytes wrong_key() { return protocol::password_scalar(machine_id::MachineId::from_value(0x0badf00d0badf00dULL)); }
+types::Bytes wrong_key() { return protocol::password_scalar(pairing_key::PairingKey::from_value(0x0badf00d0badf00dULL)); }
 
 }  // namespace
 
-TEST(PairingSessionTest, InfoNamesTheProtocolTheVersionAndTheFingerprint) {
+TEST(PairingSessionTest, InfoNamesTheProtocolAndTheVersionAndNothingOfTheKey) {
   SetupFixture f;
   f.start();
   const auto connection = f.connect();
@@ -32,10 +32,10 @@ TEST(PairingSessionTest, InfoNamesTheProtocolTheVersionAndTheFingerprint) {
 
   const auto info = protocol::Json::parse(util::to_string(f.read(connection, Characteristic::info)));
   ASSERT_TRUE(info);
-  EXPECT_EQ(info->get("protocol")->as_number(), 3);
+  EXPECT_EQ(info->get("protocol")->as_number(), 4);
   EXPECT_EQ(info->get("version")->as_string(), "0.0.0-test");
-  EXPECT_EQ(info->get("fingerprint")->as_string(), f.fingerprint);
-  EXPECT_EQ(f.ble->advertised_name(), "RPiLEDConfig-" + f.fingerprint);
+  EXPECT_EQ(info->get("fingerprint"), nullptr);
+  EXPECT_EQ(f.ble->advertised_name(), f.ble_name);
 }
 
 TEST(PairingSessionTest, TheChallengeIsAnUncompressedPointNewForEveryConnection) {

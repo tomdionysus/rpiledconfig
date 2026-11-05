@@ -1,0 +1,95 @@
+apply plugin: "com.android.application"
+apply plugin: "org.jetbrains.kotlin.android"
+apply plugin: "com.facebook.react"
+
+react {
+    /* Autolinking: react-native-ble-plx, VisionCamera, worklets-core, safe-area-context. */
+    autolinkLibrariesWithApp()
+}
+
+/**
+ * R8 in release builds: off, as the template has it; the app is small.
+ */
+def enableProguardInReleaseBuilds = false
+
+def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
+
+/**
+ * The upload key Google Play takes a release from: android/keystore.properties, which git
+ * ignores, names it (docs/play-store.md). Without that file a release is signed with the
+ * debug key, which installs on a test phone and which Play refuses.
+ */
+def uploadKey = new Properties()
+def uploadKeyFile = rootProject.file('keystore.properties')
+if (uploadKeyFile.exists()) uploadKeyFile.withInputStream { uploadKey.load(it) }
+
+android {
+    ndkVersion rootProject.ext.ndkVersion
+    buildToolsVersion rootProject.ext.buildToolsVersion
+    compileSdk rootProject.ext.compileSdkVersion
+
+    namespace "com.tomcully.rpiledconfig"
+    defaultConfig {
+        applicationId "com.tomcully.rpiledconfig"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        // The same number as daemon/CMakeLists.txt project() and the README (check_version.cmake).
+        versionCode 400
+        versionName "0.4.0"
+
+        // -Prpiledconfig.diagnostics=true: the app logs what it measures (adb logcat -s
+        // ReactNativeJS) and shows the platform's own words under an error; src/util/diagnostics.ts.
+        buildConfigField "boolean", "DIAGNOSTICS", (findProperty('rpiledconfig.diagnostics') ?: 'false').toString()
+    }
+    buildFeatures {
+        buildConfig true
+    }
+    signingConfigs {
+        if (uploadKeyFile.exists()) {
+            upload {
+                storeFile file(uploadKey['storeFile'])
+                storePassword uploadKey['storePassword']
+                keyAlias uploadKey['keyAlias']
+                keyPassword uploadKey['keyPassword']
+            }
+        }
+    }
+    buildTypes {
+        release {
+            signingConfig uploadKeyFile.exists() ? signingConfigs.upload : signingConfigs.debug
+            // The native libraries' symbols in the bundle, so Play's crash reports name functions.
+            ndk { debugSymbolLevel 'SYMBOL_TABLE' }
+            // -Prpiledconfig.debuggableRelease=true: a release build the test phone can be driven
+            // on and its logs read without Metro (TODO/ACTIVE.md, Hardware).
+            debuggable((findProperty('rpiledconfig.debuggableRelease') ?: 'false').toBoolean())
+            minifyEnabled enableProguardInReleaseBuilds
+            proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+        }
+    }
+}
+
+// VisionCamera brings a thin ML Kit in even with its code scanner off (its build.gradle), and
+// that starts at launch and gathers data for Google. The app has no code scanner: VisionCamera
+// only touches these classes for one, so they can go. docs/privacy.md depends on this.
+configurations.configureEach {
+    exclude group: 'com.google.mlkit'
+    exclude group: 'com.google.android.gms'
+    exclude group: 'com.google.android.datatransport'
+    exclude group: 'com.google.firebase'
+    exclude group: 'com.google.android.odml'
+}
+
+dependencies {
+    // The version of react-native is set by the React Native Gradle Plugin
+    implementation("com.facebook.react:react-android")
+    // Android's own splash screen API, back to Android 8.
+    implementation("androidx.core:core-splashscreen:1.0.1")
+    // The native LED reader.
+    implementation project(':led-reader')
+
+    if (hermesEnabled.toBoolean()) {
+        implementation("com.facebook.react:hermes-android")
+    } else {
+        implementation jscFlavor
+    }
+}

@@ -87,3 +87,56 @@ TEST(TrackerTest, ALampBlinkingAtOneHertzAndNoiseAreNotTheLed) {
     EXPECT_FALSE(state.reader.led_seen) << t;
   }
 }
+
+// The box on screen marks the LED itself, not the tile it is in, even with a steady light brighter
+// than it just beside it, or a reflection blinking with it.
+TEST(TrackerTest, TheSpotIsTheLedAndNotTheTileOrALampBesideIt) {
+  constexpr int width = 320;
+  constexpr int height = 240;
+  // Well off the middle of its tile (40 to 80, 80 to 120); the lamp is in the next tile.
+  constexpr int led_x = 73;
+  constexpr int led_y = 87;
+  const auto levels = test::synthesize(vectors_id, {.seconds = 14, .off = 0, .on = 1, .start_ms = 700, .jitter_ms = 3});
+
+  std::vector<std::uint8_t> picture(static_cast<std::size_t>(width * height));
+  Tracker tracker;
+  for (const auto& s : levels) {
+    std::fill(picture.begin(), picture.end(), std::uint8_t{30});
+    const auto paint = [&](int cx, int cy, int radius, std::uint8_t value) {
+      for (int y = cy - radius; y <= cy + radius; ++y) {
+        for (int x = cx - radius; x <= cx + radius; ++x) picture[static_cast<std::size_t>(y * width + x)] = value;
+      }
+    };
+    paint(88, 100, 4, 255);
+    // The LED, and a reflection of it that blinks with it, dimmer, up and to one side.
+    if (s.y > 0.5) {
+      paint(led_x + 16, led_y - 18, 5, 150);
+      paint(led_x, led_y, 3, 200);
+    }
+    tracker.push(s.t, Plane{picture.data(), width, height, width, 1});
+  }
+
+  const auto& state = tracker.state();
+  ASSERT_TRUE(state.tile);
+  EXPECT_EQ(state.tile->x, 40);
+  EXPECT_EQ(state.tile->y, 80);
+  ASSERT_TRUE(state.spot);
+  EXPECT_NEAR(state.spot->x, led_x, 2);
+  EXPECT_NEAR(state.spot->y, led_y, 2);
+}
+
+// A longer T needs a longer history, and everything else in the tracker scales with it.
+TEST(TrackerTest, ReadsAtEveryRate) {
+  for (const double symbol : {33.0, 51.0, 77.0}) {
+    test::SynthOptions options;
+    options.symbol = symbol;
+    options.seconds = symbol / 1000 * 170 * 2.2;
+    options.start_ms = 1100;
+    options.jitter_ms = 3;
+    const auto levels = test::synthesize(vectors_id, options);
+    Tracker tracker(TrackerConfig{.symbol = symbol});
+    bool read = false;
+    for (const auto& s : levels) read = tracker.push_values(s.t, 1, 1, {s.y}).reader.result.has_value() || read;
+    EXPECT_TRUE(read) << "T = " << symbol;
+  }
+}

@@ -17,11 +17,14 @@ export interface LedReaderState {
   tries: number;
   framesFailed: number;
   erasures: number;
-  /** Present once read: the machine ID and what the code repaired. */
+  /** Present once read: the key and what the code repaired. */
   idHex?: string;
   errors?: number;
   filled?: number;
   framesCombined?: number;
+  /** Where the LED is, in the plane's pixels, once seen both lit and dark. */
+  spotX?: number;
+  spotY?: number;
   /** The tile being read, in the plane's pixels, while there is one. */
   tileX?: number;
   tileY?: number;
@@ -38,10 +41,9 @@ export interface LedReaderState {
 
 /**
  * A new reader with nothing seen yet, or undefined where the plugin is not built in.
- * `symbolMs` is the Pi's symbol time: the protocol's 45 unless both sides are built for
- * an experiment (TODO/ACTIVE.md).
+ * `symbolMs` is the T of the rate the Pi was asked for (src/led/rates.ts).
  */
-export function createLedReader(symbolMs = 45): FrameProcessorPlugin | undefined {
+export function createLedReader(symbolMs: number): FrameProcessorPlugin | undefined {
   if (Platform.OS !== 'android') return undefined;
   try {
     return VisionCameraProxy.initFrameProcessorPlugin('ledReader', { symbolMs }) ?? undefined;

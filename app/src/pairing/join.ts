@@ -1,7 +1,7 @@
 // Joining a network, from `wifi.configure` to a verdict. The Pi's WiFi and
 // Bluetooth share one radio, so the BLE link may drop as it joins
 // (docs/protocol.md, Setup mode): a drop after configure is expected, and the
-// answer is to find the same Pi again, authenticate again with the ID already
+// answer is to find the same Pi again, authenticate again with the key already
 // held, and ask for status until it says the Pi is on the network or the time
 // is up. A link that survives goes through the same polling, so the user sees
 // one flow either way.
@@ -155,9 +155,9 @@ async function reconnect(previous: Session, deadline: number, timeoutMs: number,
         onPhase: (phase) => step({ kind: 'reconnecting', attempt, phase }),
       });
     } catch (error) {
-      // A refusal or a different fingerprint will not get better by trying
+      // A refusal will not get better by trying
       // again, and refusals count towards the Pi's limits.
-      if (error instanceof PairingError && (error.kind === 'refused' || error.kind === 'fingerprint_mismatch' || error.kind === 'protocol')) throw error;
+      if (error instanceof PairingError && (error.kind === 'refused' || error.kind === 'protocol')) throw error;
       const left = deadline - clock.now();
       if (left > 0) await sleep(clock, Math.min(RECONNECT_PAUSE_MS, left));
     }
@@ -204,7 +204,7 @@ export function collapseSteps<T extends { kind: string }>(steps: readonly T[]): 
 const RECONNECT_PHASES: Record<PairingPhase, string> = {
   scanning: 'looking for the Pi',
   connecting: 'connecting',
-  checking: 'checking its fingerprint',
+  checking: 'checking it',
   authenticating: 'authenticating',
   ready: 'authenticated',
 };

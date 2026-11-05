@@ -6,6 +6,7 @@
 //
 #include <unistd.h>
 
+#include <array>
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/post.hpp>
 #include <boost/asio/signal_set.hpp>
@@ -28,15 +29,14 @@
 #include "led/led_sysfs.h"
 #include "loggers/logger_scoped.h"
 #include "loggers/logger_stdio.h"
-#include "machine_id/machine_id.h"
-#include "protocol/keys.h"
-#include "protocol/spake2.h"
+#include "pairing_key/pairing_key.h"
 #include "protocol/vectors.h"
 #include "session/requests.h"
 #include "setup/setup_mode.h"
 #include "system/uninstaller.h"
 #include "system/uninstaller_fake.h"
 #include "timers/timer_source.h"
+#include "util.h"
 #include "wifi/easy_connect.h"
 #include "wifi/easy_connect_fake.h"
 #include "wifi/wifi.h"
@@ -197,28 +197,6 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  // --- The machine id, on its own for --show-id and --regenerate-id ---
-
-  if (options.show_id) {
-    const auto id = machine_id::load(config->state_dir);
-    if (!id) {
-      std::cerr << "rpiledconfig: no machine id yet (" << id.error << "); it is made when the package is installed, or on the daemon's first start\n";
-      return 3;
-    }
-    std::cout << id.value.to_hex() << "\n";
-    return 0;
-  }
-
-  if (options.regenerate_id) {
-    const auto id = machine_id::generate(config->state_dir);
-    if (!id) {
-      std::cerr << "rpiledconfig: cannot regenerate the machine id: " << id.error << "\n";
-      return 3;
-    }
-    std::cout << id.value.to_hex() << "\n";
-    return 0;
-  }
-
   const std::string title = " RPiLEDConfig " RPILEDCONFIG_VERSION_STRING " ";
   logger->raw(std::string(title.size(), '-'));
   logger->raw(title);
@@ -226,28 +204,22 @@ int main(int argc, char* argv[]) {
 
   logger->info("Configuration: " + config_path.string());
   logger->set_level(config->log_level);
-  logger->info("Log level " + loggers::to_string(config->log_level) + ", state in " + config->state_dir);
+  logger->info("Log level " + loggers::to_string(config->log_level));
 
-  const auto id = machine_id::load_or_generate(config->state_dir);
-  if (!id) {
-    logger->error("Cannot start without a machine id: " + id.error);
+  // The name's suffix tells two Pis apart until the daemon stops. It has nothing to do with
+  // any key, each of which is drawn when a phone connects (docs/protocol.md, The pairing key).
+  std::array<std::uint8_t, 2> suffix{};
+  if (const auto got = pairing_key::random_bytes(suffix.data(), suffix.size()); !got) {
+    logger->error("Cannot start without random bytes: " + got.error);
     return 3;
   }
 
   setup::SetupMode::Identity identity;
-  identity.id = id.value;
-  identity.w = protocol::password_scalar(id.value);
-  identity.fingerprint = protocol::fingerprint(id.value);
+  identity.ble_name = ble::local_name(config->ble_name_prefix, util::to_hex(suffix.data(), suffix.size()));
   identity.version = RPILEDCONFIG_VERSION_STRING;
+  identity.draw_key = []() { return pairing_key::draw(); };
 
-  if (identity.w.size() != protocol::spake2::scalar_length) {
-    logger->error("Cannot derive the SPAKE2 password scalar (OpenSSL refused)");
-    return 3;
-  }
-
-  // Never the id itself: it is the whole pairing secret, and the journal is readable by
-  // more than root (adm, systemd-journal). --show-id prints it for whoever can read the state.
-  logger->info("Fingerprint " + identity.fingerprint + ", BLE name " + ble::local_name(identity.fingerprint));
+  logger->info("BLE name " + identity.ble_name);
 
   // --- The setup strand ---
   //
@@ -291,7 +263,7 @@ int main(int argc, char* argv[]) {
                "; Wi-Fi Easy Connect: " + (easyconnect ? easyconnect->describe() : std::string("off")) +
                "; uninstall: " + (uninstaller ? uninstaller->describe() : std::string("off")));
 
-  auto modulator = std::make_shared<led::LedModulator>(scoped(logger, "led"), executor, led_driver, timers, id.value, std::chrono::milliseconds(config->led_symbol_ms));
+  auto modulator = std::make_shared<led::LedModulator>(scoped(logger, "led"), executor, led_driver, timers);
   auto requests = std::make_shared<session::Requests>(scoped(logger, "requests"), wifi_driver, hostname(), easyconnect, uninstaller);
 
   setup::SetupMode::Options setup_options;

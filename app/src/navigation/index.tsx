@@ -1,5 +1,5 @@
 // The app's screens as a stack, with the small API the screens use: push, replace, back,
-// and the parameters a route was opened with. Six screens in one straight line need no
+// and the parameters a route was opened with. A few screens in one straight line need no
 // navigation library. Only the top screen is mounted; the one under it comes back when
 // the top is popped. The hardware back pops; a deep link (rpiledconfig://find?...) opens
 // that route over Home.
@@ -46,7 +46,7 @@ function toRoute(href: Href): Route {
   return typeof href === 'string' ? { pathname: href } : href;
 }
 
-/** `rpiledconfig://find?symbolMs=45&fps=30` to a route, or undefined for anything else. */
+/** `rpiledconfig://find?fps=30` to a route, or undefined for anything else. */
 export function routeFromUrl(url: string, known: readonly string[]): Route | undefined {
   const match = /^[a-z][a-z0-9+.-]*:\/\/([^?#]*)(?:\?([^#]*))?/i.exec(url);
   if (!match) return undefined;

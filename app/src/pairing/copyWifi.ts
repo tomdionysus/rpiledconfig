@@ -19,7 +19,7 @@ export type CopyStep = { kind: 'asking' } | { kind: 'android' } | JoinStep;
 
 export type CopyOutcome =
   | JoinOutcome
-  /** The Pi (or this phone) cannot do Easy Connect: offer the QR code and typing. */
+  /** The Pi (or this phone) cannot do Easy Connect: offer typing. */
   | { kind: 'unavailable'; session: Session; reason: string }
   /** The user backed out of Android's screen, and the Pi did not get a network. */
   | { kind: 'cancelled'; session: Session };
@@ -108,7 +108,7 @@ export function describeCopyStep(step: CopyStep, label: string, now?: number): s
 export function describeCopyOutcome(outcome: CopyOutcome, label: string): Verdict {
   switch (outcome.kind) {
     case 'unavailable':
-      return { tone: 'error', title: 'Easy Connect is not available', body: `${outcome.reason} Scan the network's QR code or type it instead.` };
+      return { tone: 'error', title: 'Easy Connect is not available', body: `${outcome.reason} Type the network instead.` };
     case 'cancelled':
       return { tone: 'error', title: 'Nothing was sent', body: "Android's screen was closed before it sent a network. Try again, or scan or type the network instead." };
     default:

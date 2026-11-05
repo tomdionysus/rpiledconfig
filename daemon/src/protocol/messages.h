@@ -20,7 +20,7 @@ namespace rpiledconfig::protocol {
 
 // 3: the LED blinks only when a phone writes Blink, and uninstall (2 was SPAKE2 with the
 // LED always on in setup mode, 1 an HMAC challenge).
-inline constexpr int protocol_version = 3;
+inline constexpr int protocol_version = 4;
 
 namespace ops {
 
@@ -108,7 +108,7 @@ std::string scan_response(std::vector<WifiNetwork> networks);
 // wifi.easyconnect's answer: {"ok":true,"uri":"DPP:..."}.
 std::string easyconnect_response(const std::string& uri);
 
-// The Info characteristic: {"protocol":3,"version":"...","fingerprint":"..."}.
-std::string info_json(const std::string& version, const std::string& fingerprint);
+// The Info characteristic: {"protocol":4,"version":"..."}.
+std::string info_json(const std::string& version);
 
 }  // namespace rpiledconfig::protocol

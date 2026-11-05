@@ -10,10 +10,10 @@ import { pair } from './session';
 
 const ID = hexToBytes('012345');
 
-async function setUp(options: Omit<FakeDaemonOptions, 'machineId' | 'clock'> = {}) {
+async function setUp(options: Omit<FakeDaemonOptions, 'pairingKey' | 'clock'> = {}) {
   const clock = new ManualClock();
-  const daemon = new FakeDaemon({ machineId: ID, clock, ...options });
-  const session = await clock.run(pair(daemon, ID, { clock }));
+  const daemon = new FakeDaemon({ pairingKey: ID, clock, ...options });
+  const session = await clock.run(pair(daemon, daemon.name, ID, { clock }));
   const steps: CopyStep[] = [];
   const copy = (launch: EasyConnectLaunch) => clock.run(copyPhoneWifi(session, launch, { onStep: (step) => steps.push(step) }), 120_000, 1_000);
   return { clock, daemon, session, steps, copy };

@@ -5,7 +5,7 @@
 export interface Peripheral {
   /** The platform's identifier for the device, passed back to `connect`. */
   id: string;
-  /** The advertised local name, `RPiLEDConfig-<fingerprint>` for a Pi. */
+  /** The advertised local name, `<prefix>-<4 hex>` (docs/protocol.md, BLE). */
   name: string;
   rssi?: number;
 }
@@ -27,11 +27,11 @@ export interface BleTransport {
   /** Permissions and the adapter; rejects with a reason a person can read. */
   prepare(): Promise<void>;
   /**
-   * Reports every peripheral whose name starts with `namePrefix` until the
-   * returned function is called: first any seen in the last minute (by an
-   * earlier scan or a prescan), then new ones.
+   * Reports every peripheral advertising the service until the returned
+   * function is called: first any heard in the last few seconds (by an earlier
+   * scan or a prescan), then every report that comes.
    */
-  scan(namePrefix: string, onFound: (peripheral: Peripheral) => void, onError: (error: Error) => void): () => void;
+  scan(onFound: (peripheral: Peripheral) => void, onError: (error: Error) => void): () => void;
   /**
    * Looks for Pis in the background while the LED is being read, so the
    * pairing step finds its Pi at once instead of starting a scan after the

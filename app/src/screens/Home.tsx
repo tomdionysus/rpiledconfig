@@ -3,6 +3,7 @@ import { useRouter } from '@/navigation';
 import { Image, StyleSheet, Text, View } from 'react-native';
 import { Button } from '@/ui/Button';
 import { Screen } from '@/ui/Screen';
+import { SourceLink } from '@/ui/SourceLink';
 import { colors, radius, space, type as typography } from '@/ui/theme';
 
 const HERO_ICON = require('../../assets/hero-icon.png');
@@ -36,7 +37,7 @@ export default function HomeScreen() {
       </View>
 
       <Button label="Find the Pi" onPress={() => router.push('/find')} style={styles.start} />
-      <Button label="Type the ID instead" variant="quiet" onPress={() => router.push('/enter')} />
+      <SourceLink />
     </Screen>
   );
 }

@@ -24,8 +24,8 @@ enum class Characteristic { info, challenge, auth, auth_result, request, respons
 const char* uuid(Characteristic characteristic);
 const char* name(Characteristic characteristic);
 
-// The local name: RPiLEDConfig-<fingerprint>.
-std::string local_name(const std::string& fingerprint);
+// The local name: <prefix>-<suffix> (docs/protocol.md, BLE).
+std::string local_name(const std::string& prefix, const std::string& suffix);
 
 // One phone's connection, numbered by the service.
 using ConnectionId = std::uint64_t;

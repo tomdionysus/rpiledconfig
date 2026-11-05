@@ -9,6 +9,9 @@
 #include <utility>
 #include <vector>
 
+#include "protocol/keys.h"
+#include "protocol/spake2.h"
+
 namespace rpiledconfig::setup {
 
 namespace {
@@ -68,6 +71,8 @@ void SetupMode::stop() {
 void SetupMode::_check() {
   if (!_started || _active) return;
 
+  if (_options.always) return _enter("setup.always is on");
+
   _wifi->status(_executor, [weak = weak_from_this()](types::Result<wifi::WifiStatus> result) {
     auto self = weak.lock();
     if (!self || !self->_started || self->_active) return;
@@ -87,9 +92,9 @@ void SetupMode::_enter(const std::string& why) {
 
   _logger->info("Entering setup mode: " + why);
 
-  // Only BLE: the LED waits for a phone to ask (docs/protocol.md, Blink), so a Pi nobody is
-  // setting up does not show its id to the room.
-  if (const auto started = _ble->start(ble::Advertisement{ble::local_name(_identity.fingerprint)}, weak_from_this()); !started) {
+  // Only BLE: the LED waits for a phone to ask (docs/protocol.md, Blink), and there is no key
+  // to show until one connects.
+  if (const auto started = _ble->start(ble::Advertisement{_identity.ble_name}, weak_from_this()); !started) {
     _logger->error("BLE cannot advertise: " + started.error);
   }
 
@@ -116,6 +121,7 @@ void SetupMode::_leave(const std::string& why) {
 
   _ble->stop();
   _stop_blinking("setup mode is ending");
+  _discard_key("setup mode is ending");
 
   _schedule_recheck();
 }
@@ -138,16 +144,21 @@ void SetupMode::_on_authenticated() {
 }
 
 void SetupMode::_blink(ble::ConnectionId connection, const types::Bytes& value) {
-  if (value.size() != 1 || (value[0] != 0x00 && value[0] != 0x01)) {
-    _logger->debug("A Blink write that is not 0x00 or 0x01 ignored, from connection " + std::to_string(connection));
+  if (value.size() == 1 && value[0] == 0x00) return _stop_blinking("connection " + std::to_string(connection) + " asked");
+
+  const auto symbol = value.size() == 1 ? led::blink_rate(value[0]) : std::nullopt;
+  if (!symbol) {
+    _logger->debug("A Blink write that is not a rate or 0x00 ignored, from connection " + std::to_string(connection));
     return;
   }
 
-  if (value[0] == 0x00) return _stop_blinking("connection " + std::to_string(connection) + " asked");
+  // Another rate is new frames from the sync, with the same key: what a phone that cannot
+  // read one rate asks for next.
+  if (_modulator->running() && _modulator->symbol() != *symbol) _modulator->stop();
 
   if (!_blinking) {
     _blinking = true;
-    _logger->info("Blinking the id, as connection " + std::to_string(connection) + " asked, for up to " +
+    _logger->info("Blinking the key, as connection " + std::to_string(connection) + " asked, for up to " +
                   std::to_string(_options.blink_timeout.count()) + " s");
   } else {
     _logger->info("Blink asked for again by connection " + std::to_string(connection) + "; " + std::to_string(_options.blink_timeout.count()) +
@@ -155,10 +166,9 @@ void SetupMode::_blink(ble::ConnectionId connection, const types::Bytes& value) 
   }
 
   // Tried again on every ask, the LED having refused before. A refusal is logged and the
-  // rest goes on: a Pi whose udev rule is missing still answers a phone that already knows
-  // its id.
+  // rest goes on: setup mode does not stop for an LED that cannot be driven.
   if (!_modulator->running()) {
-    if (const auto started = _modulator->start(); !started) _logger->error("The LED cannot be driven: " + started.error);
+    if (const auto started = _modulator->start(_key->key, *symbol); !started) _logger->error("The LED cannot be driven: " + started.error);
   }
 
   if (_blink_timeout) _blink_timeout->cancel();
@@ -178,6 +188,51 @@ void SetupMode::_stop_blinking(const std::string& why) {
 
   _logger->info("Stopped blinking: " + why);
   _modulator->stop();
+  _arm_key_expiry();
+}
+
+bool SetupMode::_ensure_key() {
+  if (_key) return true;
+
+  const auto drawn = _identity.draw_key();
+  if (!drawn) {
+    _logger->error("Cannot draw a pairing key: " + drawn.error);
+    return false;
+  }
+
+  auto w = protocol::password_scalar(drawn.value);
+  if (w.size() != protocol::spake2::scalar_length) {
+    _logger->error("Cannot derive the SPAKE2 password scalar (OpenSSL refused)");
+    return false;
+  }
+
+  // Never the key itself: it is the whole pairing secret.
+  _key = Key{drawn.value, std::move(w)};
+  _logger->info("A new pairing key, for this pairing only");
+  return true;
+}
+
+void SetupMode::_discard_key(const std::string& why) {
+  if (_key_expiry) _key_expiry->cancel();
+  _key_expiry.reset();
+
+  if (!_key) return;
+  _key.reset();
+  _logger->info("Pairing key discarded: " + why);
+}
+
+void SetupMode::_arm_key_expiry() {
+  if (_key_expiry) _key_expiry->cancel();
+  _key_expiry.reset();
+
+  // Only with nobody using it: a phone connected, or the LED still showing it.
+  if (!_key || _blinking || !_sessions.empty()) return;
+
+  _key_expiry = _timers->schedule(_options.key_idle, [weak = weak_from_this()]() {
+    auto self = weak.lock();
+    if (!self) return;
+    self->_discard_key(std::to_string(self->_options.key_idle.count()) + " s with no phone and no blinking");
+  });
 }
 
 void SetupMode::_on_refused() {
@@ -206,10 +261,18 @@ void SetupMode::_on_refused() {
 void SetupMode::_on_finished() {
   if (_options.always) {
     _logger->info("finish received; setup.always keeps setup mode on");
+    _stop_blinking("finish received");
+    _discard_key("finish received");
     return;
   }
 
   _leave("finish received");
+}
+
+void SetupMode::_on_uninstalling() {
+  // Not with setup.always's exception: a Pi being removed offers nothing to anyone. Should the
+  // removal never stop this daemon, the next check brings setup mode back.
+  _leave("the package is being removed");
 }
 
 void SetupMode::on_connect(ble::ConnectionId connection) {
@@ -218,9 +281,16 @@ void SetupMode::on_connect(ble::ConnectionId connection) {
     return;
   }
 
+  // The first connection of a pairing draws the key; a reconnect finds it still there.
+  if (!_ensure_key()) {
+    _ble->disconnect(connection);
+    return;
+  }
+  if (_key_expiry) _key_expiry->cancel();
+  _key_expiry.reset();
+
   session::PairingSession::Options options;
-  options.w = _identity.w;
-  options.fingerprint = _identity.fingerprint;
+  options.w = _key->w;
   options.version = _identity.version;
   options.auth_timeout = _options.auth_timeout;
   options.max_refusals = _options.max_refusals;
@@ -234,6 +304,9 @@ void SetupMode::on_connect(ble::ConnectionId connection) {
   };
   events.finished = [weak = weak_from_this()]() {
     if (auto self = weak.lock()) self->_on_finished();
+  };
+  events.uninstalling = [weak = weak_from_this()]() {
+    if (auto self = weak.lock()) self->_on_uninstalling();
   };
 
   auto session = std::make_shared<session::PairingSession>(_logger, _executor, _timers, std::make_shared<BleConnection>(_ble, connection), _requests,
@@ -249,13 +322,14 @@ void SetupMode::on_disconnect(ble::ConnectionId connection) {
   _logger->info("Disconnected: connection " + std::to_string(connection));
   it->second->close();
   _sessions.erase(it);
+  _arm_key_expiry();
 }
 
 void SetupMode::on_write(ble::ConnectionId connection, ble::Characteristic characteristic, types::Bytes value) {
   // Blink is setup mode's, not the session's: it needs no authentication, and it outlives
   // the connection that wrote it.
   if (characteristic == ble::Characteristic::blink) {
-    if (_active && _sessions.count(connection) != 0) _blink(connection, value);
+    if (_active && _key && _sessions.count(connection) != 0) _blink(connection, value);
     return;
   }
 

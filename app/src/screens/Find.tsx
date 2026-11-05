@@ -1,9 +1,10 @@
 // Step 1: the Pis in setup mode nearby, over Bluetooth. Choosing one asks it
-// to blink its ID (docs/protocol.md, Blink); its LED is dark until then. The
+// to blink its key (docs/protocol.md, Blink); its LED is dark until then. The
 // discovery and the Blink write are in pairing/discover.ts.
 import { useLocalSearchParams, useRouter } from '@/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { frameMs, RATE_INFO, RATES } from '@/led/rates';
 import { setBlinking, watchForPis, type FoundPi } from '@/pairing/discover';
 import { PairingError } from '@/pairing/session';
 import { useApp } from '@/state/store';
@@ -17,9 +18,9 @@ const HINT_AFTER_MS = 12_000;
 
 export default function FindScreen() {
   const router = useRouter();
-  // The symbol-time experiment's settings, carried to the scan screen (scan.tsx).
-  const experiment = useLocalSearchParams<{ symbolMs?: string; fps?: string }>();
-  const { services, setTarget, setMachineId } = useApp();
+  // A diagnostics build's frame rate, carried to the scan screen.
+  const experiment = useLocalSearchParams<{ fps?: string }>();
+  const { services, setTarget, setPairingKey, rate, setRate } = useApp();
   const [pis, setPis] = useState<FoundPi[]>([]);
   const [error, setError] = useState<PairingError | undefined>(undefined);
   const [asking, setAsking] = useState<string | undefined>(undefined);
@@ -63,9 +64,9 @@ export default function FindScreen() {
       stopScan.current?.();
       stopScan.current = undefined;
       try {
-        await setBlinking(services.transport, pi);
+        await setBlinking(services.transport, pi, rate);
         setTarget(pi);
-        setMachineId(undefined);
+        setPairingKey(undefined);
         router.push({ pathname: '/scan', params: experiment });
       } catch (caught) {
         setError(caught instanceof PairingError ? caught : new PairingError('bluetooth', 'Something went wrong with Bluetooth. Try again.', caught));
@@ -74,14 +75,31 @@ export default function FindScreen() {
         setAsking(undefined);
       }
     },
-    [router, services.transport, setMachineId, setTarget],
+    [rate, router, services.transport, setPairingKey, setTarget],
   );
 
   return (
     <Screen title="Find the Pi" eyebrow="Step 1 of 4" showBack>
       <Text style={styles.body}>
-        Pis waiting to be set up, nearest first. Choose yours and its main LED starts blinking; the next step reads it with the camera.
+        Pis waiting to be set up, strongest signal first. Choose yours and its main LED starts blinking; the next step reads it with the camera.
       </Text>
+
+      <Text style={styles.speedLabel}>LED speed</Text>
+      <View style={styles.speeds} accessibilityRole="radiogroup">
+        {RATES.map((option) => (
+          <Pressable
+            key={option}
+            accessibilityRole="radio"
+            accessibilityLabel={`LED speed ${RATE_INFO[option].label}`}
+            accessibilityState={{ checked: option === rate }}
+            disabled={asking !== undefined}
+            onPress={() => setRate(option)}
+            style={[styles.speed, option === rate && styles.speedChosen]}>
+            <Text style={[styles.speedName, option === rate && styles.speedNameChosen]}>{RATE_INFO[option].label}</Text>
+          </Pressable>
+        ))}
+      </View>
+      <Text style={styles.speedDetail}>Slower gives the camera longer on each blink. One frame takes {(frameMs(rate) / 1000).toFixed(1)} s at this speed.</Text>
 
       {pis.length === 0 && !error ? (
         <View style={styles.searching}>
@@ -94,16 +112,13 @@ export default function FindScreen() {
         <Pressable
           key={pi.id}
           accessibilityRole="button"
-          accessibilityLabel={`Pi with fingerprint ${pi.fingerprint}`}
+          accessibilityLabel={`Pi named ${pi.name}`}
           disabled={asking !== undefined}
           onPress={() => void choose(pi)}
           style={({ pressed }) => [styles.row, pressed && styles.pressed, asking !== undefined && asking !== pi.id && styles.dimmed]}>
           <View style={styles.rowText}>
-            <Text style={styles.fingerprint}>{pi.fingerprint}</Text>
-            <Text style={styles.rowDetail}>
-              {pi.name}
-              {pi.rssi !== undefined ? `, signal ${pi.rssi} dBm` : ''}
-            </Text>
+            <Text style={styles.name}>{pi.name}</Text>
+            {pi.rssi !== undefined ? <Text style={styles.rowDetail}>Signal {pi.rssi} dBm</Text> : null}
           </View>
           {asking === pi.id ? <ActivityIndicator color={colors.accent} /> : <Text style={styles.chevron}>{'>'}</Text>}
         </Pressable>
@@ -124,7 +139,6 @@ export default function FindScreen() {
         </View>
       ) : null}
 
-      <Button label="Type the ID instead" variant="quiet" onPress={() => router.push('/enter')} style={styles.typeIt} />
     </Screen>
   );
 }
@@ -134,6 +148,42 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.textDim,
     lineHeight: 21,
+    marginBottom: space.xl,
+  },
+  speedLabel: {
+    ...typography.label,
+    color: colors.textDim,
+    marginBottom: space.sm,
+  },
+  speeds: {
+    flexDirection: 'row',
+    gap: space.sm,
+  },
+  speed: {
+    flex: 1,
+    minHeight: TOUCH_TARGET,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+  },
+  speedChosen: {
+    backgroundColor: colors.accentSurface,
+    borderColor: colors.accentEdge,
+  },
+  speedName: {
+    ...typography.label,
+    color: colors.textDim,
+  },
+  speedNameChosen: {
+    color: colors.accent,
+  },
+  speedDetail: {
+    ...typography.caption,
+    color: colors.textFaint,
+    marginTop: space.sm,
     marginBottom: space.xl,
   },
   searching: {
@@ -169,11 +219,10 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: space.xs,
   },
-  fingerprint: {
-    ...typography.title,
+  name: {
+    ...typography.heading,
     fontFamily: monospace,
     color: colors.accent,
-    letterSpacing: 2,
   },
   rowDetail: {
     ...typography.caption,
@@ -206,8 +255,5 @@ const styles = StyleSheet.create({
     ...typography.caption,
     fontFamily: monospace,
     color: colors.textFaint,
-  },
-  typeIt: {
-    marginTop: space.xl,
   },
 });

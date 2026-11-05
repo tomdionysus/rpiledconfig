@@ -7,17 +7,13 @@
 #
 # rpiledconfig postrm.
 #
-# remove keeps /var/lib/rpiledconfig: it holds the machine id, and a reinstall that kept
-# it would still answer the app that learnt it.
-#
-# purge deletes it, as Debian expects of a purge; the next install makes a new id and the
-# LED has to be read again. The system user and group are left, as Debian policy advises:
-# files they own may remain elsewhere.
+# remove keeps the configuration; purge deletes it, as Debian expects of a purge. The
+# daemon keeps no state: the pairing key is in memory only. The system user and group are
+# left, as Debian policy advises: files they own may remain elsewhere.
 
 set -e
 
 UNIT=rpiledconfig.service
-STATE_DIR=/var/lib/rpiledconfig
 
 case "$1" in
     remove)
@@ -36,11 +32,6 @@ case "$1" in
         if [ -x /usr/bin/deb-systemd-helper ]; then
             deb-systemd-helper purge "$UNIT" >/dev/null || true
             deb-systemd-helper unmask "$UNIT" >/dev/null || true
-        fi
-
-        if [ -d "$STATE_DIR" ]; then
-            echo "Purging rpiledconfig: deleting $STATE_DIR, the machine id included." >&2
-            rm -rf "$STATE_DIR"
         fi
 
         # dpkg has removed the conffile; anything left beside it (.dpkg-old, .dpkg-dist,

@@ -14,7 +14,6 @@ import {
   AUTH_ACCEPTED,
   AUTH_REFUSED,
   AUTH_TIMEOUT_MS,
-  BLE_NAME_PREFIX,
   CHAR_AUTH,
   CHAR_AUTH_RESULT,
   CHAR_BLINK,
@@ -22,15 +21,16 @@ import {
   CHAR_INFO,
   CHAR_REQUEST,
   CHAR_RESPONSE,
-  BLINK_PROTOCOL_VERSION,
-  BLINK_START,
+  BLINK_FAST,
+  BLINK_NORMAL,
+  BLINK_ROBUST,
   BLINK_STOP,
   BLINK_TIMEOUT_MS,
   PROTOCOL_VERSION,
   REFUSALS_PER_CONNECTION,
 } from '@/protocol/constants';
 import { FragmentError, fragment, fragmentSizeForMtu, Reassembler } from '@/protocol/fragments';
-import { fingerprint, passwordScalar, sessionKey } from '@/protocol/keys';
+import { passwordScalar, sessionKey } from '@/protocol/keys';
 import { randomScalar, share } from '@/protocol/spake2';
 import { decodeRequest, encodeResponse, type JoinState, type Network, type Request, type Response, type WifiStatus } from '@/protocol/messages';
 import { realClock, type Clock } from '@/util/clock';
@@ -49,7 +49,9 @@ export interface LinkDrop {
 }
 
 export interface FakeDaemonOptions {
-  machineId: Uint8Array;
+  pairingKey: Uint8Array;
+  /** The advertised name. Unrelated to the key, as on a real Pi. */
+  name?: string;
   hostname?: string;
   version?: string;
   networks?: Network[];
@@ -79,7 +81,7 @@ export interface FakeDaemonOptions {
   easyConnect?: 'available' | 'unavailable';
   /** Whether `uninstall` works; `unavailable` answers `uninstall_unavailable`. Default available. */
   uninstall?: 'available' | 'unavailable';
-  /** The protocol Info says; 2 is a daemon without Blink that blinks all through setup mode. Default 3. */
+  /** The protocol Info says. Default this app's. */
   protocol?: number;
 }
 
@@ -120,13 +122,11 @@ export function scanList(heard: readonly Network[]): Network[] {
 type Listener = (value: Uint8Array) => void;
 
 interface Scanner {
-  prefix: string;
   onFound(peripheral: Peripheral): void;
 }
 
 export class FakeDaemon implements BleTransport {
   readonly id = 'fake-pi';
-  readonly fingerprint: string;
   readonly name: string;
   hostname: string;
   version: string;
@@ -140,8 +140,10 @@ export class FakeDaemon implements BleTransport {
   easyConnectMode: 'available' | 'unavailable';
   uninstallMode: 'available' | 'unavailable';
   readonly protocol: number;
-  /** Whether the LED is blinking the ID: asked for by Blink (always, at protocol 2, in setup mode). */
+  /** Whether the LED is blinking the key: asked for by Blink. */
   blinking = false;
+  /** The rate byte last written to Blink. */
+  blinkByte: number | undefined;
   /** Set by `uninstall`: the package is gone, and nothing answers any more. */
   uninstalled = false;
   private cancelBlink?: () => void;
@@ -171,9 +173,8 @@ export class FakeDaemon implements BleTransport {
   private cancelJoin?: () => void;
 
   constructor(options: FakeDaemonOptions) {
-    this.key = passwordScalar(options.machineId);
-    this.fingerprint = fingerprint(options.machineId);
-    this.name = `${BLE_NAME_PREFIX}${this.fingerprint}`;
+    this.key = passwordScalar(options.pairingKey);
+    this.name = options.name ?? 'RPiLEDConfig-3a9c';
     this.hostname = options.hostname ?? 'raspberrypi';
     this.version = options.version ?? '0.1.0';
     this.networks = options.networks ?? DEFAULT_NETWORKS;
@@ -188,7 +189,6 @@ export class FakeDaemon implements BleTransport {
     this.easyConnectMode = options.easyConnect ?? 'available';
     this.uninstallMode = options.uninstall ?? 'available';
     this.protocol = options.protocol ?? PROTOCOL_VERSION;
-    this.blinking = this.protocol < BLINK_PROTOCOL_VERSION;
     this.clock = options.clock ?? realClock;
     this.authTimeoutMs = options.authTimeoutMs ?? AUTH_TIMEOUT_MS;
   }
@@ -205,8 +205,8 @@ export class FakeDaemon implements BleTransport {
 
   async prepare(): Promise<void> {}
 
-  scan(namePrefix: string, onFound: (peripheral: Peripheral) => void, _onError?: (error: Error) => void): () => void {
-    const scanner: Scanner = { prefix: namePrefix, onFound };
+  scan(onFound: (peripheral: Peripheral) => void, _onError?: (error: Error) => void): () => void {
+    const scanner: Scanner = { onFound };
     this.scanners.add(scanner);
     this.later(() => this.announceTo(scanner));
     return () => {
@@ -253,7 +253,6 @@ export class FakeDaemon implements BleTransport {
         return { ok: true };
       case 'finish':
         this.setupMode = false;
-        if (this.protocol < BLINK_PROTOCOL_VERSION) this.blinking = false;
         return { ok: true };
       case 'uninstall':
         if (this.uninstallMode === 'unavailable') {
@@ -269,14 +268,14 @@ export class FakeDaemon implements BleTransport {
   blink(value: Uint8Array): void {
     if (value.length !== 1) return;
     if (value[0] === BLINK_STOP) this.stopBlinking();
-    if (value[0] !== BLINK_START) return;
+    if (value[0] !== BLINK_NORMAL && value[0] !== BLINK_FAST && value[0] !== BLINK_ROBUST) return;
     this.blinking = true;
+    this.blinkByte = value[0];
     this.cancelBlink?.();
     this.cancelBlink = this.clock.after(BLINK_TIMEOUT_MS, () => this.stopBlinking());
   }
 
   stopBlinking(): void {
-    if (this.protocol < BLINK_PROTOCOL_VERSION) return;
     this.cancelBlink?.();
     this.cancelBlink = undefined;
     this.blinking = false;
@@ -397,7 +396,7 @@ export class FakeDaemon implements BleTransport {
   }
 
   private announceTo(scanner: Scanner): void {
-    if (!this.scanners.has(scanner) || !this.advertising || !this.name.startsWith(scanner.prefix)) return;
+    if (!this.scanners.has(scanner) || !this.advertising) return;
     scanner.onFound({ id: this.id, name: this.name, rssi: -55 });
   }
 }
@@ -483,7 +482,7 @@ class FakeConnection implements BleConnection {
     this.assertOpen();
     switch (characteristic) {
       case CHAR_INFO:
-        return utf8Encode(JSON.stringify({ protocol: this.daemon.protocol, version: this.daemon.version, fingerprint: this.daemon.fingerprint }));
+        return utf8Encode(JSON.stringify({ protocol: this.daemon.protocol, version: this.daemon.version }));
       case CHAR_CHALLENGE:
         if (this.authenticated) this.startOver();
         return Uint8Array.from(this.pB);
@@ -504,7 +503,6 @@ class FakeConnection implements BleConnection {
         this.request(value);
         return;
       case CHAR_BLINK:
-        if (this.daemon.protocol < BLINK_PROTOCOL_VERSION) throw new Error(`characteristic ${characteristic} is not writable`);
         this.daemon.blink(value);
         return;
       default:
@@ -645,4 +643,4 @@ class FakeConnection implements BleConnection {
 }
 
 /** The ID the fake daemon answers to when nothing else is chosen: the vectors' one. */
-export const FAKE_MACHINE_ID_HEX = '012345';
+export const FAKE_PAIRING_KEY_HEX = '012345';

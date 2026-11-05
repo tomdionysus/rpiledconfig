@@ -8,7 +8,7 @@
 # Makes every icon from assets/icon.svg: the launcher icons (legacy, on black; adaptive
 # foreground, no background, inside the central safe zone) and the splash image in
 # android/app/src/main/res, and the home and title-bar icons in assets/ (on the app's
-# background, #0d110e). Needs rsvg-convert (MacPorts librsvg). Run from app/ after
+# background, #0d110e), and the Play listing's graphics in store/. Needs rsvg-convert (MacPorts librsvg). Run from app/ after
 # changing icon.svg.
 set -e
 cd "$(dirname "$0")/.."
@@ -50,6 +50,8 @@ for density in "mdpi 1" "hdpi 1.5" "xhdpi 2" "xxhdpi 3" "xxxhdpi 4"; do
   rsvg-convert -w "$size" -h "$size" "$tmp/splash.svg" -o "$dir/splashscreen_logo.png"
   rm -rf "$RES/drawable-night-$1"
 done
+
+python3 scripts/make-store-graphics.py
 
 rsvg-convert -w 288 -h 288 "$tmp/dark.svg" -o assets/hero-icon.png
 rsvg-convert -w 96 -h 96 "$tmp/dark.svg" -o assets/title-icon.png

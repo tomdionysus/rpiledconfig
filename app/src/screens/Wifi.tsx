@@ -1,6 +1,6 @@
-// WiFi over the paired session: pick a network from the Pi's scan and type
-// its passphrase, or scan the network's QR code. Both end in the same join
-// flow (pairing/join.ts), which expects the BLE link to drop and reconnects.
+// WiFi over the paired session: pick a network from the Pi's scan, or type its
+// name, and give its passphrase. The join flow (pairing/join.ts) expects the BLE
+// link to drop and reconnects.
 // Wi-Fi Easy Connect (copying this phone's WiFi) is left out: on the A85 it
 // took the phone off its network and never reached the Pi (TODO/ACTIVE.md).
 //
@@ -21,8 +21,6 @@ import { Screen } from '@/ui/Screen';
 import { colors, monospace, radius, space, type as typography, TOUCH_TARGET } from '@/ui/theme';
 import { DIAGNOSTICS } from '@/util/diagnostics';
 import { phoneSsid } from '@/wifi/phoneWifi';
-import { WifiQrScanner } from '@/wifi/WifiQrScanner';
-import type { WifiCredentials } from '@/wifi/wifiQr';
 
 type Busy = 'status' | 'scan' | 'forget' | 'finish' | 'uninstall' | undefined;
 
@@ -57,7 +55,6 @@ export default function WifiScreen() {
   const [attempt, setAttempt] = useState<Attempt | undefined>(undefined);
   const [closed, setClosed] = useState<LinkLostError | undefined>(undefined);
   const [phoneNetwork, setPhoneNetwork] = useState<string | undefined>(undefined);
-  const [scanningQr, setScanningQr] = useState(false);
   /** The Pi answered uninstall: its removal has started. */
   const [removed, setRemoved] = useState(false);
   // While a join runs, the link dropping is part of the plan, not news.
@@ -114,7 +111,7 @@ export default function WifiScreen() {
     return () => clearInterval(timer);
   }, [inProgress]);
   useEffect(() => {
-    if (!session || closed || inProgress || busy || scanningQr) return;
+    if (!session || closed || inProgress || busy) return;
     const timer = setTimeout(() => {
       if (joining.current || session.isClosed) return;
       session.status().then(setStatus, () => {
@@ -122,13 +119,13 @@ export default function WifiScreen() {
       });
     }, KEEPALIVE_MS);
     return () => clearTimeout(timer);
-  }, [session, closed, inProgress, busy, scanningQr, status]);
+  }, [session, closed, inProgress, busy, status]);
 
   if (removed) {
     return (
       <Screen title="Removed">
         <Text style={styles.body}>
-          The Pi is removing RPi LED Config: in a few seconds the service stops, and its program, settings and machine ID are deleted. Its WiFi stays as it is.
+          The Pi is removing RPi LED Config: in a few seconds the service stops, and its program and settings are deleted. Its WiFi stays as it is.
         </Text>
         <Button label="Home" onPress={() => router.replace('/')} style={styles.removedHome} />
       </Screen>
@@ -154,7 +151,7 @@ export default function WifiScreen() {
   const uninstall = () => {
     Alert.alert(
       'Remove RPi LED Config from this Pi?',
-      'The service is stopped and deleted with its settings and machine ID. The Pi keeps its WiFi, but cannot be set up from a phone again until the package is reinstalled.',
+      'The service is stopped and deleted with its settings. The Pi keeps its WiFi, but cannot be set up from a phone again until the package is reinstalled.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -212,23 +209,16 @@ export default function WifiScreen() {
     setChoice(next);
   };
 
-  const fromQr = (credentials: WifiCredentials) => {
-    setScanningQr(false);
-    configure(credentials.ssid, credentials.psk);
-  };
-
   const lost = attempt?.outcome?.kind === 'lost';
   const joined = attempt?.outcome?.kind === 'joined';
   const offline = !!closed || lost || inProgress;
   const piNetwork = status?.wifi.connected ? status.wifi.ssid : undefined;
 
-  if (scanningQr) return <WifiQrScanner onRead={fromQr} onCancel={() => setScanningQr(false)} />;
-
   return (
     <View style={styles.fill}>
       <Screen title="WiFi" eyebrow="Step 4 of 4">
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>{status?.hostname ?? `Pi ${session.info.fingerprint}`}</Text>
+          <Text style={styles.cardTitle}>{status?.hostname ?? session.peripheral.name}</Text>
           <Text style={styles.cardStatus}>
             {status
               ? status.wifi.connected
@@ -237,7 +227,7 @@ export default function WifiScreen() {
               : 'Asking for its status'}
           </Text>
           <Text style={styles.cardDetail}>
-            Fingerprint {session.info.fingerprint}, daemon {session.info.version}
+            {session.peripheral.name}, daemon {session.info.version}
           </Text>
         </View>
 
@@ -320,7 +310,6 @@ export default function WifiScreen() {
           </View>
         )}
         <Button label="Other network: type its name" variant="quiet" disabled={offline} onPress={() => choose({ kind: 'typed' })} />
-        <Button label="Scan a WiFi QR code" variant="quiet" disabled={offline} onPress={() => setScanningQr(true)} />
 
         {message ? <Text style={styles.error}>{message}</Text> : null}
 

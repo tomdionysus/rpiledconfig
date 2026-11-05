@@ -15,7 +15,7 @@
 #include "detector.h"
 #include "protocol.h"
 
-// The LED decoder for one stream of brightnesses: timestamped samples in, a machine ID out
+// The LED decoder for one stream of brightnesses: timestamped samples in, a pairing key out
 // (docs/protocol.md, "Decoding").
 //
 // The frame repeats unchanged, so the stream is cyclic and a sample from any part of any

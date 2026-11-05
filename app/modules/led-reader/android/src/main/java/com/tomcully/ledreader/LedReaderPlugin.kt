@@ -12,7 +12,7 @@ import com.mrousavy.camera.frameprocessors.VisionCameraProxy
 import java.nio.ByteBuffer
 
 class LedReaderPlugin(@Suppress("UNUSED_PARAMETER") proxy: VisionCameraProxy, options: Map<String, Any>?) : FrameProcessorPlugin() {
-  // The symbol time the Pi was configured with (the protocol's 45 ms unless an experiment).
+  // The T of the rate the phone asked the Pi for.
   private var handle: Long = nativeCreate((options?.get("symbolMs") as? Number)?.toDouble() ?: 0.0)
   private val out = DoubleArray(nativeFieldCount())
 
@@ -34,7 +34,7 @@ class LedReaderPlugin(@Suppress("UNUSED_PARAMETER") proxy: VisionCameraProxy, op
     state["erasures"] = out[6]
     if (out[7] != 0.0) {
       val id = StringBuilder()
-      for (i in 0 until 8) id.append(String.format("%02x", out[20 + i].toInt()))
+      for (i in 0 until 8) id.append(String.format("%02x", out[23 + i].toInt()))
       state["idHex"] = id.toString()
       state["errors"] = out[8]
       state["filled"] = out[9]
@@ -50,6 +50,10 @@ class LedReaderPlugin(@Suppress("UNUSED_PARAMETER") proxy: VisionCameraProxy, op
     state["planeHeight"] = out[17]
     state["candidates"] = out[18]
     state["sample"] = out[19]
+    if (out[20] != 0.0) {
+      state["spotX"] = out[21]
+      state["spotY"] = out[22]
+    }
     state["orientation"] = frame.orientation.unionValue
     return state
   }

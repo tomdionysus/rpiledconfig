@@ -15,16 +15,8 @@ export async function phoneSsid(): Promise<string | undefined> {
   const module = (NativeModules as { RpiWifiInfo?: RpiWifiInfo }).RpiWifiInfo;
   if (!module) return undefined;
   try {
-    const permission = PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION;
-    if (!(await PermissionsAndroid.check(permission))) {
-      const answer = await PermissionsAndroid.request(permission, {
-        title: 'Name of this phone\u2019s WiFi',
-        message: 'Android shares the name of the WiFi network this phone is on only with apps allowed to use location. It is used to mark that network in the list, and nothing else.',
-        buttonPositive: 'Allow',
-        buttonNegative: 'Not now',
-      });
-      if (answer !== PermissionsAndroid.RESULTS.GRANTED) return undefined;
-    }
+    // Asked for at first launch (screens/Permissions.tsx); declined, the network just goes unmarked.
+    if (!(await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION))) return undefined;
     const ssid = await module.ssid();
     return ssid ?? undefined;
   } catch {

@@ -1,0 +1,9 @@
+pluginManagement { includeBuild("../node_modules/@react-native/gradle-plugin") }
+plugins { id("com.facebook.react.settings") }
+extensions.configure(com.facebook.react.ReactSettingsExtension){ ex -> ex.autolinkLibrariesFromCommand() }
+rootProject.name = 'RPiLEDConfig'
+include ':app'
+// The native LED reader (the C++ in modules/led-reader/cpp behind a VisionCamera plugin).
+include ':led-reader'
+project(':led-reader').projectDir = new File(rootDir, '../modules/led-reader/android')
+includeBuild('../node_modules/@react-native/gradle-plugin')

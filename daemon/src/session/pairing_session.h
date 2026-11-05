@@ -29,6 +29,7 @@ struct SessionEvents {
   std::function<void()> authenticated;
   std::function<void()> refused;
   std::function<void()> finished;
+  std::function<void()> uninstalling;
 };
 
 // One connection's state machine (docs/protocol.md, "Authentication" and after): a
@@ -41,7 +42,6 @@ class PairingSession : public std::enable_shared_from_this<PairingSession> {
   struct Options {
     // w, the SPAKE2 password scalar (protocol::password_scalar).
     types::Bytes w;
-    std::string fingerprint;
     std::string version;
 
     // Dropped if not authenticated by then.

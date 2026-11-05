@@ -17,10 +17,12 @@ default; the package depends on them.
 | `/usr/lib/udev/rules.d/60-rpiledconfig.rules` | Gives the `rpiledconfig` group write access to the activity LED's `brightness` and `trigger`. |
 | `/usr/share/polkit-1/rules.d/60-rpiledconfig.rules` | The polkit rule that lets the `rpiledconfig` user, and only it, scan for, add, activate and delete NetworkManager connections, and start `rpiledconfig-uninstall.service`. |
 | `/usr/share/doc/rpiledconfig/` | These docs, the protocol, the example configuration, README, LICENSE and NOTICE. |
-| `/var/lib/rpiledconfig/` | State: the machine ID (`machine-id`, 0600). Made by the package, not shipped in it. |
 
-The package also creates the system user and group `rpiledconfig` (no login, home
-`/var/lib/rpiledconfig`), and the system group `netdev` if the system has none
+The daemon keeps no state: its pairing key is in memory only. An upgrade from a version
+that kept a machine ID deletes `/var/lib/rpiledconfig`.
+
+The package also creates the system user and group `rpiledconfig` (no login, no home),
+and the system group `netdev` if the system has none
 (Raspberry Pi OS has one). There is no D-Bus policy: the distributions' own already allow
 everything the daemon does (below).
 
@@ -46,21 +48,19 @@ Watch it:
     sudo journalctl -u rpiledconfig -f
 
 On a Pi with no WiFi connection it enters setup mode: `bluetoothctl` on another
-machine, or any BLE scanner, sees `RPiLEDConfig-<fingerprint>` (the name is in the scan
+machine, or any BLE scanner, sees `RPiLEDConfig-<4 hex>` (the prefix is `ble.name_prefix`; the name is in the scan
 response, so a scanner has to scan actively, as phones do). The journal says `GATT
-application registered` and `Advertising RPiLEDConfig-<fingerprint>`; if it says BlueZ
+application registered` and `Advertising RPiLEDConfig-<4 hex>`; if it says BlueZ
 refused either, the reason follows. The LED keeps doing what it did until a phone asks:
-open the app, pick the Pi by its fingerprint, and the activity LED starts blinking the
-machine ID (the journal says `Blinking the id`); point the camera at it and follow the
+open the app, pick the Pi by its name, and the daemon draws a one-time key and the
+activity LED starts blinking it (the journal says `A new pairing key` and `Blinking the
+key`); point the camera at it and follow the
 app. The LED goes back to its usual trigger once the phone has authenticated, or two
 minutes after it asked; advertising stops when the app sends `finish`, or after
 `setup.timeout`.
 
-To see the machine ID the LED is blinking:
-
-    sudo rpiledconfig --show-id
-
-The journal shows only the fingerprint, never the ID: the ID is the pairing secret.
+The journal never shows the key and no command prints it: it is the pairing secret, and it
+lasts one pairing. The name's 4 hex characters are unrelated to it.
 
 ## What the service user is allowed
 
@@ -136,14 +136,6 @@ Wi-Fi Easy Connect answers `easyconnect_unavailable` ("not allowed to use
     sudo systemd-run --pty --uid=rpiledconfig --gid=rpiledconfig -p SupplementaryGroups=netdev \
         /usr/bin/rpiledconfig --config /etc/rpiledconfig/rpiledconfig.conf
 
-## A new machine ID
-
-    sudo systemctl stop rpiledconfig
-    sudo -u rpiledconfig rpiledconfig --regenerate-id
-    sudo systemctl start rpiledconfig
-
-An app that learnt the old ID has to read the LED again.
-
 ## Upgrading
 
     sudo apt install ./rpiledconfig_<new version>_arm64.deb
@@ -152,8 +144,8 @@ The configuration is kept; the service restarts if it was running.
 
 ## Removing
 
-    sudo apt remove rpiledconfig          # keeps /etc/rpiledconfig and the machine ID
-    sudo apt purge rpiledconfig           # removes those too
+    sudo apt remove rpiledconfig          # keeps /etc/rpiledconfig
+    sudo apt purge rpiledconfig           # removes that too
 
 Or from the phone: once paired, the app's "Remove RPiLEDConfig from this Pi" asks the
 daemon to start `rpiledconfig-uninstall.service`, which waits 3 seconds and runs

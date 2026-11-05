@@ -95,11 +95,10 @@ std::string scan_response(std::vector<WifiNetwork> networks) {
 
 std::string easyconnect_response(const std::string& uri) { return Json::object().set("ok", Json::boolean(true)).set("uri", Json::string(uri)).dump(); }
 
-std::string info_json(const std::string& version, const std::string& fingerprint) {
+std::string info_json(const std::string& version) {
   return Json::object()
       .set("protocol", Json::number(protocol_version))
       .set("version", Json::string(version))
-      .set("fingerprint", Json::string(fingerprint))
       .dump();
 }
 

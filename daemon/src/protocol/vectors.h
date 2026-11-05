@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-#include "machine_id/machine_id.h"
+#include "pairing_key/pairing_key.h"
 #include "types/status.h"
 
 namespace rpiledconfig::protocol::vectors {
@@ -19,7 +19,7 @@ namespace rpiledconfig::protocol::vectors {
 // bytes; the two test suites are compared through this.
 
 // The inputs.
-inline constexpr std::uint64_t machine_id_value = 0x0123456789abcdefULL;
+inline constexpr std::uint64_t pairing_key_value = 0x0123456789abcdefULL;
 types::Bytes x();  // the app's SPAKE2 scalar: 32 bytes, 01..20, big-endian
 types::Bytes y();  // the daemon's: 32 bytes, 21..40
 
@@ -32,14 +32,13 @@ inline constexpr std::size_t fragment_size = 20;
 inline constexpr char crc16_check_input[] = "123456789";
 
 struct Vectors {
-  machine_id::MachineId machine_id;
-  types::Bytes id_bytes;
+  pairing_key::PairingKey pairing_key;
+  types::Bytes key_bytes;
   std::uint16_t crc16_check = 0;
   types::Bytes led_message;
   types::Bytes led_codeword;
   // The frame's runs in units of T, on positive and off negative: +4,-4,+1,-2,...
   std::string led_frame_runs;
-  std::string fingerprint;
   types::Bytes w;
   types::Bytes p_a;
   types::Bytes p_b;

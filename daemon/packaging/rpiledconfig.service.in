@@ -5,8 +5,8 @@
 # Licensed under the Apache License, Version 2.0 - see LICENSE
 #
 # The daemon answers to anyone in Bluetooth range who can see its LED, so this unit
-# assumes it will one day be attacked. It runs as its own unprivileged user, writes to its
-# own state directory and the LED's sysfs node and nothing else, and reaches nothing on
+# assumes it will one day be attacked. It runs as its own unprivileged user, writes to the
+# LED's sysfs node and nothing else, keeps no state, and reaches nothing on
 # the network: BlueZ and NetworkManager are talked to over the system bus, and the bus does
 # the rest.
 #
@@ -45,11 +45,6 @@ Group=rpiledconfig
 # network namespace this unit shares. So there is no RuntimeDirectory for it either. The
 # package makes the group if the system has none (postinst).
 SupplementaryGroups=netdev
-
-# /var/lib/rpiledconfig: the machine id, 0600. systemd creates it and chowns it to the
-# service.
-StateDirectory=rpiledconfig
-StateDirectoryMode=0750
 
 # /etc/rpiledconfig. systemd never chowns a configuration directory, so the package makes
 # it root:rpiledconfig: the service reads its configuration and cannot change it. Read

@@ -16,8 +16,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Camera, getCameraFormat, useCameraDevices, useCameraPermission, useFrameProcessor, type CameraRuntimeError } from 'react-native-vision-camera';
 import { useRunOnJS } from 'react-native-worklets-core';
 import { chooseScanCamera } from '@/led/camera';
-import { ScanProgress, type ScanView } from '@/led/scanProgress';
-import { fingerprint } from '@/protocol/keys';
+import { frameMs, RATE_INFO, slowerRate, type LedRate } from '@/led/rates';
+import { ScanProgress, STALLED_AFTER_FRAMES, type ScanView } from '@/led/scanProgress';
+import { setBlinking } from '@/pairing/discover';
+import { PairingError } from '@/pairing/session';
 import { useApp } from '@/state/store';
 import { Button } from '@/ui/Button';
 import { Progress } from '@/ui/Progress';
@@ -26,11 +28,9 @@ import { DIAGNOSTICS } from '@/util/diagnostics';
 import { hexToBytes } from '@/protocol/bytes';
 import { createLedReader, type LedReaderState } from '../../modules/led-reader';
 
-// The camera's frame rate and the Pi's symbol time: the protocol's 45 ms at 30 fps. A
-// diagnostics build takes others from the deep link (rpiledconfig://find?symbolMs=..&fps=..)
-// for the symbol-time experiment (TODO/ACTIVE.md), against a Pi with the same led.symbol_ms.
+// The camera's frame rate. A diagnostics build takes another from the deep link
+// (rpiledconfig://find?fps=..).
 const DEFAULT_FPS = 30;
-const DEFAULT_SYMBOL_MS = 45;
 
 /** A positive number from a route parameter, in diagnostics builds only; otherwise the default. */
 function setting(value: string | string[] | undefined, fallback: number): number {
@@ -45,6 +45,9 @@ function setting(value: string | string[] | undefined, fallback: number): number
  */
 const VIEWFINDER_FRACTION = 0.5;
 
+/** How long the full bar shows after a read, before the screen changes. */
+const READ_HOLD_MS = 80;
+
 // The reader takes the Y plane of a yuv frame.
 const PIXEL_FORMAT = 'yuv';
 
@@ -52,17 +55,19 @@ export default function ScanScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const window = useWindowDimensions();
-  const { setMachineId, services, target } = useApp();
-  // The experiment's settings, from a deep link such as rpiledconfig://find?symbolMs=25&fps=60.
-  const params = useLocalSearchParams<{ symbolMs?: string; fps?: string }>();
+  const { setPairingKey, services, rate, setRate, target } = useApp();
+  const params = useLocalSearchParams<{ fps?: string }>();
   const FPS = setting(params.fps, DEFAULT_FPS);
-  const SYMBOL_MS = setting(params.symbolMs, DEFAULT_SYMBOL_MS);
-  // The fingerprint of an LED read that was not the chosen Pi's.
-  const [otherPi, setOtherPi] = useState<string | undefined>(undefined);
+  const SYMBOL_MS = RATE_INFO[rate].symbolMs;
+  // Bumped to start reading afresh, after asking the Pi to blink again.
+  const [attempt, setAttempt] = useState(0);
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState<string | undefined>(undefined);
 
   // Look for Pis over Bluetooth while the LED is read, so pairing finds its Pi
   // at once rather than starting a scan after the read.
-  useEffect(() => services.transport.prescan?.(), [services]);
+  // Not while asking the Pi to blink again: one Bluetooth job at a time.
+  useEffect(() => (retrying ? undefined : services.transport.prescan?.()), [services, retrying]);
   const { hasPermission, requestPermission } = useCameraPermission();
   // Not useCameraDevice('back'): it can pick a camera with no formats, and
   // useCameraFormat then throws during render (src/led/camera.ts).
@@ -82,13 +87,13 @@ export default function ScanScreen() {
   // The native reader (modules/led-reader): it finds the LED anywhere in the frame and
   // decodes it on the camera's thread; this screen only shows its state. One per visit.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const reader = useMemo(() => createLedReader(SYMBOL_MS), []);
+  const reader = useMemo(() => createLedReader(SYMBOL_MS), [SYMBOL_MS, attempt]);
   // The last second of frame times, for the measured frame rate in the log.
   const frameTimes = useRef<number[]>([]);
   const [state, setState] = useState<LedReaderState | undefined>(undefined);
   // What the screen says: the reader's frames folded into where the user is (led/scanProgress.ts).
-  const progress = useRef(new ScanProgress());
-  const [scan, setScan] = useState<ScanView>(() => progress.current.update({ t: 0, ledSeen: false, coverage: 0 }));
+  const progress = useRef(new ScanProgress(frameMs(rate)));
+  const [scan, setScan] = useState<ScanView>(() => new ScanProgress(frameMs(rate)).update({ t: 0, ledSeen: false, coverage: 0 }));
   const [active, setActive] = useState(true);
   const [frameError, setFrameError] = useState<string | undefined>(
     reader ? undefined : 'the LED reader is not built into this app on this platform',
@@ -103,7 +108,7 @@ export default function ScanScreen() {
       while (times.length > 0 && next.t - times[0] > 1000) times.shift();
     }
     const view = progress.current.update(next);
-    setScan((current) => (current.phase === view.phase && current.progress === view.progress && current.hint === view.hint ? current : view));
+    setScan((current) => (current.phase === view.phase && current.progress === view.progress && current.hint === view.hint && current.stalled === view.stalled ? current : view));
     if (DIAGNOSTICS && (next.t - lastLog.current >= 1000 || next.idHex)) {
       // `adb logcat -s ReactNativeJS` on Android: what the reader measured, once a second.
       lastLog.current = next.t;
@@ -144,15 +149,33 @@ export default function ScanScreen() {
   const accept = useCallback(
     (idBytes: Uint8Array) => {
       setActive(false);
-      // Another Pi's LED in view (docs/protocol.md, The idea): not the one asked to blink.
-      if (target && fingerprint(idBytes) !== target.fingerprint) {
-        setOtherPi(fingerprint(idBytes));
-        return;
-      }
-      setMachineId(idBytes);
+      setPairingKey(idBytes);
       router.replace('/pair');
     },
-    [router, setMachineId, target],
+    [router, setPairingKey],
+  );
+
+  // Asks the Pi to blink at this rate (the same key, new frames) and reads from nothing again.
+  const readAgain = useCallback(
+    async (next: LedRate) => {
+      if (!target) return;
+      setRetrying(true);
+      setRetryError(undefined);
+      try {
+        await setBlinking(services.transport, target, next);
+        setRate(next);
+        progress.current = new ScanProgress(frameMs(next));
+        frameTimes.current = [];
+        setState(undefined);
+        setScan(new ScanProgress(frameMs(next)).update({ t: 0, ledSeen: false, coverage: 0 }));
+        setAttempt((n) => n + 1);
+      } catch (caught) {
+        setRetryError(caught instanceof PairingError ? caught.message : 'Something went wrong with Bluetooth. Try again.');
+      } finally {
+        setRetrying(false);
+      }
+    },
+    [services.transport, setRate, target],
   );
 
   const idHex = state?.idHex;
@@ -164,7 +187,11 @@ export default function ScanScreen() {
   );
   useEffect(() => {
     // One frame that passes the CRC is a read.
-    if (result) accept(result.idBytes);
+    if (!result) return;
+    // A read often comes with part of the code unseen, as the Reed-Solomon code fills the rest.
+    // The bar shows full for a moment first, so that it is never seen to stop short.
+    const timer = setTimeout(() => accept(result.idBytes), READ_HOLD_MS);
+    return () => clearTimeout(timer);
   }, [result, accept]);
 
   if (!hasPermission) {
@@ -185,32 +212,18 @@ export default function ScanScreen() {
     );
   }
 
-  if (otherPi && target) {
-    return (
-      <View style={[styles.root, styles.prompt, { paddingTop: insets.top + space.xxl, paddingBottom: insets.bottom + space.xl }]}>
-        <Text style={styles.promptTitle}>Another Pi's LED</Text>
-        <Text style={styles.promptBody}>
-          The LED read belongs to the Pi {otherPi}, not {target.fingerprint}, the one you chose. Point the camera at the Pi you chose.
-        </Text>
-        <Button label="Read again" onPress={() => router.replace('/scan')} />
-        <Button label="Choose another Pi" variant="quiet" onPress={() => router.replace('/find')} />
-      </View>
-    );
-  }
-
   if (!device || cameraError) {
     return (
       <View style={[styles.root, styles.prompt]}>
         <Text style={styles.promptBody}>
           {cameraError ? `The camera stopped: ${cameraError}` : 'This phone has no back camera the app can use.'}
         </Text>
-        <Text style={styles.promptBody}>The Pi's ID can be typed in instead; it is printed by rpiledconfig --show-id on the Pi.</Text>
-        <Button label="Type the ID" variant="secondary" onPress={() => router.replace('/enter')} />
         <Button label="Back" variant="quiet" onPress={() => router.back()} />
       </View>
     );
   }
 
+  const slower = slowerRate(rate);
   const boxSide = Math.round(Math.min(window.width, window.height) * 0.24);
   const tileBox = state && view.width > 0 ? tileInView(state, view) : undefined;
 
@@ -263,7 +276,7 @@ export default function ScanScreen() {
       </View>
       <View style={[styles.overlay, { paddingBottom: insets.bottom + space.md }]}>
         <View style={styles.panel}>
-          <Progress value={scan.progress} label={scan.label} detail={scan.detail} tone={scan.phase === 'lost' ? 'warn' : 'accent'} />
+          <Progress value={scan.progress} label={scan.label} detail={scan.detail} tone={scan.phase === 'lost' || scan.phase === 'decoding' ? 'warn' : 'accent'} />
           <Text style={styles.check} numberOfLines={2}>
             {result ? `${result.errors} wrong and ${result.erasures} unreadable bytes repaired.` : scan.hint}
           </Text>
@@ -271,9 +284,19 @@ export default function ScanScreen() {
           {result ? (
             <View style={styles.result}>
               <Text style={styles.resultId}>{result.idHex}</Text>
-              <Text style={styles.resultDetail}>Fingerprint {fingerprint(result.idBytes)}.</Text>
             </View>
           ) : null}
+          {scan.stalled && !result && target ? (
+            <>
+              <Text style={styles.check}>No valid read after {Math.round((STALLED_AFTER_FRAMES * frameMs(rate)) / 1000)} s at {RATE_INFO[rate].label} speed.</Text>
+              {slower ? (
+                <Button label={`Try slower: ${RATE_INFO[slower].label}`} busy={retrying} onPress={() => void readAgain(slower)} />
+              ) : (
+                <Button label="Ask the Pi to blink again" busy={retrying} onPress={() => void readAgain(rate)} />
+              )}
+            </>
+          ) : null}
+          {retryError ? <Text style={styles.error}>{retryError}</Text> : null}
           <Button label="Cancel" variant="quiet" onPress={() => router.back()} />
         </View>
       </View>
@@ -282,20 +305,21 @@ export default function ScanScreen() {
 }
 
 /**
- * Where the tile being read lies in the viewfinder. The frame is the sensor's picture: on a
+ * Where the LED being read lies in the viewfinder. The frame is the sensor's picture: on a
  * phone held upright it is landscape and turned a quarter turn from the screen (VisionCamera's
  * `orientation` says which way), and the preview covers the view, cropping the overflow.
  */
 function tileInView(state: LedReaderState, view: { width: number; height: number }): { x: number; y: number; width: number; height: number } | undefined {
-  if (state.tileX === undefined || state.tileY === undefined || !state.tileWidth || !state.tileHeight || !state.planeWidth || !state.planeHeight) return undefined;
+  // Only where the LED has been located: the tile's middle would be a guess drawn as a finding.
+  if (state.spotX === undefined || state.spotY === undefined || !state.tileWidth || !state.planeWidth || !state.planeHeight) return undefined;
   const turned = state.orientation === 'landscape-left' || state.orientation === 'landscape-right';
   const frameW = turned ? state.planeHeight : state.planeWidth;
   const frameH = turned ? state.planeWidth : state.planeHeight;
   const scale = Math.max(view.width / frameW, view.height / frameH);
   const offsetX = (view.width - frameW * scale) / 2;
   const offsetY = (view.height - frameH * scale) / 2;
-  const cx = state.tileX + state.tileWidth / 2;
-  const cy = state.tileY + state.tileHeight / 2;
+  const cx = state.spotX;
+  const cy = state.spotY;
   // A quarter turn clockwise for landscape-right, anticlockwise for landscape-left.
   let x = cx;
   let y = cy;
@@ -434,9 +458,5 @@ const styles = StyleSheet.create({
     fontFamily: monospace,
     color: colors.accent,
     letterSpacing: 2,
-  },
-  resultDetail: {
-    ...typography.caption,
-    color: colors.textDim,
   },
 });

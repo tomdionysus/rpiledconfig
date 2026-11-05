@@ -1,6 +1,6 @@
 // Authentication, docs/protocol.md: SPAKE2 with the app as A and the daemon
-// as B, empty identities, and AUTH_AAD. Nothing that crosses the air can be
-// used to test a guess of the machine ID offline.
+// as B, empty identities, and AUTH_AAD. Nothing sent over Bluetooth can be
+// used to test a guess of the key offline.
 import { concat, utf8Encode } from './bytes';
 import { AUTH_AAD, AUTH_WRITE_LENGTH } from './constants';
 import { constantTimeEqual } from './crypto';

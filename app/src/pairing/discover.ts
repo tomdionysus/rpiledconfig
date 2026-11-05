@@ -1,52 +1,69 @@
 // Before the LED: find the Pis in setup mode over BLE, and ask the chosen one
-// to blink its ID (docs/protocol.md, The idea and Blink). The LED is dark
+// to blink its key (docs/protocol.md, The idea and Blink). The LED is dark
 // until a phone asks, so this is the first step of setting a Pi up.
 import type { BleConnection, BleTransport, Peripheral } from '@/ble/transport';
-import { BLE_NAME_PREFIX, BLINK_PROTOCOL_VERSION, BLINK_START, BLINK_STOP, CHAR_BLINK, CHAR_INFO } from '@/protocol/constants';
+import { DEFAULT_RATE, RATE_INFO, type LedRate } from '@/led/rates';
+import { BLINK_STOP, CHAR_BLINK, CHAR_INFO } from '@/protocol/constants';
+import { realClock, type Clock } from '@/util/clock';
 import { checkProtocol, PairingError, parseInfo, type DaemonInfo } from './session';
 
-/** A Pi seen advertising, with the fingerprint its name carries. */
-export interface FoundPi extends Peripheral {
-  fingerprint: string;
-}
+/** A Pi seen advertising the service. */
+export type FoundPi = Peripheral;
 
-/** The fingerprint in `RPiLEDConfig-<4 hex>`, or undefined for any other name. */
-export function fingerprintOfName(name: string): string | undefined {
-  if (!name.startsWith(BLE_NAME_PREFIX)) return undefined;
-  const fp = name.slice(BLE_NAME_PREFIX.length);
-  return /^[0-9a-f]{4}$/.test(fp) ? fp : undefined;
-}
+/** A Pi not heard for this long has gone: removed, switched off, or taken by another phone. */
+export const PI_STALE_MS = 8_000;
+const SWEEP_MS = 1_000;
 
 /**
- * Keeps a list of the Pis advertising, strongest signal first, calling
- * `onChange` whenever it changes, until the returned function is called.
- * A Pi seen again replaces its entry (its signal may have changed).
+ * Keeps a list of the Pis advertising now, strongest signal first, calling
+ * `onChange` whenever it changes, until the returned function is called. A Pi
+ * seen again replaces its entry (its signal may have changed); one not heard
+ * for PI_STALE_MS leaves the list.
  */
 export function watchForPis(
   transport: BleTransport,
   onChange: (pis: FoundPi[]) => void,
   onError: (error: PairingError) => void,
+  clock: Clock = realClock,
 ): () => void {
-  const found = new Map<string, FoundPi>();
-  return transport.scan(
-    BLE_NAME_PREFIX,
+  const found = new Map<string, { pi: FoundPi; heard: number }>();
+  const report = () =>
+    onChange([...found.values()].map((entry) => entry.pi).sort((a, b) => (b.rssi ?? -127) - (a.rssi ?? -127) || (a.name < b.name ? -1 : 1)));
+
+  let cancelSweep = () => {};
+  const sweep = () => {
+    const now = clock.now();
+    let changed = false;
+    for (const [id, entry] of found) {
+      if (now - entry.heard >= PI_STALE_MS) {
+        found.delete(id);
+        changed = true;
+      }
+    }
+    if (changed) report();
+    cancelSweep = clock.after(SWEEP_MS, sweep);
+  };
+  cancelSweep = clock.after(SWEEP_MS, sweep);
+
+  const stopScan = transport.scan(
     (peripheral) => {
-      const fp = fingerprintOfName(peripheral.name);
-      if (!fp) return;
-      found.set(peripheral.id, { ...peripheral, fingerprint: fp });
-      onChange([...found.values()].sort((a, b) => (b.rssi ?? -127) - (a.rssi ?? -127) || (a.fingerprint < b.fingerprint ? -1 : 1)));
+      found.set(peripheral.id, { pi: peripheral, heard: clock.now() });
+      report();
     },
     (error) => onError(new PairingError('bluetooth', 'Bluetooth scanning failed. Check that Bluetooth is on and try again.', error)),
   );
+  return () => {
+    cancelSweep();
+    stopScan();
+  };
 }
 
 /**
- * Connects to the Pi, checks it is RPiLEDConfig, and writes `value` to
+ * Connects to the Pi, checks it is RPiLEDConfig, and writes the rate to
  * Blink; then disconnects, as the LED goes on blinking without the link.
- * A protocol 2 daemon has no Blink and is blinking already, so nothing is
- * written to it. Resolves to the Pi's Info.
+ * Resolves to the Pi's Info.
  */
-export async function setBlinking(transport: BleTransport, pi: FoundPi, on = true): Promise<DaemonInfo> {
+export async function setBlinking(transport: BleTransport, pi: FoundPi, rate: LedRate | 'stop' = DEFAULT_RATE): Promise<DaemonInfo> {
   let connection: BleConnection;
   try {
     connection = await transport.connect(pi.id);
@@ -56,10 +73,7 @@ export async function setBlinking(transport: BleTransport, pi: FoundPi, on = tru
   try {
     const info = parseInfo(await connection.read(CHAR_INFO));
     checkProtocol(info);
-    if (info.fingerprint !== pi.fingerprint) {
-      throw new PairingError('fingerprint_mismatch', `The Pi advertises ${pi.fingerprint} but says it is ${info.fingerprint}.`);
-    }
-    if (info.protocol >= BLINK_PROTOCOL_VERSION) await connection.write(CHAR_BLINK, new Uint8Array([on ? BLINK_START : BLINK_STOP]));
+    await connection.write(CHAR_BLINK, new Uint8Array([rate === 'stop' ? BLINK_STOP : RATE_INFO[rate].blink]));
     return info;
   } catch (error) {
     if (error instanceof PairingError) throw error;

@@ -25,9 +25,9 @@ inline constexpr std::size_t confirmation_length = 32;
 // A uses M, B uses N (RFC 9382, section 3.3).
 enum class Role { a, b };
 
-// w = HKDF(ikm = id_bytes, salt = "RPiLEDConfig", info = "spake2-w v2", L = 40) mod n,
+// w = HKDF(ikm = key_bytes, salt = "RPiLEDConfig", info = "spake2-w v2", L = 40) mod n,
 // docs/protocol.md "Keys". Empty when OpenSSL failed.
-Bytes password_scalar(const Bytes& id_bytes);
+Bytes password_scalar(const Bytes& key_bytes);
 
 // A scalar drawn uniformly from [1, n) by rejection sampling. Empty when the CSPRNG
 // failed, which the caller treats as fatal: a predictable x or y gives the password away.

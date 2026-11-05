@@ -17,7 +17,7 @@ function tick(): Promise<void> {
 
 describe('FakeDaemon', () => {
   it('reads AuthResult as empty before any attempt, and refused after a bad one', async () => {
-    const daemon = new FakeDaemon({ machineId: ID });
+    const daemon = new FakeDaemon({ pairingKey: ID });
     const connection = await daemon.connect(daemon.id);
     expect((await connection.read(CHAR_AUTH_RESULT)).length).toBe(0);
     const challenge = await connection.read(CHAR_CHALLENGE);
@@ -29,7 +29,7 @@ describe('FakeDaemon', () => {
   });
 
   it('counts a write that is not 97 bytes as a refusal and drops after three', async () => {
-    const daemon = new FakeDaemon({ machineId: ID });
+    const daemon = new FakeDaemon({ pairingKey: ID });
     const connection = await daemon.connect(daemon.id);
     const dropped = new Promise<Error | undefined>((resolve) => connection.onDisconnected(resolve));
     for (const length of [0, 96, 98]) await connection.write(CHAR_AUTH, new Uint8Array(length));
@@ -41,7 +41,7 @@ describe('FakeDaemon', () => {
   it('notifies AuthResult truncated to one notification, so the value must be read', async () => {
     // A link at the default MTU, written to as no real one could be (97 bytes in one
     // write): what is checked is how the notification is cut.
-    const daemon = new FakeDaemon({ machineId: ID, mtu: 23 });
+    const daemon = new FakeDaemon({ pairingKey: ID, mtu: 23 });
     const connection = await daemon.connect(daemon.id);
     const notified = new Promise<Uint8Array>((resolve) => connection.monitor(CHAR_AUTH_RESULT, resolve));
     const pB = await connection.read(CHAR_CHALLENGE);
@@ -52,7 +52,7 @@ describe('FakeDaemon', () => {
   });
 
   it('starts over when Challenge is read on an authenticated connection', async () => {
-    const daemon = new FakeDaemon({ machineId: ID });
+    const daemon = new FakeDaemon({ pairingKey: ID });
     const connection = await daemon.connect(daemon.id);
     const w = passwordScalar(ID);
     const authenticate = async () => {
@@ -78,7 +78,7 @@ describe('FakeDaemon', () => {
 
   it('drops a connection that has not authenticated within 30 seconds', async () => {
     const clock = new ManualClock();
-    const daemon = new FakeDaemon({ machineId: ID, clock });
+    const daemon = new FakeDaemon({ pairingKey: ID, clock });
     const connection = await daemon.connect(daemon.id);
     let reason: Error | undefined;
     connection.onDisconnected((error) => (reason = error));
@@ -91,7 +91,7 @@ describe('FakeDaemon', () => {
   });
 
   it('disconnects a second central without a challenge', async () => {
-    const daemon = new FakeDaemon({ machineId: ID });
+    const daemon = new FakeDaemon({ pairingKey: ID });
     const first = await daemon.connect(daemon.id);
     const second = await daemon.connect(daemon.id);
     await expect(second.read(CHAR_CHALLENGE)).rejects.toThrow(/disconnected/);
@@ -107,7 +107,7 @@ describe('FakeDaemon', () => {
 
   it('pauses advertising for a minute after five refusals, then resets the count and is found again', async () => {
     const clock = new ManualClock();
-    const daemon = new FakeDaemon({ machineId: ID, clock });
+    const daemon = new FakeDaemon({ pairingKey: ID, clock });
     for (let i = 0; i < 5; i += 1) {
       const connection = await daemon.connect(daemon.id);
       await connection.write(CHAR_AUTH, new Uint8Array(97));
@@ -118,7 +118,7 @@ describe('FakeDaemon', () => {
     await expect(daemon.connect(daemon.id)).rejects.toThrow(/not found/);
 
     const found: Peripheral[] = [];
-    const stop = daemon.scan('RPiLEDConfig-', (peripheral) => found.push(peripheral));
+    const stop = daemon.scan((peripheral) => found.push(peripheral));
     await clock.advance(ADVERTISING_PAUSE_MS - 1);
     expect(found).toEqual([]);
     await clock.advance(1);
@@ -146,7 +146,7 @@ describe('FakeDaemon', () => {
 
   it('joins after a delay, never, or falls back on a wrong passphrase', async () => {
     const clock = new ManualClock();
-    const daemon = new FakeDaemon({ machineId: ID, clock, joinAfterMs: 8_000, passphrases: { Blackraven: 'right' } });
+    const daemon = new FakeDaemon({ pairingKey: ID, clock, joinAfterMs: 8_000, passphrases: { Blackraven: 'right' } });
     expect(daemon.handle({ op: 'wifi.configure', ssid: 'Blackraven', psk: 'right' })).toEqual({ ok: true });
     expect(daemon.wifi).toEqual({ connected: false, join: { ssid: 'Blackraven', state: 'joining' } });
     await clock.advance(8_000);

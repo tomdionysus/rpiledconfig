@@ -15,7 +15,7 @@
 set -e
 
 USER_NAME=rpiledconfig
-STATE_DIR=/var/lib/rpiledconfig
+OLD_STATE_DIR=/var/lib/rpiledconfig
 CONFIG_DIR=/etc/rpiledconfig
 CONFIG_FILE=$CONFIG_DIR/rpiledconfig.conf
 UNIT=rpiledconfig.service
@@ -40,30 +40,19 @@ case "$1" in
         fi
 
         if ! getent passwd "$USER_NAME" >/dev/null; then
-            adduser --system --quiet --ingroup "$USER_NAME" --home "$STATE_DIR" \
+            adduser --system --quiet --ingroup "$USER_NAME" --home /nonexistent \
                 --no-create-home --shell /usr/sbin/nologin "$USER_NAME"
         fi
 
-        # The state directory, where the machine id lives, 0600. Enforced on every
-        # configure, as systemd's StateDirectoryMode enforces it on every start; never
-        # recursively.
-        [ -d "$STATE_DIR" ] || mkdir -p "$STATE_DIR"
-        set_perms "$USER_NAME:$USER_NAME" 0750 "$STATE_DIR"
+        # Versions before protocol 4 kept a machine id here. The key is one-time and in
+        # memory now, so an upgrade deletes what is left of it.
+        rm -rf "$OLD_STATE_DIR"
 
         # The service may read its configuration and not change it. dpkg unpacks it
         # root:root 0644 on every upgrade that replaces it, so this runs every time.
         set_perms "root:$USER_NAME" 0750 "$CONFIG_DIR"
         if [ -f "$CONFIG_FILE" ]; then
             set_perms "root:$USER_NAME" 0640 "$CONFIG_FILE"
-        fi
-
-        # A fresh install draws the machine id here, from getrandom(2), written whole or
-        # not at all (docs/protocol.md, The machine ID), and as the service user so the
-        # file is its own. Only when there is none, or only an empty file a power cut
-        # left: an upgrade must never change an id an app has learnt. The id is the whole
-        # secret, so it is not printed into apt's output or logs.
-        if [ ! -s "$STATE_DIR/machine-id" ]; then
-            runuser -u "$USER_NAME" -- /usr/bin/rpiledconfig --regenerate-id --config "$CONFIG_FILE" >/dev/null
         fi
 
         # The LED's rule, applied to the LED that is already there. Not inside a
@@ -105,7 +94,6 @@ if [ "$1" = "configure" ] || [ "$1" = "abort-upgrade" ] || [ "$1" = "abort-decon
         else
             deb-systemd-invoke start "$UNIT" >/dev/null || true
             echo "rpiledconfig is installed, enabled and started."
-            echo "The machine id: sudo rpiledconfig --show-id --config $CONFIG_FILE"
             echo "See /usr/share/doc/rpiledconfig/protocol.md"
         fi
     fi

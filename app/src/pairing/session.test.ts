@@ -5,7 +5,7 @@ import { hexToBytes } from '@/protocol/bytes';
 import { appChannel } from '@/protocol/channel';
 import { CHAR_AUTH_RESULT, CHAR_REQUEST } from '@/protocol/constants';
 import { fragment } from '@/protocol/fragments';
-import { fingerprint, sessionKey } from '@/protocol/keys';
+import { sessionKey } from '@/protocol/keys';
 import { encodeRequest } from '@/protocol/messages';
 import { ManualClock } from '@/util/clock';
 import { LinkLostError, pair, PairingError, RequestError, type PairingPhase } from './session';
@@ -28,13 +28,13 @@ async function failure(promise: Promise<unknown>): Promise<PairingError> {
 }
 
 describe('pair', () => {
-  it('finds the Pi by fingerprint, authenticates both ways and answers status', async () => {
-    const daemon = new FakeDaemon({ machineId: ID, hostname: 'pi5' });
+  it('finds the Pi by its name, authenticates both ways and answers status', async () => {
+    const daemon = new FakeDaemon({ pairingKey: ID, hostname: 'pi5' });
     const phases: PairingPhase[] = [];
-    const session = await pair(daemon, ID, { onPhase: (phase) => phases.push(phase) });
+    const session = await pair(daemon, daemon.name, ID, { onPhase: (phase) => phases.push(phase) });
     expect(phases).toEqual(['scanning', 'connecting', 'checking', 'authenticating', 'ready']);
-    expect(session.info.fingerprint).toBe(fingerprint(ID));
-    expect(session.info.protocol).toBe(3);
+    expect(session.peripheral.name).toBe(daemon.name);
+    expect(session.info.protocol).toBe(4);
 
     const status = await session.status();
     expect(status).toEqual({ ok: true, hostname: 'pi5', wifi: { connected: false } });
@@ -42,27 +42,29 @@ describe('pair', () => {
     await session.close();
   });
 
-  it('stops at a fingerprint mismatch without authenticating', async () => {
-    // The daemon is the other Pi; the scan is for the one whose LED was read.
-    const daemon = new FakeDaemon({ machineId: OTHER_ID });
-    const error = await failure(pair(daemon, ID, { scanTimeoutMs: 50 }));
-    // A different fingerprint means a different advertised name: not found at all.
+  it('finds nothing under another name', async () => {
+    const daemon = new FakeDaemon({ pairingKey: ID });
+    const error = await failure(pair(daemon, 'RPiLEDConfig-ffff', ID, { scanTimeoutMs: 50 }));
     expect(error.kind).toBe('not_found');
-    expect(daemon.connections).toBe(0);
   });
 
-  it('refuses when the Pi lies about its fingerprint in Info', async () => {
-    // Same name on the air, different ID behind it: Info gives it away.
-    const daemon = new FakeDaemon({ machineId: OTHER_ID });
-    (daemon as { name: string }).name = `RPiLEDConfig-${fingerprint(ID)}`;
-    const error = await failure(pair(daemon, ID));
-    expect(error.kind).toBe('fingerprint_mismatch');
-    expect(daemon.refusalsInARow).toBe(0);
+  it('finds a Pi whatever prefix its name has', async () => {
+    const daemon = new FakeDaemon({ pairingKey: ID, name: 'Kitchen Pi-3a9c' });
+    const session = await pair(daemon, 'Kitchen Pi-3a9c', ID);
+    expect(session.peripheral.name).toBe('Kitchen Pi-3a9c');
+    await session.close();
+  });
+
+  it("is refused with a key from another Pi's LED", async () => {
+    const daemon = new FakeDaemon({ pairingKey: OTHER_ID });
+    const error = await failure(pair(daemon, daemon.name, ID));
+    expect(error.kind).toBe('refused');
+    expect(error.message).toMatch(/another Pi/);
   });
 
   it('reports a refused authentication and counts it on the daemon', async () => {
-    const daemon = new FakeDaemon({ machineId: ID, refuseAll: true });
-    const error = await failure(pair(daemon, ID));
+    const daemon = new FakeDaemon({ pairingKey: ID, refuseAll: true });
+    const error = await failure(pair(daemon, daemon.name, ID));
     expect(error.kind).toBe('refused');
     expect(daemon.refusalsInARow).toBe(1);
   });
@@ -70,10 +72,10 @@ describe('pair', () => {
   it('rejects a Pi whose cB does not verify', async () => {
     // A link that accepts but hands back a wrong proof: the app must not
     // take "accepted" on trust.
-    const daemon = new FakeDaemon({ machineId: ID });
+    const daemon = new FakeDaemon({ pairingKey: ID });
     const tampering: BleTransport = {
       prepare: () => daemon.prepare(),
-      scan: (prefix, onFound, onError) => daemon.scan(prefix, onFound, onError),
+      scan: (onFound, onError) => daemon.scan(onFound, onError),
       async connect(id) {
         const real = await daemon.connect(id);
         const corrupt = (characteristic: string, value: Uint8Array) => {
@@ -93,28 +95,28 @@ describe('pair', () => {
         };
       },
     };
-    const error = await failure(pair(tampering, ID));
+    const error = await failure(pair(tampering, daemon.name, ID));
     expect(error.kind).toBe('refused');
     expect(error.message).toMatch(/proof/);
   });
 
   it('pauses advertising after five refusals in a row', async () => {
-    const daemon = new FakeDaemon({ machineId: ID, refuseAll: true });
+    const daemon = new FakeDaemon({ pairingKey: ID, refuseAll: true });
     for (let attempt = 0; attempt < 5; attempt += 1) {
-      const error = await failure(pair(daemon, ID));
+      const error = await failure(pair(daemon, daemon.name, ID));
       expect(error.kind).toBe('refused');
     }
     expect(daemon.advertising).toBe(false);
-    const error = await failure(pair(daemon, ID, { scanTimeoutMs: 50 }));
+    const error = await failure(pair(daemon, daemon.name, ID, { scanTimeoutMs: 50 }));
     expect(error.kind).toBe('not_found');
   });
 
   it('waits for the notification when AuthResult is not ready at the first read, and reads it then', async () => {
-    const daemon = new FakeDaemon({ machineId: ID });
+    const daemon = new FakeDaemon({ pairingKey: ID });
     let reads = 0;
     const slow: BleTransport = {
       prepare: () => daemon.prepare(),
-      scan: (prefix, onFound, onError) => daemon.scan(prefix, onFound, onError),
+      scan: (onFound, onError) => daemon.scan(onFound, onError),
       async connect(id) {
         const real = await daemon.connect(id);
         return {
@@ -130,28 +132,28 @@ describe('pair', () => {
         };
       },
     };
-    const session = await pair(slow, ID);
+    const session = await pair(slow, daemon.name, ID);
     expect(reads).toBe(2);
     expect((await session.status()).ok).toBe(true);
     await session.close();
   });
 
   it('is turned away as a second central while another phone is connected', async () => {
-    const daemon = new FakeDaemon({ machineId: ID });
-    const first = await pair(daemon, ID);
-    const error = await failure(pair(daemon, ID));
+    const daemon = new FakeDaemon({ pairingKey: ID });
+    const first = await pair(daemon, daemon.name, ID);
+    const error = await failure(pair(daemon, daemon.name, ID));
     expect(error.kind).toBe('disconnected');
     expect(daemon.refusalsInARow).toBe(0);
     expect((await first.status()).ok).toBe(true);
     await first.close();
-    const second = await pair(daemon, ID);
+    const second = await pair(daemon, daemon.name, ID);
     await second.close();
   });
 
   it('treats failing writes under a live link as a lost link, in plain words', async () => {
     // The daemon restarted; bluetoothd kept the link, so there is no disconnect.
-    const daemon = new FakeDaemon({ machineId: ID });
-    const session = await pair(daemon, ID);
+    const daemon = new FakeDaemon({ pairingKey: ID });
+    const session = await pair(daemon, daemon.name, ID);
     const closed = new Promise<LinkLostError | undefined>((resolve) => session.onClosed(resolve));
     daemon.restartService();
     const error = await session.wifiScan().catch((caught: unknown) => caught);
@@ -162,15 +164,15 @@ describe('pair', () => {
     expect((await closed)?.message).toBe('The Bluetooth link to the Pi was lost.');
     expect(session.isClosed).toBe(true);
     // Pairing again reaches the restarted daemon.
-    const again = await pair(daemon, ID);
+    const again = await pair(daemon, daemon.name, ID);
     expect((await again.status()).ok).toBe(true);
     await again.close();
   });
 
   it('treats a Pi that stops answering as a lost link', async () => {
     const clock = new ManualClock();
-    const daemon = new FakeDaemon({ machineId: ID, clock });
-    const session = await clock.run(pair(daemon, ID, { clock }));
+    const daemon = new FakeDaemon({ pairingKey: ID, clock });
+    const session = await clock.run(pair(daemon, daemon.name, ID, { clock }));
     // Requests are taken but never answered.
     daemon.silent = true;
     const error = await clock.run(session.status().catch((caught: unknown) => caught));
@@ -180,8 +182,8 @@ describe('pair', () => {
   });
 
   it('drops the connection on a replayed message', async () => {
-    const daemon = new FakeDaemon({ machineId: ID });
-    const session = await pair(daemon, ID);
+    const daemon = new FakeDaemon({ pairingKey: ID });
+    const session = await pair(daemon, daemon.name, ID);
     await session.status();
 
     // A second sealer under the same key starts its counter at 0 again: the
@@ -197,8 +199,8 @@ describe('pair', () => {
 
   it('configures WiFi end to end and finishes', async () => {
     // The smallest link that can authenticate: 97-byte writes.
-    const daemon = new FakeDaemon({ machineId: ID, mtu: 100 });
-    const session = await pair(daemon, ID);
+    const daemon = new FakeDaemon({ pairingKey: ID, mtu: 100 });
+    const session = await pair(daemon, daemon.name, ID);
 
     const scan = await session.wifiScan();
     expect(scan.networks.map((n) => n.ssid)).toEqual(['Blackraven', 'Neighbours 5G', 'Cafe Guest', 'Printer-Setup']);
@@ -224,24 +226,24 @@ describe('pair', () => {
   });
 
   it('says so, without writing Auth, when the link is too small to authenticate', async () => {
-    const daemon = new FakeDaemon({ machineId: ID, mtu: 23 });
-    const error = await failure(pair(daemon, ID));
+    const daemon = new FakeDaemon({ pairingKey: ID, mtu: 23 });
+    const error = await failure(pair(daemon, daemon.name, ID));
     expect(error.kind).toBe('bluetooth');
     expect(error.message).toMatch(/20 bytes per write, and pairing needs 97/);
     expect(daemon.refusalsInARow).toBe(0);
   });
 
   it('serialises requests over a large MTU as well', async () => {
-    const daemon = new FakeDaemon({ machineId: ID, mtu: 185, latencyMs: 1 });
-    const session = await pair(daemon, ID);
+    const daemon = new FakeDaemon({ pairingKey: ID, mtu: 185, latencyMs: 1 });
+    const session = await pair(daemon, daemon.name, ID);
     const [a, b, c] = await Promise.all([session.status(), session.wifiScan(), session.status()]);
     expect(a.ok && b.ok && c.ok).toBe(true);
     await session.close();
   });
 
   it('surfaces the daemon error codes', async () => {
-    const daemon = new FakeDaemon({ machineId: ID, wifiFailure: 'NetworkManager refused: secrets were required' });
-    const session = await pair(daemon, ID);
+    const daemon = new FakeDaemon({ pairingKey: ID, wifiFailure: 'NetworkManager refused: secrets were required' });
+    const session = await pair(daemon, daemon.name, ID);
     try {
       await session.wifiConfigure('Blackraven', 'pw');
       throw new Error('expected failure');
@@ -268,8 +270,8 @@ function replayOfFirstRequest(mtu: number): Uint8Array[] {
 
 describe('uninstall', () => {
   it('is answered, closes the session, and the Pi stops advertising', async () => {
-    const daemon = new FakeDaemon({ machineId: ID });
-    const session = await pair(daemon, ID);
+    const daemon = new FakeDaemon({ pairingKey: ID });
+    const session = await pair(daemon, daemon.name, ID);
     await session.uninstall();
     expect(session.isClosed).toBe(true);
     expect(daemon.uninstalled).toBe(true);
@@ -277,8 +279,8 @@ describe('uninstall', () => {
   });
 
   it('reports uninstall_unavailable and keeps the session', async () => {
-    const daemon = new FakeDaemon({ machineId: ID, uninstall: 'unavailable' });
-    const session = await pair(daemon, ID);
+    const daemon = new FakeDaemon({ pairingKey: ID, uninstall: 'unavailable' });
+    const session = await pair(daemon, daemon.name, ID);
     const error = await session.uninstall().then(
       () => undefined,
       (caught: unknown) => caught,
@@ -291,17 +293,10 @@ describe('uninstall', () => {
   });
 });
 
-describe('a protocol 2 daemon', () => {
-  it('still pairs', async () => {
-    const daemon = new FakeDaemon({ machineId: ID, protocol: 2 });
-    const session = await pair(daemon, ID);
-    expect(session.info.protocol).toBe(2);
-    await session.close();
-  });
-
-  it('is refused at protocol 4', async () => {
-    const daemon = new FakeDaemon({ machineId: ID, protocol: 4 });
-    const error = await failure(pair(daemon, ID));
+describe('a daemon of another protocol', () => {
+  it.each([3, 5])('is refused at protocol %i', async (protocol) => {
+    const daemon = new FakeDaemon({ pairingKey: ID, protocol });
+    const error = await failure(pair(daemon, daemon.name, ID));
     expect(error.kind).toBe('protocol');
   });
 });
