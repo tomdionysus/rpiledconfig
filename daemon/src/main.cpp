@@ -264,7 +264,7 @@ int main(int argc, char* argv[]) {
                "; uninstall: " + (uninstaller ? uninstaller->describe() : std::string("off")));
 
   auto modulator = std::make_shared<led::LedModulator>(scoped(logger, "led"), executor, led_driver, timers);
-  auto requests = std::make_shared<session::Requests>(scoped(logger, "requests"), wifi_driver, hostname(), easyconnect, uninstaller);
+  auto requests = std::make_shared<session::Requests>(scoped(logger, "requests"), wifi_driver, config->status_report_hostname ? hostname() : std::string(), easyconnect, uninstaller);
 
   setup::SetupMode::Options setup_options;
   setup_options.always = config->setup_always;

@@ -33,7 +33,8 @@ export interface WifiStatus {
 
 export interface StatusResponse {
   ok: true;
-  hostname: string;
+  /** Absent when the Pi is set not to report it (status.report_hostname). */
+  hostname?: string;
   wifi: WifiStatus;
 }
 
@@ -106,7 +107,7 @@ export function decodeResponse(bytes: Uint8Array, op: Op): Response {
   switch (op) {
     case 'status': {
       const wifi = parsed.wifi;
-      if (typeof parsed.hostname !== 'string' || !isRecord(wifi) || typeof wifi.connected !== 'boolean') {
+      if ((parsed.hostname !== undefined && typeof parsed.hostname !== 'string') || !isRecord(wifi) || typeof wifi.connected !== 'boolean') {
         throw new MessageError('status response malformed');
       }
       const status: WifiStatus = { connected: wifi.connected };
@@ -120,7 +121,7 @@ export function decodeResponse(bytes: Uint8Array, op: Op): Response {
           if (typeof join.message === 'string') status.join.message = join.message;
         }
       }
-      return { ok: true, hostname: parsed.hostname, wifi: status };
+      return { ok: true, ...(typeof parsed.hostname === 'string' ? { hostname: parsed.hostname } : {}), wifi: status };
     }
     case 'wifi.scan': {
       if (!Array.isArray(parsed.networks)) throw new MessageError('scan response has no networks');

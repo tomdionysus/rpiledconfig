@@ -1,10 +1,9 @@
 # Installing the daemon
 
-The daemon ships as a Debian package, `rpiledconfig`, for arm64 and amd64, built for
-Debian bookworm (Raspberry Pi OS bookworm) and trixie. A Raspberry Pi 4 or 5 on 64-bit
-Raspberry Pi OS is the reference host. It needs BlueZ (`bluetooth.service`),
-NetworkManager and polkit (`polkitd`), all of which Raspberry Pi OS ships and runs by
-default; the package depends on them.
+The daemon ships as a Debian package, `rpiledconfig`, built on the Pi it is for (README.md,
+Installing the service). A Raspberry Pi on 64-bit Raspberry Pi OS is the reference host. It needs
+BlueZ (`bluetooth.service`), NetworkManager and polkit (`polkitd`), all of which Raspberry Pi OS
+ships and runs by default; the package depends on them.
 
 ## What the package installs
 
@@ -28,14 +27,11 @@ everything the daemon does (below).
 
 ## Installing
 
-Copy the package for your suite and architecture to the Pi and install it with apt, which
-fetches the dependencies:
+Install the package you built with apt, which fetches the dependencies:
 
-    sudo apt install ./rpiledconfig_0.1.0-1~deb12_arm64.deb
+    sudo apt install ./build-deb/rpiledconfig_<version>-1_arm64.deb
 
-`~deb12` is the bookworm build and `~deb13` the trixie one
-(`grep VERSION_CODENAME /etc/os-release`). `dpkg --print-architecture` says `arm64` on
-64-bit Raspberry Pi OS. There is no 32-bit (armhf) build.
+There is no 32-bit (armhf) build.
 
 The unit is enabled and started: the daemon's whole purpose is to be running on a Pi
 that has not been configured yet. On a Pi that already has WiFi it starts, sees the
@@ -113,8 +109,7 @@ from the part of the system that owns it:
 
   answers a number (then `wpa_cli -i wlan0 dpp_bootstrap_remove <number>`); `FAIL` or
   `UNKNOWN COMMAND` means this wpa_supplicant cannot do Easy Connect, and the daemon
-  answers `easyconnect_unavailable`. The 0.3.0 app does not offer Easy Connect
-  (TODO/ACTIVE.md): the daemon's side is there for when it does.
+  answers `easyconnect_unavailable`. The app does not offer Easy Connect.
 
 A `cmake --install` into `/usr/local` puts the rule in
 `/usr/local/share/polkit-1/rules.d`, which polkitd does not read: copy it to

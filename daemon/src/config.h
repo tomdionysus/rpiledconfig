@@ -19,7 +19,7 @@ namespace rpiledconfig {
 // config/rpiledconfig.example.conf, and that file and this one have to agree: a key the
 // example shows and nothing reads is worse than no key.
 //
-// The file is `key: value` lines, parsed by hand (TODO/ACTIVE.md, "Decisions"): a `#`
+// The file is `key: value` lines, parsed by hand: a `#`
 // starts a comment, blank lines are skipped, keys are dotted (led.path), values are bare
 // or quoted, and a key this daemon does not read is an error naming the line.
 class Config {
@@ -85,6 +85,10 @@ class Config {
 
   // Stay in setup mode for ever, finish or no finish: for a bench Pi whose LED and BLE
   // are what is being developed against.
+  // Whether status tells an authenticated phone the Pi's hostname (docs/configuration.md says
+  // what this does not hide).
+  bool status_report_hostname = true;
+
   bool setup_always = false;
 
   // Seconds in setup mode before giving up until the next recheck, and seconds between

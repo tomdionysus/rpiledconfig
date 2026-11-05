@@ -271,6 +271,7 @@ bool Config::_apply(const std::string& key, const std::string& value, int line, 
     return true;
   }
 
+  if (key == "status.report_hostname") return take_bool(status_report_hostname);
   if (key == "setup.always") return take_bool(setup_always);
   if (key == "setup.timeout") return take_uint(setup_timeout);
   if (key == "setup.recheck") return take_uint(setup_recheck);

@@ -72,6 +72,8 @@ TEST(MessagesTest, TheResponsesAreAsTheProtocolShowsThem) {
 
   WifiStatus down;
   down.ssid = "stale";
+  // docs/protocol.md: a Pi set not to report it leaves the field out, rather than sending it empty.
+  EXPECT_EQ(status_response("", down), "{\"ok\":true,\"wifi\":{\"connected\":false}}");
   EXPECT_EQ(status_response("pi", down), "{\"ok\":true,\"hostname\":\"pi\",\"wifi\":{\"connected\":false}}") << "no ssid or ip when not connected";
 
   EXPECT_EQ(info_json("0.1.0"), "{\"protocol\":4,\"version\":\"0.1.0\"}");

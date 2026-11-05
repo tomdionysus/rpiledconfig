@@ -68,7 +68,9 @@ std::string status_response(const std::string& hostname, const WifiStatus& wifi)
     wifi_json.set("join", std::move(join));
   }
 
-  return Json::object().set("ok", Json::boolean(true)).set("hostname", Json::string(hostname)).set("wifi", std::move(wifi_json)).dump();
+  Json response = Json::object().set("ok", Json::boolean(true));
+  if (!hostname.empty()) response.set("hostname", Json::string(hostname));
+  return response.set("wifi", std::move(wifi_json)).dump();
 }
 
 std::string scan_response(std::vector<WifiNetwork> networks) {

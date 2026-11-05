@@ -1,8 +1,6 @@
 # The RPiLEDConfig protocol
 
-Version 4 (version 1 authenticated with an HMAC challenge; version 2 with
-SPAKE2; version 3 blinks only when a phone asks, and can uninstall itself;
-version 4 replaces the machine ID kept on disk with a one-time key). This is the contract between the daemon (`daemon/`) and the phone
+Version 4. This is the contract between the daemon (`daemon/`) and the phone
 app (`app/`). Change this document first, then both sides; the constants here
 are the constants in `daemon/src/protocol/` and `app/src/protocol/`, and the
 tests on each side are written from this text.
@@ -22,7 +20,7 @@ In the app, in order:
 1. Scan for BLE peripherals advertising the service (BLE, below) and list
    them by their full local name; the user picks the Pi to set up. The list
    is what is on the air now: a Pi not heard for 8 seconds leaves it.
-2. Connect to it, write 0x01 to Blink (BLE, below) and disconnect. The Pi
+2. Connect to it, write the chosen rate to Blink (BLE, below) and disconnect. The Pi
    draws a key for this pairing, and its LED starts blinking it, and only
    that Pi's: a room of Pis in setup mode does not blink at all until
    somebody asks one.
@@ -31,8 +29,8 @@ In the app, in order:
 4. Connect again, authenticate, configure WiFi. The accepted authentication
    stops the blinking.
 
-Nothing is typed. Nothing is printed on the board. Nothing is stored. The key
-never goes over Bluetooth: the LED carries it as light, and BLE carries only SPAKE2
+Nothing is printed on the board, no pairing code is typed, and the key is not
+stored. The key never goes over Bluetooth: the LED carries it as light, and BLE carries only SPAKE2
 shares, key confirmations and ciphertext.
 
 ## The pairing key
@@ -71,12 +69,7 @@ asked for it with Blink, below), the daemon takes the LED's trigger over
 the blinking stops, so the LED otherwise does what the Pi's own setting
 says.
 
-This is frame version 7. Version 1 was an uncoded 64-bit ID and CRC-8; 2 a
-64-bit ID under RS(24, 12); 3 a 48-bit ID, RS(20, 10), T = 100 ms; 4 a
-24-bit ID, RS(14, 7); 5 a 64-bit ID with magic, version and CRC under
-RS(24, 12), Manchester at T = 50 ms, 19.9 seconds a frame; 6 this frame at
-T = 50 ms. Version 7 is the same frame with its own version byte, at the
-rate the phone asks for.
+This is frame version 7.
 
 ### Symbols
 
@@ -93,23 +86,13 @@ The decoder is told T and is expected to tolerate 5% clock error over a frame; i
 does not search further, so it cannot read a rate other than the one it was told.
 The frame does not say its rate. The phone knows it, having asked.
 
-Why these: measured, on 2026-11-04, with a Blackview A85 at 30 fps (the
-most its camera gives a frame processor) on a Raspberry Pi 5's LED, each
-symbol time run in scripted rounds from the blink to the pairing: 50 ms
-read 5.5 to 8.1 s after first sight; 45 ms 3.6 to 5.8 s, every round; 40 ms
-3.6 to 11.4 s, slower than either neighbour; 33 ms 1.5 to 6.6 s in 13 of 13
-rounds but with exactly one camera frame per symbol, no margin for a
-slower camera or a brighter room; 25 ms worked with rounds of 22 and 30 s.
-Normal has margin; fast is for when a phone turns out to manage it; robust gives
-a camera more than two frames of each symbol. The edges blur by up to a camera
-frame.
+Normal gives a 30 fps camera about one and a half frames of each symbol. Fast gives it exactly
+one, with no margin for a slower camera. Robust gives it more than two. The edges blur by up to
+a camera frame.
 
-Why not round numbers: no frame may be a whole number of camera frames. If it is,
-every repeat is sampled at the same points, and when those points fall on symbol
-edges, repeats add nothing. At 30 fps 50 ms is exactly that (8.5 s, 255 camera
-frames): on the phone-camera model, across every phase of the camera against the
-LED, it read 196 of 204 with the slowest at 28 s, where 48, 51 and 52 ms read all
-204 with the slowest under 9.1 s. These three avoid a whole number at 24, 25, 30 and 60 fps.
+No frame may be a whole number of camera frames. If it is, every repeat is sampled at the same
+points, and when those points fall on symbol edges, repeats add nothing. These three avoid a
+whole number at 24, 25, 30 and 60 fps, which is why they are not round numbers.
 
 The symbols are not the data bits. Each 4 bits of data (a nibble) is sent as
 one of the 16 five-symbol words that hold no run of three equal symbols,
@@ -125,8 +108,7 @@ the nibble's value being the word's index in ascending order:
 A word begins and ends with a run of at most two, so wherever words meet the
 LED holds one state for at most 4T, whatever the data: a camera always has
 edges to keep time by, and a run of 5T or more can only be the sync. The
-code carries 0.8 data bits per symbol, against Manchester's 0.5, which is
-what makes version 6 fast.
+code carries 0.8 data bits per symbol.
 
 ### The frame
 
@@ -214,14 +196,16 @@ Then:
 - Decode with errors and erasures, then check the CRC.
 
 One frame that passes the CRC is a read, and nothing else is: in under one frame from
-whenever the camera first sees the LED, and sooner when the code can fill
-what is missing. The progress shown is only what was measured: nothing until
-the LED is found, then the share of one frame's symbol slots a sample has fallen in, placed by
-the rate the app was told. That is how much was watched, not whether it is valid: at a wrong rate
-it fills all the same. A full bar with no read says so, and only a read, which the CRC has passed,
-is called read; the bar then shows full, as the whole code is known. Three frames with no read and the app says so, and offers the next
-slower rate, or to ask for the blinking again at the slowest: a wrong rate, or a
-camera that cannot manage this one, otherwise reads nothing for ever.
+whenever the camera first sees the LED, and sooner when the code can fill what is missing.
+
+The progress shown is only what was measured: nothing until the LED is found, then the share of
+one frame's symbol slots a sample has fallen in, placed by the rate the app was told. That is how
+much was watched, not whether it is valid: at a wrong rate it fills all the same. A full bar with
+no read says so. Only a read, which the CRC has passed, is called read, and the bar then shows
+full, as the whole code is known.
+
+Three frames with no read and the app says so, and offers the next slower rate, or to ask for the
+blinking again at the slowest.
 
 ## Keys
 
@@ -252,8 +236,7 @@ LED is dark (left to its trigger) until a phone writes Blink.
   name.
 - Advertised service UUID: the service below.
 - Connectable, general discoverable for as long as setup mode lasts (the
-  advertisement's discoverable timeout is 0; BlueZ's default of 180 s
-  hid the Pi three minutes in). No BLE-level bonding or pairing is used
+  advertisement's discoverable timeout is 0). No BLE-level bonding or pairing is used
   or requested: the security is the application layer below, so the link
   works the same on every phone and every BlueZ.
 
@@ -323,8 +306,7 @@ Pi gets one guess per run the user starts, as with any PAKE.
 
 `x` and `y` are never reused: `y` is renewed with `pB`, and the app draws a
 new `x` for every Auth write. The Auth write is 97 bytes, so it needs an ATT
-MTU of at least 100; the app asks for 517 before authenticating (the A85
-settled on 185). A phone that grants less cannot authenticate, and the app
+MTU of at least 100; the app asks for 517 before authenticating. A phone that grants less cannot authenticate, and the app
 says so rather than writing a truncated Auth.
 
 Before any attempt on a connection AuthResult reads as empty, so "refused"
@@ -340,8 +322,7 @@ offset is refused.
 A read of Challenge on a connection that has already authenticated starts
 over: the session forgets `S`, draws a new `y` and `pB`, and waits for an Auth
 write as on a new connection. A phone operating system can keep a BLE link
-open after the app that used it lets go (macOS does, for half a minute), so
-an app that starts again may find itself on an old, authenticated link; it
+open after the app that used it lets go, so an app that starts again may find itself on an old, authenticated link; it
 always begins by reading Challenge, and this rule makes that a fresh start.
 
 A connection with three refused attempts is dropped. Five refused attempts in
@@ -375,9 +356,9 @@ A BLE write or notification carries at most the ATT MTU less 3 bytes, which
 is 20 at the default ATT MTU of 23. That number is the largest fragment, the
 flags byte included; a sender may use smaller ones, and a receiver takes
 fragments of any size up to it. The daemon never sends a fragment larger
-than an MTU of 185 allows (182 bytes), whatever BlueZ reports: on a Blackview
-A85 BlueZ reported 517 while Android had settled on 185, and every larger
-notification was dropped without a word. A message is sent as fragments:
+than an MTU of 185 allows (182 bytes), whatever BlueZ reports, because BlueZ
+and the phone can settle on different MTUs, and a larger notification is then
+dropped silently. A message is sent as fragments:
 
 - Byte 0 is flags: bit 0 set on the last fragment of a message; the other
   bits are 0 and a receiver refuses a fragment with any of them set.
@@ -397,7 +378,7 @@ Plaintexts are UTF-8 JSON objects. A request carries `op`; a response carries
 
 | Request | Response when ok |
 | --- | --- |
-| `{"op":"status"}` | `{"ok":true,"hostname":"...","wifi":{"connected":true,"ssid":"...","ip":"...","join":{...}}}`, `wifi.connected` false with no `ssid` or `ip` when it is not. When the WiFi backend cannot be asked at all the answer is an error (`wifi_unavailable`), not `connected: false`. `join` (The latest join, below) is present once a `wifi.configure` has been taken since the daemon started |
+| `{"op":"status"}` | `{"ok":true,"hostname":"...","wifi":{"connected":true,"ssid":"...","ip":"...","join":{...}}}`, `wifi.connected` false with no `ssid` or `ip` when it is not. `hostname` is absent when `status.report_hostname` is false; the app then shows the one-time key in its place, with a notice. When the WiFi backend cannot be asked at all the answer is an error (`wifi_unavailable`), not `connected: false`. `join` (The latest join, below) is present once a `wifi.configure` has been taken since the daemon started |
 | `{"op":"wifi.scan"}` | `{"ok":true,"networks":[{"ssid":"...","signal":0..100,"secure":true},...]}` sorted by signal, strongest first, ties by the SSID's UTF-8 bytes ascending, one entry per SSID (the strongest), hidden networks (empty SSID) left out, signal clamped to 0..100 |
 | `{"op":"wifi.configure","ssid":"...","psk":"...","hidden":true}` | `{"ok":true}` once the connection is saved and activation has been asked for; `psk` is absent or empty for an open network; `hidden` is optional, true for a network typed by hand that may not broadcast its SSID (the Pi then probes for it by name) |
 | `{"op":"wifi.forget"}` | `{"ok":true}` |
@@ -433,8 +414,8 @@ misspelt name within a few seconds of the backend giving up, rather than
 at its own deadline. A join that NetworkManager abandons without a reason
 the daemon can name is `other`.
 
-A request the daemon does not understand gets `unknown_op`, so a newer app
-against an older daemon learns what it cannot do rather than hanging.
+A request the daemon does not understand gets `unknown_op`, so an app learns
+what it cannot do rather than hanging.
 
 ### Uninstalling
 
@@ -471,10 +452,8 @@ confirms; the app never sees the password. The daemon is the enrollee, and
 the BLE channel is how the app learns the Pi's bootstrap code, so only a
 phone that has authenticated with the LED's key can start it.
 
-The daemon implements this; the 0.3.0 app does not offer it. On the
-Blackview A85 the configurator took the phone off its network and never
-reached the Pi listening on the Pi's own channel, and until that is
-understood the app joins networks by passphrase only.
+The daemon implements this. The app does not offer it, and joins networks by
+passphrase.
 
 | Request | Response when ok |
 | --- | --- |
@@ -486,24 +465,23 @@ socket) for a bootstrap key with wlan0's MAC and a channel list, returns
 its URI, and listens for up to 120 seconds. When wlan0 is associated on a
 2.4 GHz channel it listens there and lists that channel first, then 1, 6
 and 11; otherwise it lists 1, 6 and 11 and listens on 2437 MHz (channel
-6). Listening off the associated channel was not heard by an Android
-configurator on a Raspberry Pi 5's Broadcom radio. wpa_supplicant runs the DPP exchange; with
+6). wpa_supplicant runs the DPP exchange; with
 `dpp_config_processing` left at 0 it saves nothing and reports the
 received SSID and passphrase as events, and the daemon applies them
 through the same path as `wifi.configure` (an `rpiledconfig-<ssid>`
 connection in NetworkManager). Listening stops on success, after 120
 seconds, on `wifi.easyconnect.stop`, or when the connection closes; the
-bootstrap key is removed either way. The app then follows `status` exactly
+bootstrap key is removed either way. An app then follows `status` exactly
 as after `wifi.configure`.
 
-The app hands the URI to Android with the intent action
+An app hands the URI to Android with the intent action
 `android.settings.PROCESS_WIFI_EASY_CONNECT_URI` and the URI as its data.
 Android shows its own screen, the user picks the network (the current one
 is offered first) and confirms, and Android sends it.
 
 `easyconnect_unavailable` answers a daemon that cannot do this: no
 wpa_supplicant control socket it may use, a wpa_supplicant built without
-DPP, or a refusal. The app then offers typing.
+DPP, or a refusal.
 
 ## Setup mode
 
@@ -531,8 +509,7 @@ The test suites on both sides include, at least:
 
 - CRC-16/CCITT-FALSE of `123456789` is 0x29B1.
 - For the key `0x0123456789abcdef`, computed independently of both sides
-  (Python, from the definitions above, after it reproduced frame version
-  6's vectors):
+  (Python, from the definitions above):
   - the message: `0123456789abcdef008c`
   - the codeword: `0123456789abcdef008cc420bb0f15c9`
   - the generator polynomial, highest power first: `013f01da20e326`
@@ -541,18 +518,17 @@ The test suites on both sides include, at least:
     107 runs, starting `+5,-7,+1,-4,+1,-1,+1,-2` and ending
     `-1,+3,-1,+2,-1,+1,-2,+2`. Runs are physical: adjacent symbols at the
     same level merge.
-  - Frame version 6's message for the same key was `0123456789abcdefebaf`
-    and its codeword `0123456789abcdefebaf67a7a555b2c6`: the CRC is what
-    tells the versions apart.
+  - With the CRC computed over version byte 0x06 instead, the message is
+    `0123456789abcdefebaf` and the codeword
+    `0123456789abcdefebaf67a7a555b2c6`, which must not read.
 - The decoder recovers that codeword with 3 bytes changed, with 6 bytes
   erased, and with 2 changed and 2 erased; and rejects a word whose CRC is
-  wrong, including frame version 7's word with the CRC computed over
-  another version byte (frame version 6's codeword above).
+  wrong, including that word with the CRC computed over another version
+  byte (above).
 - The four P256-SHA256 vectors of RFC 9382, Appendix B (at least the first,
   A = `server`, B = `client`, and the last, both identities empty): `pA`,
   `pB`, `K`, `Ke`, `KcA`, `KcB`, `cA` and `cB` from the given `w`, `x`, `y`.
-- For `0x0123456789abcdef`, computed independently of both sides (Python,
-  from the definitions above, after it reproduced RFC 9382's vectors):
+- For `0x0123456789abcdef`, computed independently of both sides (Python, from the definitions above):
   - `w`: `d11cf43f75a28b8c30fd3da84ab44c51c0c8755713eed6dcd9b73907be6af3f7`
   - with `x` the 32 bytes `01..20` and `y` the 32 bytes `21..40`, read big-endian:
     - `pA`: `040dd445d16102c3424f2451006a7aa6e8bfd8a4ccb182905cccf632c27e995012d5f4a0911c67271eb2016e8edc631a1f3633f36ea0f8d67773d127d38697f5a2`
