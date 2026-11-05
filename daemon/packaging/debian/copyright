@@ -1,12 +1,12 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: rpiledconfig
-Upstream-Contact: T. Cully
+Upstream-Contact: Tom Cully <mail@tomcully.com>
 Comment:
  The RPiLEDConfig daemon. The binary uses the Boost headers (Asio) and links
  OpenSSL's libcrypto and libsystemd dynamically.
 
 Files: *
-Copyright: 2026 T. Cully
+Copyright: 2026 Tom Cully <mail@tomcully.com>
 License: Apache-2.0
 
 Files: boost/*

@@ -1,7 +1,7 @@
 //
 // RPiLEDConfig - daemon
 //
-// Copyright (C) 2026 T. Cully
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
 // Licensed under the Apache License, Version 2.0 - see LICENSE
 //
 #include "protocol/keys.h"

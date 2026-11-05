@@ -2,7 +2,7 @@
 #
 # RPiLEDConfig - app
 #
-# Copyright (C) 2026 T. Cully
+# Copyright (C) 2026 Tom Cully <mail@tomcully.com>
 # Licensed under the Apache License, Version 2.0 - see LICENSE
 #
 # Google Play's listing graphics in store/, from assets/icon.svg: the 512 px icon and the

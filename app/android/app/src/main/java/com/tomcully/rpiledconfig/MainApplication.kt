@@ -1,4 +1,4 @@
-// RPiLEDConfig - app. Copyright (C) 2026 T. Cully. Licensed under the Apache License, Version 2.0 - see LICENSE.
+// RPiLEDConfig - app. Copyright (C) 2026 Tom Cully <mail@tomcully.com>. Licensed under the Apache License, Version 2.0 - see LICENSE.
 package com.tomcully.rpiledconfig
 
 import android.app.Application

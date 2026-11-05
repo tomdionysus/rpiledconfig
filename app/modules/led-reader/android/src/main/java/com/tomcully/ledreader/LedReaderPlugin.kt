@@ -1,4 +1,4 @@
-// RPiLEDConfig - app. Copyright (C) 2026 T. Cully. Licensed under the Apache License, Version 2.0 - see LICENSE.
+// RPiLEDConfig - app. Copyright (C) 2026 Tom Cully <mail@tomcully.com>. Licensed under the Apache License, Version 2.0 - see LICENSE.
 //
 // The VisionCamera frame-processor plugin "ledReader": each call hands the frame's Y plane to
 // the C++ tracker and reader (cpp/, through jni.cpp) and returns their state as a map. One
