@@ -134,6 +134,18 @@ struct MockBluez::Handlers {
     return sd_bus_emit_properties_changed(bus, path, interface, property, nullptr);
   }
 
+  static int get_alias(sd_bus*, const char*, const char*, const char*, sd_bus_message* reply, void* userdata, sd_bus_error*) {
+    return sd_bus_message_append(reply, "s", static_cast<MockBluez*>(userdata)->_alias.c_str());
+  }
+
+  static int set_alias(sd_bus*, const char*, const char*, const char*, sd_bus_message* value, void* userdata, sd_bus_error*) {
+    const char* alias = nullptr;
+    const int r = sd_bus_message_read(value, "s", &alias);
+    if (r < 0) return r;
+    static_cast<MockBluez*>(userdata)->_alias = alias;
+    return 1;
+  }
+
   static int get_address(sd_bus*, const char*, const char*, const char*, sd_bus_message* reply, void*, sd_bus_error*) {
     return sd_bus_message_append(reply, "s", "B8:27:EB:00:00:01");
   }
@@ -370,6 +382,7 @@ namespace {
 
 const sd_bus_vtable adapter_vtable[] = {
     SD_BUS_VTABLE_START(0),
+    SD_BUS_WRITABLE_PROPERTY("Alias", "s", MockBluez::Handlers::get_alias, MockBluez::Handlers::set_alias, 0, 0),
     SD_BUS_WRITABLE_PROPERTY("Powered", "b", MockBluez::Handlers::get_powered, MockBluez::Handlers::set_powered, 0, SD_BUS_VTABLE_PROPERTY_EMITS_CHANGE),
     SD_BUS_PROPERTY("Address", "s", MockBluez::Handlers::get_address, 0, SD_BUS_VTABLE_PROPERTY_CONST),
     SD_BUS_VTABLE_END,
@@ -436,6 +449,10 @@ void MockBluez::teardown() {
   _devices.clear();
   for (auto* slot : _slots) sd_bus_slot_unref(slot);
   _slots.clear();
+}
+
+std::string MockBluez::alias() {
+  return run([this]() { return _alias; });
 }
 
 bool MockBluez::powered() {

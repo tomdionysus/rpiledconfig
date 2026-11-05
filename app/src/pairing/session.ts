@@ -28,6 +28,7 @@ import {
   MessageError,
   type EasyConnectResponse,
   type ErrorResponse,
+  type ForgetResponse,
   type Request,
   type Response,
   type StatusResponse,
@@ -40,9 +41,11 @@ export type PairingPhase = 'scanning' | 'connecting' | 'checking' | 'authenticat
 export interface DaemonInfo {
   protocol: number;
   version: string;
+  /** Whether the Pi is really driving its LED (docs/protocol.md, Blink). */
+  led?: 'off' | 'blinking' | 'failed';
 }
 
-export type PairingErrorKind = 'bluetooth' | 'not_found' | 'protocol' | 'refused' | 'disconnected' | 'timeout';
+export type PairingErrorKind = 'bluetooth' | 'not_found' | 'led' | 'protocol' | 'refused' | 'disconnected' | 'timeout';
 
 /** A raw platform error's text, kept for diagnostics and never shown as the message. */
 export function detailOf(cause: unknown): string | undefined {
@@ -72,10 +75,13 @@ export class PairingError extends Error {
  */
 export class LinkLostError extends Error {
   readonly detail?: string;
+  /** The answer did not verify: not a radio dropping, and never to be described as one. */
+  readonly unverified: boolean;
 
-  constructor(message: string, cause?: unknown) {
+  constructor(message: string, cause?: unknown, unverified = false) {
     super(message);
     this.detail = detailOf(cause);
+    this.unverified = unverified;
   }
 }
 
@@ -152,7 +158,7 @@ export function parseInfo(bytes: Uint8Array): DaemonInfo {
   if (!record || typeof record.protocol !== 'number' || typeof record.version !== 'string') {
     throw new PairingError('protocol', 'The Pi answered with something that is not RPi LED Config.');
   }
-  return { protocol: record.protocol, version: record.version };
+  return { protocol: record.protocol, version: record.version, ...(record.led === 'off' || record.led === 'blinking' || record.led === 'failed' ? { led: record.led } : {}) };
 }
 
 /** A daemon this app can talk to: the same protocol, as nothing older is in the field. */
@@ -301,6 +307,8 @@ export class Session {
   private chain: Promise<unknown> = Promise.resolve();
   private readonly unsubscribe: () => void;
   private closed = false;
+  /** Why the session failed, when it did. */
+  closedBy?: LinkLostError;
   private readonly closeListeners = new Set<(reason: LinkLostError | undefined) => void>();
 
   constructor(
@@ -367,8 +375,9 @@ export class Session {
     await this.request({ op: 'wifi.configure', ssid, psk, ...(hidden ? { hidden } : {}) });
   }
 
-  async wifiForget(): Promise<void> {
-    await this.request({ op: 'wifi.forget' });
+  /** Resolves to how many connections this daemon had made and deleted, 0 if it had made none. */
+  async wifiForget(): Promise<number> {
+    return ((await this.request({ op: 'wifi.forget' })) as ForgetResponse).forgotten;
   }
 
   /** The Pi's DPP bootstrap URI; it listens for Android's configurator for up to 120 s. */
@@ -447,7 +456,7 @@ export class Session {
     try {
       wire = this.reassembler.push(piece);
     } catch (error) {
-      this.fail(new LinkLostError(LINK_UNVERIFIED, error instanceof FragmentError ? error : 'bad fragment'));
+      this.fail(new LinkLostError(LINK_UNVERIFIED, error instanceof FragmentError ? error : 'bad fragment', true));
       return;
     }
     if (!wire) return;
@@ -459,8 +468,11 @@ export class Session {
       pending.resolve(decodeResponse(plaintext, pending.op));
     } catch (error) {
       if (error instanceof ChannelError) {
-        // A failed tag or a replay means the other end is not who it was.
-        this.fail(new LinkLostError(LINK_UNVERIFIED, error));
+        // A failed tag or a replay means the other end is not who it was. Whoever is waiting for
+        // this answer hears that now, rather than timing out and being told the Pi went quiet.
+        const reason = new LinkLostError(LINK_UNVERIFIED, error, true);
+        pending?.reject(reason);
+        this.fail(reason);
         return;
       }
       pending?.reject(error instanceof MessageError ? error : new Error('The Pi answered with something unreadable.'));
@@ -470,6 +482,7 @@ export class Session {
   private fail(reason: LinkLostError): void {
     if (this.closed) return;
     this.closed = true;
+    this.closedBy = reason;
     this.unsubscribe();
     void this.connection.disconnect();
     this.pending?.reject(reason);

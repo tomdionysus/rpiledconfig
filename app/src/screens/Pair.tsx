@@ -93,6 +93,8 @@ function errorTitle(error: PairingError): string {
   switch (error.kind) {
     case 'not_found':
       return 'No Pi found';
+    case 'led':
+      return 'The LED did not start';
     case 'refused':
       return 'Authentication refused';
     case 'protocol':

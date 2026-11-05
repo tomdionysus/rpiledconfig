@@ -10,8 +10,11 @@
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/post.hpp>
 #include <boost/asio/signal_set.hpp>
+#include <boost/asio/steady_timer.hpp>
 #include <boost/asio/strand.hpp>
+#include <chrono>
 #include <csignal>
+#include <ctime>
 #include <functional>
 #include <iostream>
 #include <memory>
@@ -62,6 +65,18 @@ std::string hostname() {
   if (::gethostname(buffer, sizeof(buffer)) != 0) return "raspberrypi";
   buffer[sizeof(buffer) - 1] = '\0';
   return buffer;
+}
+
+// Since the system booted, suspended time included.
+std::chrono::seconds uptime() {
+#if defined(__linux__)
+  const clockid_t clock = CLOCK_BOOTTIME;
+#else
+  const clockid_t clock = CLOCK_MONOTONIC;
+#endif
+  timespec now{};
+  ::clock_gettime(clock, &now);
+  return std::chrono::seconds(now.tv_sec);
 }
 
 std::shared_ptr<loggers::Logger> scoped(const std::shared_ptr<loggers::Logger>& logger, const std::string& scope) {
@@ -206,6 +221,14 @@ int main(int argc, char* argv[]) {
   logger->set_level(config->log_level);
   logger->info("Log level " + loggers::to_string(config->log_level));
 
+  // Before anything is started: past the limit there is nothing for this run to do. A clean exit,
+  // which the unit's Restart=on-failure leaves stopped until the next boot.
+  const auto time_left = time_left_after_boot(config->service_stop_after_boot_minutes, uptime());
+  if (time_left && time_left->count() == 0) {
+    logger->info("service.stop_after_boot_minutes (" + std::to_string(config->service_stop_after_boot_minutes) + ") has passed; not starting until the next boot");
+    return 0;
+  }
+
   // The name's suffix tells two Pis apart until the daemon stops. It has nothing to do with
   // any key, each of which is drawn when a phone connects (docs/protocol.md, The pairing key).
   std::array<std::uint8_t, 2> suffix{};
@@ -268,6 +291,7 @@ int main(int argc, char* argv[]) {
 
   setup::SetupMode::Options setup_options;
   setup_options.always = config->setup_always;
+  setup_options.hide_adapter_name = config->ble_hide_adapter_name;
   setup_options.timeout = std::chrono::seconds(config->setup_timeout);
   setup_options.recheck = std::chrono::seconds(config->setup_recheck);
 
@@ -304,6 +328,18 @@ int main(int argc, char* argv[]) {
   };
 
   wait_for_signal();
+
+  boost::asio::steady_timer boot_limit(signal_context);
+  if (time_left) {
+    logger->info("Stopping " + std::to_string(time_left->count()) + " s from now (service.stop_after_boot_minutes)");
+    boot_limit.expires_after(*time_left);
+    boot_limit.async_wait([&](const boost::system::error_code& ec) {
+      if (ec) return;
+      logger->info("service.stop_after_boot_minutes has passed; stopping until the next boot");
+      signal_context.stop();
+    });
+  }
+
   signal_context.run();
 
   // On the strand, and waited for: the LED's trigger goes back and the advertisement comes

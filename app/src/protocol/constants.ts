@@ -4,40 +4,6 @@
 /** Protocol version carried in the Info characteristic. 4: a one-time key; 3: Blink and uninstall; 2: SPAKE2. */
 export const PROTOCOL_VERSION = 4;
 
-/** Half-bit period of the LED channel, in milliseconds. A bit is 2T. */
-export const T_MS = 50;
-
-/** Sync: on for this many T, then off for this many T. */
-export const SYNC_ON_T = 4;
-export const SYNC_OFF_T = 4;
-/** Idle after the CRC: off for this many T. */
-export const IDLE_T = 4;
-
-/** The key is 64 bits: 8 key_bytes, 16 hex characters. */
-export const ID_BYTES = 8;
-export const ID_HEX_LENGTH = 2 * ID_BYTES;
-
-/** The LED frame's 12-byte message: magic, version, key_bytes, CRC-16. */
-export const LED_MAGIC = 0x52;
-export const LED_FRAME_VERSION = 0x05;
-export const LED_MESSAGE_BYTES = 12;
-/** RS(24, 12) over GF(2^8): 12 parity bytes after the message. */
-export const LED_PARITY_BYTES = 12;
-export const LED_CODEWORD_BYTES = LED_MESSAGE_BYTES + LED_PARITY_BYTES;
-/** The primitive polynomial of GF(2^8), and the generator's element a. */
-export const GF_PRIMITIVE = 0x11d;
-export const GF_GENERATOR = 2;
-
-/** Start bit + the codeword's bits: the cells a decoder reads after the sync. */
-export const FRAME_BITS = 1 + 8 * LED_CODEWORD_BYTES;
-
-/** A frame from the first T of the sync to the last T of the idle: 398. */
-export const FRAME_T = SYNC_ON_T + SYNC_OFF_T + 2 * FRAME_BITS + IDLE_T;
-
-/** CRC-16/CCITT-FALSE: polynomial 0x1021, init 0xFFFF, no reflection, no final XOR. */
-export const CRC16_POLY = 0x1021;
-export const CRC16_INIT = 0xffff;
-
 export const SESSION_KEY_INFO = 'session-key v2';
 export const KEY_LENGTH = 32;
 

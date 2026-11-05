@@ -13,6 +13,48 @@
 
 namespace rpiledconfig::protocol {
 
+namespace {
+
+// RFC 3629: no overlong forms, surrogates, or anything past U+10FFFF. D-Bus refuses anything else,
+// and what reaches the log and NetworkManager should have been refused long before.
+bool is_utf8(const std::string& text) {
+  std::size_t i = 0;
+  while (i < text.size()) {
+    const auto c = static_cast<unsigned char>(text[i]);
+    std::size_t extra = 0;
+    unsigned low = 0x80;
+    unsigned high = 0xBF;
+    if (c < 0x80) {
+      extra = 0;
+    } else if (c >= 0xC2 && c <= 0xDF) {
+      extra = 1;
+    } else if (c >= 0xE0 && c <= 0xEF) {
+      extra = 2;
+      if (c == 0xE0) low = 0xA0;
+      if (c == 0xED) high = 0x9F;
+    } else if (c >= 0xF0 && c <= 0xF4) {
+      extra = 3;
+      if (c == 0xF0) low = 0x90;
+      if (c == 0xF4) high = 0x8F;
+    } else {
+      return false;
+    }
+    if (i + extra >= text.size() + (extra == 0 ? 1 : 0)) return false;
+    for (std::size_t k = 1; k <= extra; ++k) {
+      const auto next = static_cast<unsigned char>(text[i + k]);
+      if (next < (k == 1 ? low : 0x80) || next > (k == 1 ? high : 0xBF)) return false;
+    }
+    i += extra + 1;
+  }
+  return true;
+}
+
+bool has_control_character(const std::string& text) {
+  return std::any_of(text.begin(), text.end(), [](char c) { return static_cast<unsigned char>(c) < 0x20 || c == 0x7F; });
+}
+
+}  // namespace
+
 types::Result<Request> parse_request(const std::string& plaintext) {
   using Out = types::Result<Request>;
 
@@ -30,11 +72,16 @@ types::Result<Request> parse_request(const std::string& plaintext) {
     const Json* ssid = json->get("ssid");
     if (ssid == nullptr || !ssid->is_string() || ssid->as_string().empty()) return Out::failure(errors::bad_request, "wifi.configure needs an ssid");
     request.ssid = ssid->as_string();
+    // What 802.11 allows a network's name to be, and what can go on to NetworkManager and the log.
+    if (request.ssid.size() > 32) return Out::failure(errors::bad_request, "an ssid is at most 32 bytes");
+    if (!is_utf8(request.ssid) || has_control_character(request.ssid)) return Out::failure(errors::bad_request, "an ssid must be text, with no control characters");
 
     const Json* psk = json->get("psk");
     if (psk != nullptr && !psk->is_null()) {
       if (!psk->is_string()) return Out::failure(errors::bad_request, "psk must be a string");
       request.psk = psk->as_string();
+      // Not a rule about what a passphrase should look like, which is the network's business.
+      if (!is_utf8(request.psk) || request.psk.find('\0') != std::string::npos) return Out::failure(errors::bad_request, "psk must be text");
     }
 
     const Json* hidden = json->get("hidden");
@@ -97,10 +144,13 @@ std::string scan_response(std::vector<WifiNetwork> networks) {
 
 std::string easyconnect_response(const std::string& uri) { return Json::object().set("ok", Json::boolean(true)).set("uri", Json::string(uri)).dump(); }
 
-std::string info_json(const std::string& version) {
+std::string forgotten_response(int count) { return Json::object().set("ok", Json::boolean(true)).set("forgotten", Json::number(count)).dump(); }
+
+std::string info_json(const std::string& version, const std::string& led) {
   return Json::object()
       .set("protocol", Json::number(protocol_version))
       .set("version", Json::string(version))
+      .set("led", Json::string(led))
       .dump();
 }
 

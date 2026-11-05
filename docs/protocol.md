@@ -7,8 +7,9 @@ tests on each side are written from this text.
 
 ## The idea
 
-Setting up a Raspberry Pi needs two things a stranger in the next room cannot
-have: line of sight to its LED, and Bluetooth range. The daemon offers a BLE
+Setting up a Raspberry Pi needs two things together: sight of its LED, and
+Bluetooth range. A stranger in the next room may have the second and not the
+first. The daemon offers a BLE
 service that answers only to someone who knows its one-time key, which it
 draws when a phone first connects. The phone finds the Pi over BLE and asks
 it to blink; the daemon blinks the key out on the Pi's activity LED; the
@@ -45,9 +46,12 @@ shares, key confirmations and ciphertext.
   app writes Blink and disconnects, reads the LED and connects again, and
   joining a network can drop the link and need another authentication
   (Setup mode, below).
+- A pairing can authenticate with it more than once, for that reason, so it is
+  one key per pairing rather than one use.
 - It is discarded on the first of: `finish`; setup mode ending; 120 seconds
-  with no phone connected and the LED not blinking; the daemon stopping. The
-  next connection draws a new one, and whoever held the old one has to read
+  with no phone connected and the LED not blinking; 15 minutes after it was
+  drawn, whatever is happening, when any phone connected is dropped and the LED
+  stops; the daemon stopping. The next connection draws a new one, and whoever held the old one has to read
   the LED again. A refused attempt does not discard it, so a stranger's guess
   cannot cancel a pairing in progress.
 - Its byte form, `key_bytes`, is the 8 bytes of the key in big-endian order.
@@ -245,7 +249,7 @@ base and differ in the first group:
 
 | UUID (first group) | Name | Properties | Content |
 | --- | --- | --- | --- |
-| `2a7f0002` | Info | read | plain UTF-8 JSON: `{"protocol":4,"version":"<daemon version>"}` |
+| `2a7f0002` | Info | read | plain UTF-8 JSON: `{"protocol":4,"version":"<daemon version>","led":"<off, blinking or failed>"}`; `led` says whether the LED is really being driven (Blink, below) |
 | `2a7f0003` | Challenge | read | `pB`: the daemon's SPAKE2 share, 65 bytes, from a new `y` for every connection and after every Auth write |
 | `2a7f0004` | Auth | write | `pA` (65 bytes) || `cA` (32 bytes) |
 | `2a7f0005` | AuthResult | read, notify | one byte: 0x01 accepted, 0x00 refused; on 0x01 followed by `cB` (32 bytes) |
@@ -266,6 +270,10 @@ it up.
   the frames start again from the sync at the new one, with the same key.
 - 0x00 stops it.
 - Anything else, a write that is not one byte included, is ignored.
+
+A Blink write is acknowledged before it is acted on, and the LED can refuse. So the app reads
+Info after writing: `led` is `blinking` once the LED is being driven, and `failed` if the daemon
+could not take it over. The app says so rather than asking the user to read a dark LED.
 
 The LED stops, and its trigger is given back, on the first of: an accepted
 authentication on any connection, a 0x00 write, 120 seconds after the last
@@ -328,11 +336,12 @@ always begins by reading Challenge, and this rule makes that a fresh start.
 A connection with three refused attempts is dropped. Five refused attempts in
 a row across connections pause advertising for 60 seconds; a blink already
 asked for carries on. The count resets on an accepted attempt and when the pause ends.
-A connection that has not authenticated within 30 seconds is dropped. A
+A connection that has not authenticated within 30 seconds of its first read or
+write is dropped; one that neither reads nor writes is not. A
 Request before AuthResult is 0x01 is ignored and the connection dropped.
 
-The daemon serves one central at a time; a second connection while one is
-open is disconnected without a challenge.
+The daemon serves one central at a time; a second that reads or writes while one
+is being served is disconnected without a challenge.
 
 ### The encrypted channel
 
@@ -380,8 +389,8 @@ Plaintexts are UTF-8 JSON objects. A request carries `op`; a response carries
 | --- | --- |
 | `{"op":"status"}` | `{"ok":true,"hostname":"...","wifi":{"connected":true,"ssid":"...","ip":"...","join":{...}}}`, `wifi.connected` false with no `ssid` or `ip` when it is not. `hostname` is absent when `status.report_hostname` is false; the app then shows the one-time key in its place, with a notice. When the WiFi backend cannot be asked at all the answer is an error (`wifi_unavailable`), not `connected: false`. `join` (The latest join, below) is present once a `wifi.configure` has been taken since the daemon started |
 | `{"op":"wifi.scan"}` | `{"ok":true,"networks":[{"ssid":"...","signal":0..100,"secure":true},...]}` sorted by signal, strongest first, ties by the SSID's UTF-8 bytes ascending, one entry per SSID (the strongest), hidden networks (empty SSID) left out, signal clamped to 0..100 |
-| `{"op":"wifi.configure","ssid":"...","psk":"...","hidden":true}` | `{"ok":true}` once the connection is saved and activation has been asked for; `psk` is absent or empty for an open network; `hidden` is optional, true for a network typed by hand that may not broadcast its SSID (the Pi then probes for it by name) |
-| `{"op":"wifi.forget"}` | `{"ok":true}` |
+| `{"op":"wifi.configure","ssid":"...","psk":"...","hidden":true}` | `{"ok":true}` once the connection is saved and activation has been asked for; `psk` is absent or empty for an open network; `hidden` is optional, true for a network typed by hand that may not broadcast its SSID (the Pi then probes for it by name). `ssid` is 1 to 32 bytes of UTF-8 with no control characters, and `psk` is UTF-8 with no NUL, or the answer is `bad_request`; what a passphrase should look like is the network's business |
+| `{"op":"wifi.forget"}` | `{"ok":true,"forgotten":<n>}`: how many connections this daemon made it deleted, 0 if there were none. A connection made any other way is left alone |
 | `{"op":"finish"}` | `{"ok":true}`; the daemon leaves setup mode and disconnects |
 | `{"op":"uninstall"}` | `{"ok":true}` once the removal has been started; the daemon disconnects, and the package is purged (Uninstalling, below) |
 
@@ -393,7 +402,9 @@ Error codes: `bad_request` (not JSON, no `op`, missing field), `unknown_op`,
 
 `wifi.configure` answering `ok` means the connection is saved and
 activation has been asked for, not that the network was joined. What became
-of it is in `status`:
+of it is in `status`. Connections this daemon saved earlier are deleted only once
+the new one has joined; a join that fails deletes only itself, so a wrong
+passphrase does not cost the Pi a network that worked:
 
 #### The latest join
 
@@ -485,16 +496,18 @@ DPP, or a refusal.
 
 ## Setup mode
 
-Setup mode is the BLE service advertising, and the LED blinking whenever a
-phone has asked for it (Blink). The daemon
-enters it at start when there is no WiFi connection (a backend that cannot
-be asked counts as no connection), and stays in it until `finish` is
-received or `setup.timeout` (default 15 minutes) passes. With
-`setup.always: true` it never leaves: `finish` is still answered `ok` and
-the phone disconnected, but the advertising carries on (and a blink
-asked for, until it stops as Blink says). Outside
-setup mode the daemon idles, checks WiFi every `setup.recheck` seconds
-(default 60), and re-enters setup mode if the connection has gone.
+The daemon runs whether the Pi has WiFi or not. Setup mode is the BLE service
+advertising, and the LED blinking whenever a phone has asked for it (Blink).
+
+With `setup.always: true`, the default, it is in setup mode whether or not the Pi has WiFi, for as
+long as it runs. `finish` is answered `ok` and the phone disconnected, but the advertising carries
+on. An accepted `uninstall` still stops it. docs/security.md says what this exposes.
+
+With `setup.always: false` the daemon enters setup mode when there is no WiFi connection (a backend
+that cannot be asked counts as no connection), and stays in it until `finish`, an accepted
+`uninstall`, or `setup.timeout` (default 15 minutes). Outside setup mode it idles and checks WiFi
+every `setup.recheck` seconds (default 60), entering setup mode again if there is still no
+connection. A Pi on WiFi then does not advertise.
 
 Joining a network can drop the BLE link for a moment, because the Pi's WiFi
 and Bluetooth share one radio. The app treats a disconnect after
@@ -508,8 +521,7 @@ Authentication is what proves it is the same Pi.
 The test suites on both sides include, at least:
 
 - CRC-16/CCITT-FALSE of `123456789` is 0x29B1.
-- For the key `0x0123456789abcdef`, computed independently of both sides
-  (Python, from the definitions above):
+- For the key `0x0123456789abcdef`:
   - the message: `0123456789abcdef008c`
   - the codeword: `0123456789abcdef008cc420bb0f15c9`
   - the generator polynomial, highest power first: `013f01da20e326`
@@ -528,7 +540,7 @@ The test suites on both sides include, at least:
 - The four P256-SHA256 vectors of RFC 9382, Appendix B (at least the first,
   A = `server`, B = `client`, and the last, both identities empty): `pA`,
   `pB`, `K`, `Ke`, `KcA`, `KcB`, `cA` and `cB` from the given `w`, `x`, `y`.
-- For `0x0123456789abcdef`, computed independently of both sides (Python, from the definitions above):
+- For `0x0123456789abcdef`:
   - `w`: `d11cf43f75a28b8c30fd3da84ab44c51c0c8755713eed6dcd9b73907be6af3f7`
   - with `x` the 32 bytes `01..20` and `y` the 32 bytes `21..40`, read big-endian:
     - `pA`: `040dd445d16102c3424f2451006a7aa6e8bfd8a4ccb182905cccf632c27e995012d5f4a0911c67271eb2016e8edc631a1f3633f36ea0f8d67773d127d38697f5a2`

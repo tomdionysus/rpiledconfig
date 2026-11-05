@@ -7,15 +7,8 @@
 
 *v0.4.0*
 
-Set up a Raspberry Pi's WiFi from a phone, with no keyboard, screen or network
-on the Pi. A service on the Pi offers a Bluetooth LE service that answers only
-to someone who knows a one-time 64-bit key, which it draws when a phone connects
-and blinks on the activity LED when the phone asks. The phone app reads the LED
-with its camera, proves it knows the key over Bluetooth, and sends the WiFi
-details over a channel encrypted with a key derived from it. Sight of the LED
-and Bluetooth range are the two factors. There is no pairing code to type and
-nothing printed on the board; the key is kept in memory for one pairing, never
-on disk.
+WiFi on a Pi can be provisioned via a Bluetooth app, authenticated by a 64-bit secure one-time
+key, communicated by flashing the Pi's activity LED and captured by the phone camera.
 
 ## What it's for
 
@@ -30,32 +23,26 @@ happens after flashing, when the card is already in a Pi that is already in the
 field.
 
 The service has to be on the Pi beforehand, so it goes into the image the Pi is
-flashed with. It offers itself when the Pi has no WiFi connection. To change the
-network of a Pi that is still connected, it needs `setup.always: true`, which
-leaves it advertising over Bluetooth all the time. Once a Pi is settled, the app
-can remove the service from it.
+flashed with. It advertises over Bluetooth for as long as it runs, whether the Pi
+has WiFi or not, so a Pi's network can be changed while it is still connected.
+`docs/security.md` says what that exposes. Once a Pi is settled, the app can remove
+the service from it, `service.stop_after_boot_minutes` stops it a set time after each
+boot, or `setup.always: false` makes it advertise only while the Pi has no WiFi
+connection.
 
 | Folder | What it is |
 | --- | --- |
 | `daemon/` | The service, `rpiledconfig`. C++20, Boost.Asio, OpenSSL, BlueZ and NetworkManager over sd-bus; systemd. |
-| `app/` | The phone app, RPi LED Config. React Native and TypeScript, Android only for now. At run time: react-native-ble-plx, react-native-vision-camera with react-native-worklets-core, react-native-safe-area-context and the noble libraries. The LED reader is native: `app/modules/led-reader`, C++ behind a VisionCamera frame-processor plugin. |
-| `docs/` | The protocol (`protocol.md`), installation, configuration, releasing to Google Play (`play-store.md`), and the app's privacy policy (`privacy.md`). |
+| `app/` | The phone app, RPi LED Config. React Native and TypeScript, for Android. At run time: react-native-ble-plx, react-native-vision-camera with react-native-worklets-core, react-native-safe-area-context and the noble libraries. The LED reader is native: `app/modules/led-reader`, C++ behind a VisionCamera frame-processor plugin. |
+| `docs/` | The protocol (`protocol.md`), what is exposed (`security.md`), installation, configuration, releasing to Google Play (`play-store.md`), and the app's privacy policy (`privacy.md`). |
 | `packaging/` | A Docker build of the Debian package, kept but not used. The package's own files are in `daemon/packaging/`. |
-
-## Status
-
-The latest tag, 0.4.0, does not contain the Android project and speaks an older
-protocol, so build from `main`. There is no published package or app store
-release yet. Everything so far has been run on one Raspberry Pi 5 on Raspberry
-Pi OS trixie and one Blackview A85 on Android 12, in one dark room.
 
 ## How it works
 
-1. On a Pi with no WiFi connection the service enters setup mode: it advertises
-   over Bluetooth as `RPiLEDConfig-<4 random hex>`. The prefix is configurable
+1. The service starts with the Pi and advertises over Bluetooth, whether the Pi has
+   WiFi or not, as `RPiLEDConfig-<4 random hex>`; the prefix is configurable
    (`ble.name_prefix`), and the name says nothing about the key. The LED is left
-   alone. Setup mode ends on Finish or after 15 minutes, and comes back while
-   there is still no WiFi.
+   alone.
 2. At first launch the app explains the permissions it needs and asks for them.
    It then lists the Pis it can hear now by their full names. Choosing one asks
    it, over Bluetooth, to blink at the speed chosen in the app, which the app
@@ -83,9 +70,9 @@ Pi OS trixie and one Blackview A85 on Android 12, in one dark room.
 5. The app lists the networks the Pi can see. The user picks one, or types a
    name, and gives its passphrase. The service hands the network to
    NetworkManager and reports what became of it, so a wrong passphrase or a name
-   nothing broadcasts is shown when NetworkManager gives up. Finish takes the Pi
-   out of setup mode, and the key is discarded; it also goes after two minutes
-   with no phone connected and the LED off.
+   nothing broadcasts is shown when NetworkManager gives up. Finish ends the
+   pairing and discards the key; it also goes after two minutes
+   with no phone connected and the LED off, or 15 minutes after it was drawn.
 
 Once paired, the app can also remove RPiLEDConfig from the Pi altogether: the
 service starts a root unit the package ships, which purges the package and keeps
@@ -97,8 +84,7 @@ A release of the app has no permission to use the internet (docs/privacy.md).
 
 ## Installing the service
 
-There is no package to download yet. Build it natively on a Pi, on 64-bit
-Raspberry Pi OS, from `daemon/`:
+Build the package on a Pi, on 64-bit Raspberry Pi OS, from `daemon/`:
 
     cmake -S . -B build-deb -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -DRPILEDCONFIG_BUILD_TESTING=OFF
     cmake --build build-deb && (cd build-deb && cpack -G DEB)
@@ -136,8 +122,8 @@ test phone and which Google Play refuses. `docs/play-store.md` covers the key,
 the bundle (`./gradlew bundleRelease`) and the listing. Do not run `./gradlew
 clean`; that file says why.
 
-`app/android` is checked in, and `scripts/make-icons.sh` regenerates its icons
-and the Play listing's graphics from `assets/icon.svg`. iOS has no project yet.
+`scripts/make-icons.sh` regenerates the app's icons, the README's logo and the Play
+listing's graphics from `assets/icon.svg`.
 
 ## License
 

@@ -113,14 +113,24 @@ struct BleBluezHandlers {
     return sd_bus_message_append_basic(reply, SD_BUS_TYPE_BOOLEAN, &on);
   }
 
+  // Nothing may be thrown through sd-bus, which is C. The one thing here that throws is running
+  // out of memory, which the unit's MemoryMax can make real: the caller gets an error.
   static int read_value(sd_bus_message* message, void* userdata, sd_bus_error* error) {
     auto* object = static_cast<Object*>(userdata);
-    return object->owner->_read_value(message, *object, error);
+    try {
+      return object->owner->_read_value(message, *object, error);
+    } catch (const std::exception&) {
+      return -ENOMEM;
+    }
   }
 
   static int write_value(sd_bus_message* message, void* userdata, sd_bus_error* error) {
     auto* object = static_cast<Object*>(userdata);
-    return object->owner->_write_value(message, *object, error);
+    try {
+      return object->owner->_write_value(message, *object, error);
+    } catch (const std::exception&) {
+      return -ENOMEM;
+    }
   }
 
   static int start_notify(sd_bus_message* message, void* userdata, sd_bus_error*) {
@@ -320,6 +330,13 @@ void BleBluez::stop() {
   _unregister_application();
   _advertisement_pending = false;
 
+  // An empty alias gives the adapter its own name back.
+  if (_alias_set) {
+    auto reset = _loop->method_call(bluez_service, adapter_path().c_str(), "org.freedesktop.DBus.Properties", "Set");
+    if (reset && sd_bus_message_append(reset.get(), "ssv", adapter_interface, "Alias", "s", "") >= 0) _loop->call(std::move(reset), nullptr);
+    _alias_set = false;
+  }
+
   _unexport();
   _refused_devices.clear();
   _loop->kick();
@@ -360,7 +377,7 @@ void BleBluez::disconnect(ConnectionId connection) {
   _central.reset();
 
   if (!device.empty()) {
-    _refused_devices.insert(device);
+    _refuse(device);
     _hang_up(device, disconnect_linger);
   }
 
@@ -376,6 +393,13 @@ void BleBluez::disconnect(ConnectionId connection) {
 std::size_t BleBluez::mtu(ConnectionId connection) const {
   const std::size_t reported = _central && _central->id == connection ? _central->mtu : default_mtu;
   return std::min(reported, max_fragment_mtu);
+}
+
+void BleBluez::_refuse(const std::string& device) {
+  // A Bluetooth address can be made up afresh for every connection, so this cannot be left to grow.
+  // Forgetting them all is harmless: the worst a forgotten central can do is connect again.
+  if (_refused_devices.size() >= max_refused_devices) _refused_devices.clear();
+  _refused_devices.insert(device);
 }
 
 std::string BleBluez::describe() const { return "bluez " + _adapter; }
@@ -411,7 +435,7 @@ std::optional<ConnectionId> BleBluez::_central_for(const AccessOptions& options,
     // challenge.
     why = "another central is being served";
     if (!options.device.empty()) {
-      _refused_devices.insert(options.device);
+      _refuse(options.device);
       _logger->info("A second central, " + dbus::basename(options.device) + ", while " + dbus::basename(_central->device) + " is served");
       _hang_up(options.device, std::chrono::milliseconds(0));
     }
@@ -713,7 +737,7 @@ void BleBluez::_power_then_register() {
                           return;
                         }
 
-                        if (powered) return self->_register_application();
+                        if (powered) return self->_set_alias_then_register();
 
                         // rfkill or a fresh boot can leave it off; BlueZ refuses to
                         // advertise on an adapter that is.
@@ -728,9 +752,32 @@ void BleBluez::_power_then_register() {
                             self->_logger->error("Cannot power the adapter on: " + error->describe() + " (rfkill?)");
                             return;
                           }
-                          self->_register_application();
+                          self->_set_alias_then_register();
                         });
                       });
+}
+
+void BleBluez::_set_alias_then_register() {
+  if (_advertisement.adapter_alias.empty()) return _register_application();
+
+  const auto generation = _generation;
+  auto set = _loop->method_call(bluez_service, adapter_path().c_str(), "org.freedesktop.DBus.Properties", "Set");
+  if (set && sd_bus_message_append(set.get(), "ssv", adapter_interface, "Alias", "s", _advertisement.adapter_alias.c_str()) < 0) set.reset();
+
+  _loop->call(std::move(set), [weak = weak_from_this(), generation](sd_bus_message*, const dbus::CallError* error) {
+    auto self = weak.lock();
+    if (!self || self->_generation != generation) return;
+
+    // Said loudly and not fatal: the configuration asked to hide a name, and setting up the Pi
+    // matters more, but nobody should think it is hidden.
+    if (error) {
+      self->_logger->error("Could not set the adapter's name, so it is NOT hidden: " + error->describe());
+    } else {
+      self->_alias_set = true;
+      self->_logger->info("The adapter takes the name " + self->_advertisement.adapter_alias + " while advertising");
+    }
+    self->_register_application();
+  });
 }
 
 void BleBluez::_register_application() {

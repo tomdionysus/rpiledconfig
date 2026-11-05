@@ -18,25 +18,29 @@ file, not to where the daemon was started.
 | `log.level` | `info` | `debug`, `info`, `warn` or `error`. |
 | `led.driver` | `sysfs` on Linux, `fake` elsewhere | `sysfs` drives a kernel LED; `fake` logs what it would do. |
 | `led.path` | `/sys/class/leds/ACT` | The LED's sysfs directory: `ACT`, the activity LED (`led0` on Raspberry Pi 3 and earlier), or `PWR`, the power LED (`led1` on older boards). |
-| `led.active_low` | `false` | `true` when the LED lights at brightness 0 (the Raspberry Pi 5's `ACT`); without it the camera reads every frame inverted. |
+| `led.active_low` | `false` | `true` when the LED lights at brightness 0 (the Raspberry Pi 5's `ACT`); without it the LED shows the frame inverted. |
 | `ble.driver` | `bluez` on Linux, `fake` elsewhere | `bluez` serves GATT through BlueZ over D-Bus; `fake` serves nothing and logs. |
 | `ble.adapter` | `hci0` | The BlueZ adapter to advertise on, by its name under `/org/bluez` (`ls /sys/class/bluetooth`). Powered on at start if it is off. |
+| `ble.hide_adapter_name` | `false` | Give the Bluetooth adapter the advertised name while advertising, and hand its own name back afterwards. See below. |
 | `ble.name_prefix` | `RPiLEDConfig` | The start of the advertised name, which the app lists: `<prefix>-<4 random hex>`, the hex drawn each time the daemon starts. 1 to 24 printable ASCII characters, which is what fits in the advertisement. |
 | `wifi.driver` | `networkmanager` on Linux, `fake` elsewhere | `networkmanager` over D-Bus; `fake` answers with made-up networks. |
 | `wifi.interface` | `wlan0` | The WiFi interface: its wpa_supplicant control socket (`/run/wpa_supplicant/<interface>`) and its MAC in the Easy Connect URI. |
 | `wifi.easyconnect` | `fake` when `wifi.driver` is `fake`, else `wpa_supplicant` | Wi-Fi Easy Connect: `wpa_supplicant` (Linux only), `fake` (a made-up URI; nothing ever arrives), or `off` (the app is told `easyconnect_unavailable`). |
 | `uninstall.driver` | `systemd` on Linux, `fake` elsewhere | What a phone's `uninstall` does: `systemd` starts `rpiledconfig-uninstall.service`, which purges the package; `fake` logs and removes nothing; `off` answers `uninstall_unavailable`. |
-| `status.report_hostname` | `true` | Whether `status` tells an authenticated phone the Pi's hostname. When `false` the app shows the one-time key in its place, with a notice. See below for what this does not hide. |
-| `setup.always` | `false` | Stay in setup mode whatever the WiFi state. |
-| `setup.timeout` | `900` | Seconds of setup mode before giving up until the next recheck. |
-| `setup.recheck` | `60` | Seconds between WiFi checks outside setup mode. |
+| `service.stop_after_boot_minutes` | `0` | Stop the service this many minutes after the system boots, until the next boot, so that it no longer answers over Bluetooth. A restart past the limit exits at once. `0` runs continuously. |
+| `status.report_hostname` | `true` | Whether `status` tells an authenticated phone the Pi's hostname. When `false` the app shows the one-time key in its place, with a notice. See below. |
+| `setup.always` | `true` | Be in setup mode, advertising, for as long as the service runs, whether or not the Pi has WiFi. `false` advertises only while the Pi has no WiFi connection. docs/security.md says what this exposes. |
+| `setup.timeout` | `900` | With `setup.always: false`, seconds of setup mode before giving up until the next recheck. |
+| `setup.recheck` | `60` | With `setup.always: false`, seconds between WiFi checks outside setup mode. |
 
-`status.report_hostname: false` keeps the hostname out of what the daemon sends. BlueZ is separate:
-it gives the adapter's name to anything connected, as the standard Device Name characteristic,
-with no authentication, and by default that name is the hostname. To hide it there too, set the
-adapter's name as well:
+The Pi's hostname can reach a phone two ways, and each has its own setting:
 
-    bluetoothctl system-alias <another name>
+- `status.report_hostname: false` keeps it out of what the daemon sends an authenticated phone.
+- `ble.hide_adapter_name: true` covers the other way. BlueZ gives the Bluetooth adapter's name to
+  anything that connects, with no key, and by default that name is the hostname. With this on, the
+  adapter takes the advertised name while the daemon advertises, and gets its own name back when
+  that stops. It is a system-wide Bluetooth setting while it lasts. If the daemon is killed without
+  stopping, the name stays until a later clean stop with this still on, or `bluetoothctl reset-alias`.
 
 The daemon keeps no state. A `state.dir` line is ignored with a warning.
 
@@ -70,11 +74,12 @@ one is being served is disconnected (`Device1.Disconnect`).
 `wifi.configure` saves a system connection named `rpiledconfig-<ssid>` (for example
 `rpiledconfig-Home`), WPA-PSK when a passphrase was given and open when not, with
 autoconnect on and the passphrase stored by NetworkManager, so it comes back after a
-reboot with nobody logged in. Earlier `rpiledconfig-` connections are deleted once the
-new one is saved, so a wrong passphrase tried first does not linger.
+reboot with nobody logged in. Earlier `rpiledconfig-` connections are deleted once the new one
+has joined. A join that fails deletes only itself, so a wrong passphrase neither lingers nor costs
+the Pi a network that worked.
 
 That name is how the daemon recognises its own connections: `wifi.forget` deletes every
-saved connection whose name starts with `rpiledconfig-`, and nothing else. A connection
+saved connection whose name starts with `rpiledconfig-`, and nothing else, and says how many. A connection
 made by hand, by Raspberry Pi Imager (`preconfigured`, or `netplan-wlan0-...` on
 netplan-based images) or by `nmcli` is never touched, and renaming one of ours with
 `nmcli connection modify rpiledconfig-Home connection.id Home` takes it out of the
@@ -90,31 +95,12 @@ rule is described in docs/installation.md. A Pi with no WiFi device answers
 
 ## Wi-Fi Easy Connect through wpa_supplicant
 
-`wifi.easyconnect: wpa_supplicant` makes the daemon an Easy Connect (DPP) enrollee
-through the control socket of the wpa_supplicant NetworkManager runs for
-`wifi.interface` (docs/protocol.md, "Copying the phone's WiFi"). On `wifi.easyconnect`
-it sends `STATUS` (for the interface's MAC), `DPP_BOOTSTRAP_GEN type=qrcode
-chan=81/1,81/6,81/11 mac=<mac>`, `DPP_BOOTSTRAP_GET_URI` and `DPP_LISTEN 2437
-role=enrollee`, answers the URI, and listens for 120 seconds. The network the phone
-sends arrives as wpa_supplicant's `DPP-CONFOBJ-SSID` and `DPP-CONFOBJ-PASS` (or `-PSK`)
-events and is saved through NetworkManager exactly as `wifi.configure` saves one, as
-`rpiledconfig-<ssid>`. wpa_supplicant itself saves nothing (`dpp_config_processing`
-stays 0). On success, after 120 seconds, on `wifi.easyconnect.stop`, or when the phone's
-connection closes, the daemon sends `DPP_STOP_LISTEN` and `DPP_BOOTSTRAP_REMOVE`.
-
-What it cannot apply: a network configured for DPP alone (a connector and no
-passphrase), which NetworkManager cannot be given this way; it is logged and nothing
-changes. A WPA3-only (SAE) network arrives with its passphrase and is saved as WPA-PSK,
-which such a network refuses; WPA2 and WPA2/WPA3 transitional networks join.
-
-Where NetworkManager may get in the way. It drives the same wpa_supplicant, and in setup
-mode there is no WiFi connection, so it is scanning for one to autoconnect to. A scan
-takes the radio off channel 6 while it runs, and wpa_supplicant queues the listen and
-the scans one after another, so the listen has gaps in which the phone's first DPP
-message can be missed. The phone repeats it, so this costs time rather than the
-exchange, but it is the first thing to suspect if Easy Connect is slow or never starts.
-An autoconnect attempt to a saved network that comes into range moves the radio the
-same way.
+`wifi.easyconnect: wpa_supplicant` makes the daemon an Easy Connect (DPP) enrollee through the
+control socket of the wpa_supplicant NetworkManager runs for `wifi.interface`
+(docs/protocol.md, "Copying the phone's WiFi"). The network received is saved through
+NetworkManager exactly as `wifi.configure` saves one, as `rpiledconfig-<ssid>`. wpa_supplicant
+itself saves nothing (`dpp_config_processing` stays 0). A network configured for DPP alone, with
+a connector and no passphrase, cannot be applied this way; it is logged and nothing changes.
 
 The journal shows each step: `Wi-Fi Easy Connect: listening on 2437 MHz`, `the phone
 authenticated`, `a configuration arrived`, `received <ssid>`, or the reason it stopped.

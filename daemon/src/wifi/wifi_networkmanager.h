@@ -80,7 +80,7 @@ class WifiNetworkManager : public Wifi, public std::enable_shared_from_this<Wifi
   void status(types::Executor on, types::Handler<WifiStatus> handler) override;
   void scan(types::Executor on, types::Handler<std::vector<WifiNetwork>> handler) override;
   void configure(const std::string& ssid, const std::string& psk, bool hidden, types::Executor on, types::StatusHandler handler) override;
-  void forget(types::Executor on, types::StatusHandler handler) override;
+  void forget(types::Executor on, types::Handler<int> handler) override;
   std::string describe() const override;
 
   // The (secure) answer for an access point's flags: privacy, or any WPA or RSN flag.
@@ -123,6 +123,8 @@ class WifiNetworkManager : public Wifi, public std::enable_shared_from_this<Wifi
   Options _options;
   // The most recent configure and what became of it; read by status. Loop's executor only.
   std::optional<protocol::JoinState> _last_join;
+  // The connection the latest configure saved, until its outcome is known.
+  std::string _pending_saved;
 };
 
 }  // namespace rpiledconfig::wifi

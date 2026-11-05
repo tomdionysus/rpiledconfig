@@ -6,7 +6,7 @@ import { FAKE_IP, FakeDaemon, type FakeDaemonOptions } from '@/ble/fake';
 import type { BleTransport } from '@/ble/transport';
 import { hexToBytes } from '@/protocol/bytes';
 import { ManualClock } from '@/util/clock';
-import { collapseSteps, describeOutcome, describeStep, joinWifi, JOIN_TIMEOUT_MS, type JoinStep } from './join';
+import { collapseSteps, describeOutcome, describeStep, followStatus, joinWifi, JOIN_TIMEOUT_MS, type JoinStep } from './join';
 import { pair, type Session } from './session';
 
 const ID = hexToBytes('012345');
@@ -37,6 +37,28 @@ describe('joinWifi', () => {
     await session.close();
   });
 
+  it('does not call a failed join joined because the Pi is on a network of that name by another connection', async () => {
+    const { clock, daemon, session } = await setUp();
+    daemon.wifi = { connected: true, ssid: 'Blackraven', ip: FAKE_IP, join: { ssid: 'Blackraven', state: 'failed', reason: 'wrong_passphrase' } };
+    const outcome = await clock.run(followStatus(session, { ssid: 'Blackraven' }, { clock }), 120_000, 1_000);
+    expect(outcome.kind).toBe('not_joined');
+    await session.close();
+  });
+
+  it('does not call a join joined while the Pi still says it is joining', async () => {
+    const { clock, daemon, session } = await setUp();
+    daemon.wifi = { connected: true, ssid: 'Blackraven', ip: FAKE_IP, join: { ssid: 'Blackraven', state: 'joining' } };
+    const steps: JoinStep[] = [];
+    const running = followStatus(session, { ssid: 'Blackraven' }, { clock, onStep: (step) => steps.push(step) });
+    clock.after(5_000, () => {
+      daemon.wifi = { connected: true, ssid: 'Blackraven', ip: FAKE_IP, join: { ssid: 'Blackraven', state: 'joined' } };
+    });
+    const outcome = await clock.run(running, 120_000, 1_000);
+    expect(outcome.kind).toBe('joined');
+    expect(steps.some((step) => step.kind === 'waiting')).toBe(true);
+    await session.close();
+  });
+
   it('polls a slow join on a surviving link until it lands', async () => {
     const { clock, steps, join } = await setUp({ joinAfterMs: 9_000 });
     const start = clock.now();
@@ -57,7 +79,7 @@ describe('joinWifi', () => {
     expect(collapseSteps(steps).map((step) => describeStep(step, 'Blackraven'))).toEqual([
       'Sending Blackraven to the Pi.',
       'Saved. The Pi is joining Blackraven.',
-      'Bluetooth dropped while the Pi switched its radio to WiFi. That is expected; finding it again.',
+      'Bluetooth dropped, as it often does while the Pi switches its radio to WiFi. Finding it again.',
       'Reconnecting, attempt 1: authenticated.',
       'Back in touch and authenticated again.',
       expect.stringMatching(/^Waiting for the Pi to join Blackraven: \d+ s left\.$/),
@@ -158,7 +180,7 @@ describe('joinWifi', () => {
     expect(clock.now() - start).toBeGreaterThanOrEqual(JOIN_TIMEOUT_MS);
     expect(clock.now() - start).toBeLessThan(JOIN_TIMEOUT_MS + 2_000);
     expect(daemon.connections).toBe(1);
-    expect(describeOutcome(outcome, 'Blackraven').body).toMatch(/pair again/);
+    expect(describeOutcome(outcome, 'Blackraven').body).toMatch(/Pair again/);
   });
 
   it('passes a refused configure straight through', async () => {

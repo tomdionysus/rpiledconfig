@@ -43,7 +43,7 @@ TEST(ConfigTest, TheExampleParses) {
   EXPECT_EQ(config.wifi_driver, "networkmanager");
   EXPECT_EQ(config.wifi_interface, "wlan0");
   EXPECT_EQ(config.wifi_easyconnect, "wpa_supplicant");
-  EXPECT_FALSE(config.setup_always);
+  EXPECT_TRUE(config.setup_always);
   EXPECT_EQ(config.setup_timeout, 900u);
   EXPECT_EQ(config.setup_recheck, 60u);
 }
@@ -70,7 +70,7 @@ TEST(ConfigTest, AnEmptyFileIsTheDefaults) {
   EXPECT_EQ(loaded.config.log_level, rpiledconfig::loggers::LogLevel::info);
   EXPECT_EQ(loaded.config.led_path, "/sys/class/leds/ACT");
   EXPECT_EQ(loaded.config.ble_adapter, "hci0");
-  EXPECT_FALSE(loaded.config.setup_always);
+  EXPECT_TRUE(loaded.config.setup_always) << "a Pi with the package installed is meant to be reachable";
   EXPECT_EQ(loaded.config.setup_timeout, 900u);
   EXPECT_EQ(loaded.config.setup_recheck, 60u);
 
@@ -92,11 +92,11 @@ TEST(ConfigTest, CommentsBlankLinesAndWhitespaceAreForgiven) {
       "\n"
       "   log.level :   debug   # trailing comment\n"
       "\t\n"
-      "setup.always: true\n");
+      "setup.always: false\n");
   ASSERT_TRUE(loaded.ok) << loaded.logger->text();
 
   EXPECT_EQ(loaded.config.log_level, rpiledconfig::loggers::LogLevel::debug);
-  EXPECT_TRUE(loaded.config.setup_always);
+  EXPECT_FALSE(loaded.config.setup_always);
 }
 
 TEST(ConfigTest, ValuesMayBeQuoted) {
@@ -179,6 +179,26 @@ TEST(ConfigTest, TheNamePrefixIsChecked) {
 
 // The phone chooses the rate now (docs/protocol.md, Symbols).
 TEST(ConfigTest, TheSymbolTimeIsNoLongerAKey) { EXPECT_FALSE(Loaded("led.symbol_ms: 50\n").ok); }
+
+TEST(ConfigTest, TheAdapterKeepsItsNameUnlessSetOtherwise) {
+  EXPECT_FALSE(Loaded("").config.ble_hide_adapter_name);
+  EXPECT_TRUE(Loaded("ble.hide_adapter_name: true\n").config.ble_hide_adapter_name);
+  EXPECT_FALSE(Loaded("ble.hide_adapter_name: yes\n").ok);
+}
+
+TEST(ConfigTest, TheServiceRunsContinuouslyUnlessToldToStopAfterBoot) {
+  EXPECT_EQ(Loaded("").config.service_stop_after_boot_minutes, 0u);
+  EXPECT_EQ(Loaded("service.stop_after_boot_minutes: 30\n").config.service_stop_after_boot_minutes, 30u);
+  EXPECT_FALSE(Loaded("service.stop_after_boot_minutes: soon\n").ok);
+
+  using std::chrono::seconds;
+  EXPECT_FALSE(rpiledconfig::time_left_after_boot(0, seconds(0)).has_value()) << "0 is no limit";
+  EXPECT_FALSE(rpiledconfig::time_left_after_boot(0, seconds(999999)).has_value());
+  EXPECT_EQ(rpiledconfig::time_left_after_boot(30, seconds(0)), seconds(1800));
+  EXPECT_EQ(rpiledconfig::time_left_after_boot(30, seconds(1799)), seconds(1));
+  EXPECT_EQ(rpiledconfig::time_left_after_boot(30, seconds(1800)), seconds(0));
+  EXPECT_EQ(rpiledconfig::time_left_after_boot(30, seconds(99999)), seconds(0));
+}
 
 TEST(ConfigTest, TheHostnameIsReportedUnlessSetOtherwise) {
   EXPECT_TRUE(Loaded("").config.status_report_hostname);

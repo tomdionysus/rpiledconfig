@@ -67,6 +67,7 @@ class BleFake : public BleService {
   bool started() const { return _started; }
   bool advertising() const { return _started && !_paused; }
   const std::string& advertised_name() const { return _advertisement.local_name; }
+  const std::string& adapter_alias() const { return _advertisement.adapter_alias; }
   int starts() const { return _starts; }
   int stops() const { return _stops; }
 

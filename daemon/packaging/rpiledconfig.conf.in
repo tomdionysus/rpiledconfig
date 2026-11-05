@@ -31,6 +31,13 @@ ble.adapter: hci0
 # most 24 printable ASCII characters.
 ble.name_prefix: RPiLEDConfig
 
+# BlueZ gives the Bluetooth adapter's name to anything that connects, with no key, and by default
+# that name is this Pi's hostname. true gives the adapter the advertised name while it advertises
+# and hands its own name back when that stops, so the hostname does not go over Bluetooth. This
+# changes a system-wide Bluetooth setting while it lasts, so it is off by default.
+# status.report_hostname is separate: it is what the service itself tells the app.
+ble.hide_adapter_name: false
+
 # WiFi through NetworkManager, and Wi-Fi Easy Connect through wpa_supplicant on this
 # interface.
 wifi.driver: networkmanager
@@ -41,14 +48,20 @@ wifi.easyconnect: wpa_supplicant
 # rpiledconfig-uninstall.service), fake only logs, off refuses.
 uninstall.driver: systemd
 
-# Setup mode: entered when there is no WiFi connection, left on finish or after this many
-# seconds; WiFi is checked every setup.recheck seconds outside it. setup.always keeps it
-# on for ever.
-setup.always: false
+# Be in setup mode, advertising over Bluetooth, for as long as the service runs, whether or not
+# the Pi has WiFi. false advertises only while the Pi has no WiFi connection, for setup.timeout
+# seconds at a time, checking WiFi every setup.recheck seconds otherwise. docs/security.md says what
+# this exposes.
+setup.always: true
 setup.timeout: 900
 setup.recheck: 60
 
 # Whether the app is told this Pi's hostname. When false it shows the one-time key instead, with a
-# notice. This is status only: BlueZ still gives the adapter's name, by default the hostname, to
-# anything connected (docs/configuration.md).
+# notice. This is status only: BlueZ still gives the adapter's name to anything connected unless
+# ble.hide_adapter_name is also true.
 status.report_hostname: true
+
+# Stop the service this many minutes after the system boots, until the next boot: it then no longer
+# answers over Bluetooth at all, and to change a Pi's network it has to be powered off and on. 0
+# runs continuously. Default 0.
+service.stop_after_boot_minutes: 0

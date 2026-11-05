@@ -3,7 +3,7 @@ import { FakeDaemon } from '@/ble/fake';
 import type { BleTransport } from '@/ble/transport';
 import { hexToBytes } from '@/protocol/bytes';
 import { appChannel } from '@/protocol/channel';
-import { CHAR_AUTH_RESULT, CHAR_REQUEST } from '@/protocol/constants';
+import { CHAR_AUTH_RESULT, CHAR_RESPONSE, CHAR_REQUEST } from '@/protocol/constants';
 import { fragment } from '@/protocol/fragments';
 import { sessionKey } from '@/protocol/keys';
 import { encodeRequest } from '@/protocol/messages';
@@ -67,6 +67,35 @@ describe('pair', () => {
     const error = await failure(pair(daemon, daemon.name, ID));
     expect(error.kind).toBe('refused');
     expect(daemon.refusalsInARow).toBe(1);
+  });
+
+  it.each([
+    ['too short', (v: Uint8Array) => v.subarray(0, v.length - 1)],
+    ['too long', (v: Uint8Array) => Uint8Array.from([...v, 0])],
+    ['not marked accepted', (v: Uint8Array) => Uint8Array.from([0x7f, ...v.subarray(1)])],
+  ])('refuses an authentication result that is %s', async (_name, change) => {
+    const daemon = new FakeDaemon({ pairingKey: ID });
+    const malformed: BleTransport = {
+      prepare: () => daemon.prepare(),
+      scan: (onFound, onError) => daemon.scan(onFound, onError),
+      async connect(id) {
+        const real = await daemon.connect(id);
+        const altered = (characteristic: string, value: Uint8Array) => (characteristic === CHAR_AUTH_RESULT && value.length > 1 ? change(value) : value);
+        return {
+          ...real,
+          get mtu() {
+            return real.mtu;
+          },
+          read: async (characteristic) => altered(characteristic, await real.read(characteristic)),
+          monitor: (characteristic, onValue, onError) => real.monitor(characteristic, (value) => onValue(altered(characteristic, value)), onError),
+          write: (characteristic, value) => real.write(characteristic, value),
+          onDisconnected: (listener) => real.onDisconnected(listener),
+          disconnect: () => real.disconnect(),
+        };
+      },
+    };
+    const error = await failure(pair(malformed, daemon.name, ID));
+    expect(error.kind).toBe('protocol');
   });
 
   it('rejects a Pi whose cB does not verify', async () => {
@@ -181,6 +210,40 @@ describe('pair', () => {
     expect(session.isClosed).toBe(true);
   });
 
+  it('closes at once on a message that does not verify, and says it is not a radio drop', async () => {
+    const daemon = new FakeDaemon({ pairingKey: ID });
+    let deliver: (value: Uint8Array) => void = () => {};
+    const injecting: BleTransport = {
+      prepare: () => daemon.prepare(),
+      scan: (onFound, onError) => daemon.scan(onFound, onError),
+      async connect(id) {
+        const real = await daemon.connect(id);
+        return {
+          ...real,
+          get mtu() {
+            return real.mtu;
+          },
+          read: (characteristic) => real.read(characteristic),
+          monitor: (characteristic, onValue, onError) => {
+            if (characteristic === CHAR_RESPONSE) deliver = onValue;
+            return real.monitor(characteristic, onValue, onError);
+          },
+          write: (characteristic, value) => real.write(characteristic, value),
+          onDisconnected: (listener) => real.onDisconnected(listener),
+          disconnect: () => real.disconnect(),
+        };
+      },
+    };
+    const session = await pair(injecting, daemon.name, ID);
+    const closed = new Promise<LinkLostError | undefined>((resolve) => session.onClosed(resolve));
+    // A last fragment holding a counter and a tag under no key the app has.
+    deliver(new Uint8Array([0x01, ...new Array(8).fill(0), ...new Array(32).fill(0xaa)]));
+    const reason = await closed;
+    expect(reason?.unverified).toBe(true);
+    expect(session.isClosed).toBe(true);
+    expect(session.closedBy?.message).toMatch(/could not be verified/);
+  });
+
   it('drops the connection on a replayed message', async () => {
     const daemon = new FakeDaemon({ pairingKey: ID });
     const session = await pair(daemon, daemon.name, ID);
@@ -238,6 +301,13 @@ describe('pair', () => {
     const session = await pair(daemon, daemon.name, ID);
     const [a, b, c] = await Promise.all([session.status(), session.wifiScan(), session.status()]);
     expect(a.ok && b.ok && c.ok).toBe(true);
+    await session.close();
+  });
+
+  it('reports how many networks a forget deleted, including none', async () => {
+    const daemon = new FakeDaemon({ pairingKey: ID });
+    const session = await pair(daemon, daemon.name, ID);
+    expect(await session.wifiForget()).toBe(0);
     await session.close();
   });
 

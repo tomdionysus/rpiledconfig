@@ -9,6 +9,12 @@ cmake_minimum_required(VERSION 3.23...4.4)
 project(rpiledconfig VERSION 0.4.0 LANGUAGES CXX)
 
 option(RPILEDCONFIG_BUILD_TESTING "Build test targets" OFF)
+option(RPILEDCONFIG_FUZZ "Build the fuzzers in tests/fuzz: clang only" OFF)
+if(RPILEDCONFIG_FUZZ)
+    add_compile_options(-fsanitize=fuzzer-no-link,address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all)
+    add_link_options(-fsanitize=address,undefined)
+endif()
+
 set(RPILEDCONFIG_SANITIZE "none" CACHE STRING "Sanitizer to build with: none, address, thread")
 set_property(CACHE RPILEDCONFIG_SANITIZE PROPERTY STRINGS none address thread)
 
@@ -174,6 +180,20 @@ if(RPILEDCONFIG_SANITIZE_FLAGS)
     target_link_options(rpiledconfig_core PUBLIC ${RPILEDCONFIG_SANITIZE_FLAGS})
 endif()
 
+# This program parses what strangers send it over a radio. Whatever gets past the code should find
+# as little to work with as the toolchain can leave it.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT RPILEDCONFIG_FUZZ)
+    target_compile_options(rpiledconfig_core PUBLIC
+        -fstack-protector-strong
+        -fstack-clash-protection
+        -D_GLIBCXX_ASSERTIONS
+        $<$<CONFIG:Release,RelWithDebInfo>:-D_FORTIFY_SOURCE=3>)
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
+        target_compile_options(rpiledconfig_core PUBLIC -mbranch-protection=standard)
+    endif()
+    target_link_options(rpiledconfig_core PUBLIC -Wl,-z,relro,-z,now,-z,noexecstack)
+endif()
+
 target_link_libraries(rpiledconfig_core
     PUBLIC
         "${RPILEDCONFIG_BOOST_TARGET}"
@@ -268,6 +288,8 @@ if(RPILEDCONFIG_BUILD_TESTING)
         list(FILTER RPILEDCONFIG_TEST_SOURCES EXCLUDE REGEX "/tests/wifi/easy_connect_wpa_supplicant_test.cpp$")
     endif()
 
+    list(FILTER RPILEDCONFIG_TEST_SOURCES EXCLUDE REGEX "/tests/fuzz/")
+
     add_executable(rpiledconfig_tests ${RPILEDCONFIG_TEST_SOURCES})
 
     target_link_libraries(rpiledconfig_tests PRIVATE rpiledconfig_core)
@@ -360,3 +382,13 @@ endif()
 # A symlink rather than a copy, so a rebuild of whichever preset was configured last is
 # what the editor sees. file(CREATE_LINK) falls back to a copy where links are refused.
 file(CREATE_LINK "${CMAKE_BINARY_DIR}/compile_commands.json" "${CMAKE_CURRENT_SOURCE_DIR}/compile_commands.json" COPY_ON_ERROR SYMBOLIC)
+
+if(RPILEDCONFIG_FUZZ)
+    foreach(fuzzer fuzz_attacker fuzz_parsers)
+        add_executable(${fuzzer} tests/fuzz/${fuzzer}.cpp)
+        target_link_libraries(${fuzzer} PRIVATE rpiledconfig_core)
+        target_include_directories(${fuzzer} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/tests")
+        target_compile_features(${fuzzer} PRIVATE cxx_std_20)
+        target_link_options(${fuzzer} PRIVATE -fsanitize=fuzzer)
+    endforeach()
+endif()

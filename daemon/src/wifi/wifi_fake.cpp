@@ -60,16 +60,17 @@ void WifiFake::configure(const std::string& ssid, const std::string& psk, bool h
   types::complete(std::move(on), std::move(handler), types::Status::success());
 }
 
-void WifiFake::forget(types::Executor on, types::StatusHandler handler) {
+void WifiFake::forget(types::Executor on, types::Handler<int> handler) {
   ++_forgets;
 
-  if (_failing()) return types::complete(std::move(on), std::move(handler), types::Status::failure(_fail_code, _fail_reason));
+  if (_failing()) return types::complete(std::move(on), std::move(handler), types::Result<int>::failure(_fail_code, _fail_reason));
 
+  const int count = _configured_ssid.empty() ? 0 : 1;
   _configured_ssid.clear();
   _configured_psk.clear();
   _status = WifiStatus{};
 
-  types::complete(std::move(on), std::move(handler), types::Status::success());
+  types::complete(std::move(on), std::move(handler), types::Result<int>::success(count));
 }
 
 }  // namespace rpiledconfig::wifi

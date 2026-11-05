@@ -90,10 +90,10 @@ class WifiNetworkManagerTest : public ::testing::Test {
     return out;
   }
 
-  types::Status forget() {
-    Awaited<types::Status> answer;
+  types::Result<int> forget() {
+    Awaited<types::Result<int>> answer;
     wifi->forget(daemon.executor(), answer.handler());
-    types::Status out;
+    types::Result<int> out;
     EXPECT_TRUE(answer.wait(out)) << "no answer to forget";
     return out;
   }
@@ -281,17 +281,40 @@ TEST_F(WifiNetworkManagerTest, StatusCarriesTheLatestJoinAndItsReason) {
   EXPECT_TRUE(status().value.connected);
 }
 
-TEST_F(WifiNetworkManagerTest, ConfiguringAgainLeavesOnlyTheNewConnection) {
-  nm->activation_succeeds(false);
-  ASSERT_TRUE(configure("Home", "wrong passphrase").ok) << "ok once asked for, whatever happens next";
-  EXPECT_TRUE(eventually([this]() { return logger->contains("Could not join Home"); })) << logger->text();
-
-  nm->activation_succeeds(true);
+// A typo must not cost a Pi in the field the network it could get back to.
+TEST_F(WifiNetworkManagerTest, AFailedJoinLeavesTheNetworkThatWorkedAndDeletesOnlyItself) {
   ASSERT_TRUE(configure("Home", "correct horse").ok);
+  ASSERT_TRUE(eventually([this]() { return status().value.join->state == "joined"; }));
+
+  nm->activation_fails_with(7);
+  ASSERT_TRUE(configure("Attic", "wrong passphrase").ok) << "ok once asked for, whatever happens next";
+  ASSERT_TRUE(eventually([this]() { return logger->contains("Could not join Attic"); })) << logger->text();
 
   EXPECT_TRUE(eventually([this]() {
     const auto saved = ours();
     return saved.size() == 1 && saved[0].psk == "correct horse";
+  }));
+  EXPECT_EQ(ours().at(0).id, "rpiledconfig-Home");
+}
+
+TEST_F(WifiNetworkManagerTest, ANetworkStillJoiningDeletesNothing) {
+  ASSERT_TRUE(configure("Home", "correct horse").ok);
+  ASSERT_TRUE(eventually([this]() { return status().value.join->state == "joined"; }));
+
+  nm->activation_hangs();
+  ASSERT_TRUE(configure("Attic", "correct horse").ok);
+  EXPECT_EQ(ours().size(), 2u);
+  EXPECT_EQ(nm->deletes(), 0);
+}
+
+TEST_F(WifiNetworkManagerTest, ANewNetworkThatJoinsReplacesTheEarlierOne) {
+  ASSERT_TRUE(configure("Home", "correct horse").ok);
+  ASSERT_TRUE(eventually([this]() { return status().value.join->state == "joined"; }));
+
+  ASSERT_TRUE(configure("Attic", "battery staple").ok);
+  EXPECT_TRUE(eventually([this]() {
+    const auto saved = ours();
+    return saved.size() == 1 && saved[0].id == "rpiledconfig-Attic";
   }));
 }
 
@@ -304,6 +327,7 @@ TEST_F(WifiNetworkManagerTest, ForgetDeletesOnlyTheConnectionsThisDaemonMade) {
 
   const auto forgotten = forget();
   ASSERT_TRUE(forgotten.ok) << forgotten.error;
+  EXPECT_EQ(forgotten.value, 1) << "it says how many";
   EXPECT_TRUE(ours().empty());
   EXPECT_EQ(nm->deletes(), 1);
 
@@ -315,6 +339,7 @@ TEST_F(WifiNetworkManagerTest, ForgetDeletesOnlyTheConnectionsThisDaemonMade) {
 TEST_F(WifiNetworkManagerTest, ForgettingNothingIsOk) {
   const auto forgotten = forget();
   EXPECT_TRUE(forgotten.ok) << forgotten.error;
+  EXPECT_EQ(forgotten.value, 0) << "and says so, for the app to tell the user nothing changed";
   EXPECT_EQ(nm->deletes(), 0);
 }
 

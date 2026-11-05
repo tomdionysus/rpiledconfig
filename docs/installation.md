@@ -9,7 +9,7 @@ ships and runs by default; the package depends on them.
 
 | Path | What it is |
 | --- | --- |
-| `/usr/bin/rpiledconfig` | The daemon. The package depends on libssl3 and libsystemd0 from the distribution; Boost is headers only. |
+| `/usr/bin/rpiledconfig` | The daemon. |
 | `/usr/lib/systemd/system/rpiledconfig.service` | The unit: hardened, running as `rpiledconfig`. |
 | `/usr/lib/systemd/system/rpiledconfig-uninstall.service` | A oneshot unit, run as root, that purges the package when an authenticated phone asks (docs/protocol.md, Uninstalling). Never enabled; started only through systemd. |
 | `/etc/rpiledconfig/rpiledconfig.conf` | The configuration, a conffile: an upgrade never overwrites your changes. |
@@ -33,9 +33,9 @@ Install the package you built with apt, which fetches the dependencies:
 
 There is no 32-bit (armhf) build.
 
-The unit is enabled and started: the daemon's whole purpose is to be running on a Pi
-that has not been configured yet. On a Pi that already has WiFi it starts, sees the
-connection, and idles.
+The unit is enabled and started, and advertises over Bluetooth whether the Pi has WiFi or not
+(docs/security.md says what that exposes). With `setup.always: false` a Pi on WiFi idles, checking
+its connection, and advertises only once it has none.
 
 ## First run
 
@@ -43,20 +43,20 @@ Watch it:
 
     sudo journalctl -u rpiledconfig -f
 
-On a Pi with no WiFi connection it enters setup mode: `bluetoothctl` on another
-machine, or any BLE scanner, sees `RPiLEDConfig-<4 hex>` (the prefix is `ble.name_prefix`; the name is in the scan
-response, so a scanner has to scan actively, as phones do). The journal says `GATT
-application registered` and `Advertising RPiLEDConfig-<4 hex>`; if it says BlueZ
-refused either, the reason follows. The LED keeps doing what it did until a phone asks:
-open the app, pick the Pi by its name, and the daemon draws a one-time key and the
-activity LED starts blinking it (the journal says `A new pairing key` and `Blinking the
-key`); point the camera at it and follow the
-app. The LED goes back to its usual trigger once the phone has authenticated, or two
-minutes after it asked; advertising stops when the app sends `finish`, or after
-`setup.timeout`.
+In setup mode, `bluetoothctl` on another machine, or any BLE scanner, sees
+`RPiLEDConfig-<4 hex>` (the prefix is `ble.name_prefix`; the name is in the scan response, so a
+scanner has to scan actively, as phones do). The journal says `GATT application registered` and
+`Advertising RPiLEDConfig-<4 hex>`; if it says BlueZ refused either, the reason follows.
 
-The journal never shows the key and no command prints it: it is the pairing secret, and it
-lasts one pairing. The name's 4 hex characters are unrelated to it.
+The LED keeps doing what it did until a phone asks: open the app and pick the Pi by its name. The
+daemon draws a one-time key on that connection and the activity LED starts blinking it (the
+journal says `A new pairing key` and `Blinking the key`). Point the camera at it and follow the
+app. The LED goes back to its usual trigger once the phone has authenticated, or two minutes
+after it asked. Advertising carries on after `finish`. With `setup.always: false` it stops on
+`finish` or after `setup.timeout`.
+
+The journal never shows the key and no command prints it: it is the pairing secret. The name's 4
+hex characters are unrelated to it.
 
 ## What the service user is allowed
 
@@ -117,23 +117,18 @@ A `cmake --install` into `/usr/local` puts the rule in
 
 ## Reconfiguring a Pi that already has WiFi
 
-Set `setup.always: true` in `/etc/rpiledconfig/rpiledconfig.conf` and restart the
-service; setup mode then stays on, and the app can change the WiFi at any time. Or run
-the daemon by hand for one session:
+The app can change a Pi's WiFi at any time, as the service is advertising. If it has been set to
+`setup.always: false`, either set it back and restart the service, or run the daemon by hand for
+one session:
 
     sudo systemctl stop rpiledconfig
     sudo -u rpiledconfig rpiledconfig --config /etc/rpiledconfig/rpiledconfig.conf
 
-and stop it with Ctrl-C. Run that way it does not have the unit's `netdev` group, so
-Wi-Fi Easy Connect answers `easyconnect_unavailable` ("not allowed to use
-/run/wpa_supplicant/wlan0"); everything else works. With it:
-
-    sudo systemd-run --pty --uid=rpiledconfig --gid=rpiledconfig -p SupplementaryGroups=netdev \
-        /usr/bin/rpiledconfig --config /etc/rpiledconfig/rpiledconfig.conf
+and stop it with Ctrl-C.
 
 ## Upgrading
 
-    sudo apt install ./rpiledconfig_<new version>_arm64.deb
+    sudo apt install ./rpiledconfig_<new version>-1_arm64.deb
 
 The configuration is kept; the service restarts if it was running.
 
@@ -142,9 +137,9 @@ The configuration is kept; the service restarts if it was running.
     sudo apt remove rpiledconfig          # keeps /etc/rpiledconfig
     sudo apt purge rpiledconfig           # removes that too
 
-Or from the phone: once paired, the app's "Remove RPiLEDConfig from this Pi" asks the
+Or from the phone: once paired, the app's "Remove RPi LED Config from this Pi" asks the
 daemon to start `rpiledconfig-uninstall.service`, which waits 3 seconds and runs
-`apt-get purge rpiledconfig`. The WiFi connections the daemon saved are kept either way,
-so the Pi stays on its network. The journal of the removal:
+`apt-get purge rpiledconfig`. The app cannot see how that ends. The WiFi connections the daemon
+saved are kept either way. The journal of the removal:
 
     sudo journalctl -u rpiledconfig-uninstall

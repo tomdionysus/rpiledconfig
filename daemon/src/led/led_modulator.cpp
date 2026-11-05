@@ -96,6 +96,9 @@ void LedModulator::stop() {
   _led->set(false);
   _led->end();
 
+  // What it blinked was the key, which is not kept past its use.
+  _runs.clear();
+
   _logger->info("Stopped after " + std::to_string(_frames) + " frame(s)");
 }
 

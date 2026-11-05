@@ -36,7 +36,7 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent-filter>
-        <!-- rpiledconfig://find?fps=30: the camera's frame rate, in diagnostics builds. -->
+        <!-- rpiledconfig://find opens the find screen; a diagnostics build also takes fps=30, the camera's frame rate. -->
         <intent-filter>
             <action android:name="android.intent.action.VIEW" />
             <category android:name="android.intent.category.DEFAULT" />

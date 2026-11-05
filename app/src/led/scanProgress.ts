@@ -96,7 +96,7 @@ export class ScanProgress {
       };
     }
     if (lost) {
-      return { phase: 'lost', progress: this.best, label: 'Lost sight of the LED', detail: `${percent}%`, hint: 'What was watched is kept; point the camera back at the LED.' };
+      return { phase: 'lost', progress: this.best, label: 'Lost sight of the LED', detail: `${percent}%`, hint: 'Point the camera back at the LED.' };
     }
     return { phase: 'reading', progress: this.best, label: 'Watching the LED', detail: `${percent}%`, hint: 'Hold still: the bar is how much of one frame the camera has watched.' };
   }

@@ -240,6 +240,8 @@ bool Config::_apply(const std::string& key, const std::string& value, int line, 
     return true;
   }
 
+  if (key == "ble.hide_adapter_name") return take_bool(ble_hide_adapter_name);
+
   if (key == "ble.name_prefix") {
     if (value.empty() || value.size() > 24) return refuse("expected 1 to 24 characters, which is what fits in the advertisement");
     for (const unsigned char c : value) {
@@ -271,6 +273,7 @@ bool Config::_apply(const std::string& key, const std::string& value, int line, 
     return true;
   }
 
+  if (key == "service.stop_after_boot_minutes") return take_uint(service_stop_after_boot_minutes);
   if (key == "status.report_hostname") return take_bool(status_report_hostname);
   if (key == "setup.always") return take_bool(setup_always);
   if (key == "setup.timeout") return take_uint(setup_timeout);
@@ -302,6 +305,12 @@ bool Config::_validate() {
   if (setup_recheck == 0) return refuse("setup.recheck must be at least 1 second");
 
   return true;
+}
+
+std::optional<std::chrono::seconds> time_left_after_boot(std::uint32_t minutes, std::chrono::seconds uptime) {
+  if (minutes == 0) return std::nullopt;
+  const auto limit = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::minutes(minutes));
+  return uptime >= limit ? std::chrono::seconds(0) : limit - uptime;
 }
 
 std::filesystem::path Config::locate(const std::string& from_command_line) {

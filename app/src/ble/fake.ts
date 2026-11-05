@@ -50,6 +50,8 @@ export interface LinkDrop {
 
 export interface FakeDaemonOptions {
   pairingKey: Uint8Array;
+  /** The Pi's LED refuses to be driven. */
+  ledFails?: boolean;
   /** The advertised name. Unrelated to the key, as on a real Pi. */
   name?: string;
   hostname?: string;
@@ -139,6 +141,9 @@ export class FakeDaemon implements BleTransport {
   linkDrop?: LinkDrop;
   easyConnectMode: 'available' | 'unavailable';
   uninstallMode: 'available' | 'unavailable';
+  readonly ledFails: boolean;
+  /** A network has been saved by this daemon, for `wifi.forget` to count. */
+  savedNetwork = false;
   readonly protocol: number;
   /** Whether the LED is blinking the key: asked for by Blink. */
   blinking = false;
@@ -188,6 +193,7 @@ export class FakeDaemon implements BleTransport {
     this.linkDrop = options.linkDrop;
     this.easyConnectMode = options.easyConnect ?? 'available';
     this.uninstallMode = options.uninstall ?? 'available';
+    this.ledFails = options.ledFails ?? false;
     this.protocol = options.protocol ?? PROTOCOL_VERSION;
     this.clock = options.clock ?? realClock;
     this.authTimeoutMs = options.authTimeoutMs ?? AUTH_TIMEOUT_MS;
@@ -236,10 +242,13 @@ export class FakeDaemon implements BleTransport {
         return { ok: true, networks: scanList(this.networks) };
       case 'wifi.configure':
         return this.configure(request.ssid, request.psk);
-      case 'wifi.forget':
+      case 'wifi.forget': {
+        const forgotten = this.savedNetwork ? 1 : 0;
+        this.savedNetwork = false;
         this.cancelJoin?.();
         this.wifi = { connected: false };
-        return { ok: true };
+        return { ok: true, forgotten };
+      }
       case 'wifi.easyconnect':
         if (this.easyConnectMode === 'unavailable') {
           return { ok: false, error: 'easyconnect_unavailable', message: 'wpa_supplicant on this Pi cannot do Easy Connect.' };
@@ -273,6 +282,11 @@ export class FakeDaemon implements BleTransport {
     this.blinkByte = value[0];
     this.cancelBlink?.();
     this.cancelBlink = this.clock.after(BLINK_TIMEOUT_MS, () => this.stopBlinking());
+  }
+
+  get ledState(): 'off' | 'blinking' | 'failed' {
+    if (!this.blinking) return 'off';
+    return this.ledFails ? 'failed' : 'blinking';
   }
 
   stopBlinking(): void {
@@ -351,6 +365,7 @@ export class FakeDaemon implements BleTransport {
   }
 
   private configure(ssid: string, psk: string | undefined): Response {
+    this.savedNetwork = true;
     if (this.wifiFailure) return { ok: false, error: 'wifi_failed', message: this.wifiFailure };
     const network = this.networks.find((entry) => entry.ssid === ssid);
     if (network?.secure && !psk) return { ok: false, error: 'wifi_failed', message: 'A passphrase is required for this network.' };
@@ -482,7 +497,7 @@ class FakeConnection implements BleConnection {
     this.assertOpen();
     switch (characteristic) {
       case CHAR_INFO:
-        return utf8Encode(JSON.stringify({ protocol: this.daemon.protocol, version: this.daemon.version }));
+        return utf8Encode(JSON.stringify({ protocol: this.daemon.protocol, version: this.daemon.version, led: this.daemon.ledState }));
       case CHAR_CHALLENGE:
         if (this.authenticated) this.startOver();
         return Uint8Array.from(this.pB);
