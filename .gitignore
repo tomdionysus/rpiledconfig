@@ -32,3 +32,6 @@ app/modules/*/android/build/
 *.jks
 *.keystore
 app/android/keystore.properties
+
+# The plan and the record are kept locally, not in git.
+TODO/

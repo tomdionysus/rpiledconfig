@@ -19,6 +19,8 @@ describe('messages', () => {
   it('decodes a status response, with or without a connection', () => {
     const connected = decodeResponse(utf8Encode('{"ok":true,"hostname":"pi","wifi":{"connected":true,"ssid":"Home","ip":"10.0.0.5"}}'), 'status');
     expect(connected).toEqual({ ok: true, hostname: 'pi', wifi: { connected: true, ssid: 'Home', ip: '10.0.0.5' } });
+    expect(decodeResponse(utf8Encode('{"ok":true,"wifi":{"connected":false}}'), 'status')).toEqual({ ok: true, wifi: { connected: false } });
+    expect(() => decodeResponse(utf8Encode('{"ok":true,"hostname":7,"wifi":{"connected":false}}'), 'status')).toThrow();
     const down = decodeResponse(utf8Encode('{"ok":true,"hostname":"pi","wifi":{"connected":false}}'), 'status');
     expect(down).toEqual({ ok: true, hostname: 'pi', wifi: { connected: false } });
   });

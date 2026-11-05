@@ -1,7 +1,7 @@
 //
 // RPiLEDConfig - daemon
 //
-// Copyright (C) 2026 T. Cully
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
 // Licensed under the Apache License, Version 2.0 - see LICENSE
 //
 #include "config.h"
@@ -271,6 +271,7 @@ bool Config::_apply(const std::string& key, const std::string& value, int line, 
     return true;
   }
 
+  if (key == "status.report_hostname") return take_bool(status_report_hostname);
   if (key == "setup.always") return take_bool(setup_always);
   if (key == "setup.timeout") return take_uint(setup_timeout);
   if (key == "setup.recheck") return take_uint(setup_recheck);

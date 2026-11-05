@@ -1,7 +1,7 @@
 //
 // RPiLEDConfig - daemon
 //
-// Copyright (C) 2026 T. Cully
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
 // Licensed under the Apache License, Version 2.0 - see LICENSE
 //
 #pragma once
@@ -23,7 +23,7 @@
 
 namespace rpiledconfig::ble {
 
-// BlueZ over sd-bus (TODO/ACTIVE.md, milestone 2). While started it exports, on the
+// BlueZ over sd-bus. While started it exports, on the
 // daemon's own connection:
 //
 //   /com/tomcully/rpiledconfig                 org.freedesktop.DBus.ObjectManager

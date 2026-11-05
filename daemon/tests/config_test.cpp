@@ -1,7 +1,7 @@
 //
 // RPiLEDConfig - daemon
 //
-// Copyright (C) 2026 T. Cully
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
 // Licensed under the Apache License, Version 2.0 - see LICENSE
 //
 #include "config.h"
@@ -179,6 +179,12 @@ TEST(ConfigTest, TheNamePrefixIsChecked) {
 
 // The phone chooses the rate now (docs/protocol.md, Symbols).
 TEST(ConfigTest, TheSymbolTimeIsNoLongerAKey) { EXPECT_FALSE(Loaded("led.symbol_ms: 50\n").ok); }
+
+TEST(ConfigTest, TheHostnameIsReportedUnlessSetOtherwise) {
+  EXPECT_TRUE(Loaded("").config.status_report_hostname);
+  EXPECT_FALSE(Loaded("status.report_hostname: false\n").config.status_report_hostname);
+  EXPECT_FALSE(Loaded("status.report_hostname: no\n").ok);
+}
 
 TEST(ConfigTest, BooleansAreTrueOrFalseAndNothingElse) {
   EXPECT_TRUE(Loaded("setup.always: false\n").ok);

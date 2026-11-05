@@ -1,7 +1,7 @@
 //
 // RPiLEDConfig - app
 //
-// Copyright (C) 2026 T. Cully
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
 // Licensed under the Apache License, Version 2.0 - see LICENSE
 //
 #include "reader.h"
@@ -39,7 +39,7 @@ Outcome run(const std::vector<test::Sample>& samples, ReaderConfig config = {}) 
   return out;
 }
 
-// The goal (TODO/ACTIVE.md, the user): a capture in under ten seconds from first sight.
+// The goal: a capture in under ten seconds from first sight.
 constexpr double goal_ms = 10000;
 
 }  // namespace
@@ -75,8 +75,7 @@ TEST(ReaderTest, ReadsAt24FpsWithTheClockFivePercentOffEitherWayAndAt60Fps) {
 // timing error on the pictures.
 // The phone-camera model's exposure: a bright LED in a dim room has the camera's
 // auto-exposure well under a frame. 33 ms (a whole frame) predicted that nothing under 50 ms
-// would read at 30 fps; the A85 then read 45 and 33 ms symbols (TODO/COMPLETED.md,
-// 2026-11-04), so the model is held to 12 ms, which reads what the phone read.
+// would read at 30 fps; the A85 then read 45 and 33 ms symbols, so the model is held to 12 ms, which reads what the phone read.
 TEST(ReaderTest, ReadsWhatARealPhoneCameraSeesInUnderTenSeconds) {
   for (std::uint32_t seed = 1; seed <= 8; ++seed) {
     const auto out = run(test::synthesize(test::id_from(0x64958d1c7ab3e205ULL), {.seconds = 20,
@@ -152,7 +151,7 @@ TEST(ReaderTest, ProgressIsZeroUntilTheLedAndFullWithinAFrameOfIt) {
   }
 }
 
-// The symbol-time experiment (TODO/COMPLETED.md, 2026-11-04), on the model: what each T
+// Symbol times on the model: what each T
 // reads at 30 and 60 fps. Printed, not asserted: the live phone decided (45 ms).
 TEST(ReaderTest, SymbolTimeTrials) {
   for (const double symbol : {77.0, 51.0, 40.0, 33.0, 25.0, 20.0}) {

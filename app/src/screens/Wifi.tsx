@@ -2,7 +2,7 @@
 // name, and give its passphrase. The join flow (pairing/join.ts) expects the BLE
 // link to drop and reconnects.
 // Wi-Fi Easy Connect (copying this phone's WiFi) is left out: on the A85 it
-// took the phone off its network and never reached the Pi (TODO/ACTIVE.md).
+// took the phone off its network and never reached the Pi.
 //
 // The link can also go while nothing is happening (a daemon restarted under
 // a link bluetoothd kept up gives no disconnect), so the screen asks for
@@ -12,8 +12,10 @@ import { useRouter } from '@/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, BackHandler, KeyboardAvoidingView, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { describeCopyOutcome, describeCopyStep, type CopyOutcome, type CopyStep } from '@/pairing/copyWifi';
+import { piIdentity } from '@/pairing/identity';
 import { collapseSteps, joinWifi, type Verdict } from '@/pairing/join';
 import { LinkLostError, RequestError } from '@/pairing/session';
+import { bytesToHex } from '@/protocol/bytes';
 import { MessageError, type Network, type StatusResponse } from '@/protocol/messages';
 import { useApp } from '@/state/store';
 import { Button } from '@/ui/Button';
@@ -45,7 +47,7 @@ function describe(error: unknown): string {
 
 export default function WifiScreen() {
   const router = useRouter();
-  const { session, setSession } = useApp();
+  const { session, setSession, pairingKey } = useApp();
   const [status, setStatus] = useState<StatusResponse | undefined>(undefined);
   const [networks, setNetworks] = useState<Network[] | undefined>(undefined);
   const [choice, setChoice] = useState<JoinChoice | undefined>(undefined);
@@ -209,6 +211,7 @@ export default function WifiScreen() {
     setChoice(next);
   };
 
+  const identity = piIdentity(status, pairingKey ? bytesToHex(pairingKey) : undefined, session.peripheral.name);
   const lost = attempt?.outcome?.kind === 'lost';
   const joined = attempt?.outcome?.kind === 'joined';
   const offline = !!closed || lost || inProgress;
@@ -218,7 +221,8 @@ export default function WifiScreen() {
     <View style={styles.fill}>
       <Screen title="WiFi" eyebrow="Step 4 of 4">
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>{status?.hostname ?? session.peripheral.name}</Text>
+          <Text style={[styles.cardTitle, identity.notice ? styles.cardKey : null]}>{identity.title}</Text>
+          {identity.notice ? <Text style={styles.cardDetail}>{identity.notice}</Text> : null}
           <Text style={styles.cardStatus}>
             {status
               ? status.wifi.connected
@@ -529,6 +533,9 @@ const styles = StyleSheet.create({
   cardTitle: {
     ...typography.title,
     color: colors.text,
+  },
+  cardKey: {
+    fontFamily: monospace,
   },
   cardStatus: {
     ...typography.body,

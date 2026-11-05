@@ -26,12 +26,19 @@ file, not to where the daemon was started.
 | `wifi.interface` | `wlan0` | The WiFi interface: its wpa_supplicant control socket (`/run/wpa_supplicant/<interface>`) and its MAC in the Easy Connect URI. |
 | `wifi.easyconnect` | `fake` when `wifi.driver` is `fake`, else `wpa_supplicant` | Wi-Fi Easy Connect: `wpa_supplicant` (Linux only), `fake` (a made-up URI; nothing ever arrives), or `off` (the app is told `easyconnect_unavailable`). |
 | `uninstall.driver` | `systemd` on Linux, `fake` elsewhere | What a phone's `uninstall` does: `systemd` starts `rpiledconfig-uninstall.service`, which purges the package; `fake` logs and removes nothing; `off` answers `uninstall_unavailable`. |
+| `status.report_hostname` | `true` | Whether `status` tells an authenticated phone the Pi's hostname. When `false` the app shows the one-time key in its place, with a notice. See below for what this does not hide. |
 | `setup.always` | `false` | Stay in setup mode whatever the WiFi state. |
 | `setup.timeout` | `900` | Seconds of setup mode before giving up until the next recheck. |
 | `setup.recheck` | `60` | Seconds between WiFi checks outside setup mode. |
 
-The daemon keeps no state. A `state.dir` line from an older version is ignored with a
-warning, because an upgrade leaves the configuration file as it was.
+`status.report_hostname: false` keeps the hostname out of what the daemon sends. BlueZ is separate:
+it gives the adapter's name to anything connected, as the standard Device Name characteristic,
+with no authentication, and by default that name is the hostname. To hide it there too, set the
+adapter's name as well:
+
+    bluetoothctl system-alias <another name>
+
+The daemon keeps no state. A `state.dir` line is ignored with a warning.
 
 `fake` drivers are how the daemon is developed and tested on a machine that is not a Pi.
 On a Pi they are useful one at a time: `wifi.driver: fake` lets the LED and BLE be tried

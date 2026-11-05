@@ -1,7 +1,7 @@
 //
 // RPiLEDConfig - daemon
 //
-// Copyright (C) 2026 T. Cully
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
 // Licensed under the Apache License, Version 2.0 - see LICENSE
 //
 #pragma once
@@ -98,6 +98,7 @@ types::Result<Request> parse_request(const std::string& plaintext);
 
 std::string ok_response();
 std::string error_response(const std::string& code, const std::string& message);
+// An empty hostname is left out: the Pi is set not to report it (status.report_hostname).
 std::string status_response(const std::string& hostname, const WifiStatus& wifi);
 
 // Sorted by signal, strongest first, and one entry per SSID (the strongest), as the

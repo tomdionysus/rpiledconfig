@@ -1,7 +1,7 @@
 //
 // RPiLEDConfig - daemon
 //
-// Copyright (C) 2026 T. Cully
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
 // Licensed under the Apache License, Version 2.0 - see LICENSE
 //
 #pragma once
@@ -22,7 +22,7 @@
 
 namespace rpiledconfig::wifi {
 
-// NetworkManager over sd-bus (TODO/ACTIVE.md, milestone 3).
+// NetworkManager over sd-bus.
 //
 // - status: the first device with DeviceType 2 (WiFi); its ActiveConnection, connected
 //   when that is activated; the SSID from the active access point (the connection's Id

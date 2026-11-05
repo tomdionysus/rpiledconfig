@@ -42,16 +42,16 @@ if (gradleName !== app.version || gradleCode !== expectedCode) {
   problems.push(`android/app/build.gradle says ${gradleName ?? 'unset'} (versionCode ${Number.isNaN(gradleCode) ? 'unset' : gradleCode}); expected ${app.version} (${expectedCode})`);
 }
 
-// The first non-blank line after the root README's title is `*vX.Y.Z*`, with
+// The root README's version line is its first line in italics, `*vX.Y.Z*`, under the logo, with
 // an optional qualifier such as `(in development)` inside the emphasis.
 const readme = readFileSync(new URL('../../README.md', import.meta.url), 'utf8');
-const readmeLine = readme.split('\n').slice(1).find((line) => line.trim() !== '')?.trim();
+const readmeLine = readme.split('\n').find((line) => /^\*v\d/.test(line.trim()))?.trim();
 const readmeVersion = /^\*v(\d+\.\d+\.\d+)(?: [^*]*)?\*$/.exec(readmeLine ?? '')?.[1];
 if (readmeVersion !== pkg.version) {
   problems.push(
     readmeVersion
       ? `../README.md says v${readmeVersion}, package.json says ${pkg.version}`
-      : `../README.md has no *v${pkg.version}* line under its title`,
+      : `../README.md has no *v${pkg.version}* line`,
   );
 }
 

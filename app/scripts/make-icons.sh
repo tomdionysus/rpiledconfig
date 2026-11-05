@@ -2,7 +2,7 @@
 #
 # RPiLEDConfig - app
 #
-# Copyright (C) 2026 T. Cully
+# Copyright (C) 2026 Tom Cully <mail@tomcully.com>
 # Licensed under the Apache License, Version 2.0 - see LICENSE
 #
 # Makes every icon from assets/icon.svg: the launcher icons (legacy, on black; adaptive

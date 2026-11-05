@@ -1,4 +1,4 @@
-// RPiLEDConfig - app. Copyright (C) 2026 T. Cully. Licensed under the Apache License, Version 2.0 - see LICENSE.
+// RPiLEDConfig - app. Copyright (C) 2026 Tom Cully <mail@tomcully.com>. Licensed under the Apache License, Version 2.0 - see LICENSE.
 //
 // The app's own native modules, the few lines of Android that React Native itself does not
 // give and no library is worth adding for: random bytes from the system's secure source, the
