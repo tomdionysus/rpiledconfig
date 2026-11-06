@@ -219,7 +219,8 @@ struct ActivationWatch : public std::enable_shared_from_this<ActivationWatch> {
     std::uint32_t reason = 0;
     if (sd_bus_message_read(message, "uuu", &new_state, &old_state, &reason) < 0) return 0;
 
-    if (new_state == device_state_failed) watch->finish(protocol::join_states::failed, join_reason_for(reason), "NetworkManager: " + device_reason_name(reason));
+    if (new_state == device_state_failed)
+      watch->finish(protocol::join_states::failed, join_reason_for(reason), "NetworkManager: " + device_reason_name(reason));
     return 0;
   }
 };

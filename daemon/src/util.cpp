@@ -74,7 +74,6 @@ std::string zulu_time() {
   return out.str();
 }
 
-
 std::string printable(const std::string& text) {
   std::string out = text;
   for (auto& c : out) {

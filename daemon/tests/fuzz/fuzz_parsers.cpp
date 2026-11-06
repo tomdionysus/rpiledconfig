@@ -65,7 +65,8 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
       std::size_t at = 0;
       while (at < bytes.size()) {
         const std::size_t length = std::min<std::size_t>(1 + bytes[at] % 64, bytes.size() - at);
-        const auto pushed = reassembler.push(types::Bytes(bytes.begin() + static_cast<std::ptrdiff_t>(at), bytes.begin() + static_cast<std::ptrdiff_t>(at + length)));
+        const auto pushed =
+            reassembler.push(types::Bytes(bytes.begin() + static_cast<std::ptrdiff_t>(at), bytes.begin() + static_cast<std::ptrdiff_t>(at + length)));
         if (pushed && pushed.value && pushed.value->size() > 4096) violated("a message over the limit");
         at += length;
       }
