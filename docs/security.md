@@ -38,7 +38,8 @@ Bluetooth range that a directional antenna extends.
   that authentication, and a request before authentication drops the link.
 - **The service:** it runs as its own user with no capabilities, under the unit's sandbox. It can
   change only what polkit and the udev rule allow: NetworkManager connections, the LED, and starting
-  the one unit that removes the package.
+  the one unit that removes the package. Over the system bus, only root can call into it: another
+  local user is refused by the bus.
 - **What is not reachable:** nothing the service offers reads a saved WiFi passphrase, or runs
   anything on the Pi beyond that one unit.
 - **The program itself:** what comes over the radio is parsed by code held to bounds, run against
