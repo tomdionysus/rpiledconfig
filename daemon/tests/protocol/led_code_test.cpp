@@ -45,9 +45,7 @@ TEST(LedCodeTest, TheCodewordIsTheMessageAndSixParityBytes) {
   EXPECT_EQ(rpiledconfig::protocol::rs::syndromes(codeword, 6), types::Bytes(6, 0));
 }
 
-TEST(LedCodeTest, TheGeneratorIsTheProtocols) {
-  EXPECT_EQ(util::to_hex(rpiledconfig::protocol::rs::generator(6)), "013f01da20e326");
-}
+TEST(LedCodeTest, TheGeneratorIsTheProtocols) { EXPECT_EQ(util::to_hex(rpiledconfig::protocol::rs::generator(6)), "013f01da20e326"); }
 
 TEST(LedCodeTest, EveryIdGivesAValidCodeword) {
   for (const auto value : {0ULL, 0xffffffffffffffffULL, 0x8000000000000001ULL}) {

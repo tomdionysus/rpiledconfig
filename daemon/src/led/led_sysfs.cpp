@@ -51,7 +51,8 @@ types::Status LedSysfs::begin() {
   }
 
   _begun = true;
-  _logger->info("Driving " + _path.string() + " (trigger was " + _saved_trigger + ", max_brightness " + _max_brightness + (_active_low ? ", active low" : "") + ")");
+  _logger->info("Driving " + _path.string() + " (trigger was " + _saved_trigger + ", max_brightness " + _max_brightness + (_active_low ? ", active low" : "") +
+                ")");
 
   return types::Status::success();
 }

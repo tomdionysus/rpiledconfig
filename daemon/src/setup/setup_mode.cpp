@@ -95,7 +95,9 @@ void SetupMode::_enter(const std::string& why) {
 
   // Only BLE: the LED waits for a phone to ask (docs/protocol.md, Blink), and there is no key
   // to show until one connects.
-  if (const auto started = _ble->start(ble::Advertisement{_identity.ble_name, _options.hide_adapter_name ? _identity.ble_name : std::string()}, weak_from_this()); !started) {
+  if (const auto started =
+          _ble->start(ble::Advertisement{_identity.ble_name, _options.hide_adapter_name ? _identity.ble_name : std::string()}, weak_from_this());
+      !started) {
     _logger->error("BLE cannot advertise: " + started.error);
   }
 
@@ -159,11 +161,10 @@ void SetupMode::_blink(ble::ConnectionId connection, const types::Bytes& value) 
 
   if (!_blinking) {
     _blinking = true;
-    _logger->info("Blinking the key, as connection " + std::to_string(connection) + " asked, for up to " +
-                  std::to_string(_options.blink_timeout.count()) + " s");
+    _logger->info("Blinking the key, as connection " + std::to_string(connection) + " asked, for up to " + std::to_string(_options.blink_timeout.count()) +
+                  " s");
   } else {
-    _logger->info("Blink asked for again by connection " + std::to_string(connection) + "; " + std::to_string(_options.blink_timeout.count()) +
-                  " s from now");
+    _logger->info("Blink asked for again by connection " + std::to_string(connection) + "; " + std::to_string(_options.blink_timeout.count()) + " s from now");
   }
 
   // Tried again on every ask, the LED having refused before. A refusal is logged and the

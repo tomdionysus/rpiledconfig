@@ -6,6 +6,7 @@
 //
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -123,11 +124,13 @@ inline void run(const std::uint8_t* data, std::size_t size, const std::function<
         break;
       case 9:
         if (connection != 0 && f.ble->connected(connection) && f.phones.count(connection) != 0) {
-          static const char* const ops[] = {"status", "wifi.scan", "wifi.configure", "wifi.forget", "wifi.easyconnect", "wifi.easyconnect.stop", "finish", "uninstall"};
+          static const char* const ops[] = {"status", "wifi.scan", "wifi.configure", "wifi.forget", "wifi.easyconnect", "wifi.easyconnect.stop",
+                                            "finish", "uninstall"};
           const auto value = in.take(in.byte() % 64);
           std::string json = "{\"op\":\"" + std::string(ops[in.byte() % 8]) + "\",\"ssid\":";
           json += protocol::json_quote(std::string(value.begin(), value.end()));
-          json += ",\"psk\":" + protocol::json_quote(std::string(value.rbegin(), value.rend())) + ",\"hidden\":" + ((in.byte() & 1) != 0 ? "true" : "false") + "}";
+          json +=
+              ",\"psk\":" + protocol::json_quote(std::string(value.rbegin(), value.rend())) + ",\"hidden\":" + ((in.byte() & 1) != 0 ? "true" : "false") + "}";
           f.request(connection, json);
         }
         break;
@@ -145,7 +148,11 @@ inline void run(const std::uint8_t* data, std::size_t size, const std::function<
     }
   }
 
-  if (f.logger->contains(f.id.to_hex())) violated("the key was logged");
+  // Unless the input held it as text: the fuzzer can read the fixed key out of this comparison and
+  // send it as a network's name, and logging a name it was sent gives nothing away.
+  const auto hex = f.id.to_hex();
+  const bool sent = std::search(data, data + size, hex.begin(), hex.end()) != data + size;
+  if (!sent && f.logger->contains(hex)) violated("the key was logged");
 }
 
 }  // namespace attacker

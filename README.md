@@ -5,7 +5,7 @@
   <img src="app/assets/logo-on-light.svg" alt="RPi LED Config logo" width="128">
 </picture>
 
-*v0.4.0*
+*v0.5.0*
 
 WiFi on a Pi can be provisioned via a Bluetooth app, authenticated by a 64-bit secure one-time
 key, communicated by flashing the Pi's activity LED and captured by the phone camera.
@@ -15,7 +15,7 @@ key, communicated by flashing the Pi's activity LED and captured by the phone ca
 Provisioning Pis in the field, and changing their WiFi once they are there: a Pi
 that has been installed somewhere without a screen or keyboard, where the network
 was not known when its card was made, has since changed, or is one the Pi has
-never seen. All it takes on site is a phone, and sight of the Pi's LED.
+never seen.
 
 If you know the network when you flash the card, set it there: Raspberry Pi
 Imager does that, and this project is not trying to replace it. It is for what
@@ -88,7 +88,7 @@ Build the package on a Pi, on 64-bit Raspberry Pi OS, from `daemon/`:
 
     cmake -S . -B build-deb -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -DRPILEDCONFIG_BUILD_TESTING=OFF
     cmake --build build-deb && (cd build-deb && cpack -G DEB)
-    sudo apt install ./build-deb/rpiledconfig_0.4.0-1_arm64.deb
+    sudo apt install ./build-deb/rpiledconfig_0.5.0-1_arm64.deb
 
 The package enables and starts the service. It needs BlueZ, NetworkManager and
 polkit, which Raspberry Pi OS ships. `docs/installation.md` covers the rest, and
@@ -101,6 +101,13 @@ it is developed and tested. The tests that need D-Bus run only on Linux:
 
     cd daemon
     cmake --preset tests && cmake --build build-tests -j8 && ./build-tests/rpiledconfig_tests
+
+On a Pi, with `apt install clang libclang-rt-19-dev`, the fuzzers run what comes over Bluetooth
+against arbitrary input:
+
+    cmake -S . -B build-fuzz -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DRPILEDCONFIG_FUZZ=ON
+    cmake --build build-fuzz --target fuzz_attacker fuzz_parsers
+    build-fuzz/fuzz_attacker -max_total_time=900 -len_control=0 -max_len=4096
 
 The app (Node 22 or later, a JDK and the Android SDK with NDK 27 for the phone
 build):

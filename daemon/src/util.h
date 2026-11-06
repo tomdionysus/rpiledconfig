@@ -28,7 +28,6 @@ std::string to_string(const std::vector<std::uint8_t>& bytes);
 // Now, as 2026-11-03T12:34:56.789Z, for log lines.
 std::string zulu_time();
 
-
 // The text with every control character replaced, so that what came over the air, or what
 // anything else said, cannot forge a line in the log or drive a terminal reading it.
 std::string printable(const std::string& text);

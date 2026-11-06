@@ -152,8 +152,8 @@ TEST_F(BleBluezTest, RegistersTheServiceOfTheProtocolAndAdvertisesIt) {
   EXPECT_TRUE(app->primary);
 
   const std::map<std::string, std::vector<std::string>> flags = {
-      {info, {"read"}}, {challenge, {"read"}}, {auth, {"write"}}, {auth_result, {"read", "notify"}}, {request, {"write"}}, {response, {"notify"}},
-      {blink, {"write"}},
+      {info, {"read"}},     {challenge, {"read"}},  {auth, {"write"}},  {auth_result, {"read", "notify"}},
+      {request, {"write"}}, {response, {"notify"}}, {blink, {"write"}},
   };
   EXPECT_EQ(app->characteristic_flags, flags);
 
@@ -570,6 +570,9 @@ TEST_F(BleBluezTest, ACentralWithNoDeviceBreaksNothing) {
   EXPECT_TRUE(bluez->call_characteristic(info, "ReadValue", no_options).ok);
   EXPECT_TRUE(listener->saw("connect 1"));
 
-  EXPECT_TRUE(daemon.run([this]() { ble->disconnect(only_connection()); return true; }));
+  EXPECT_TRUE(daemon.run([this]() {
+    ble->disconnect(only_connection());
+    return true;
+  }));
   EXPECT_TRUE(eventually([this]() { return listener->saw("disconnect 1"); })) << logger->text();
 }

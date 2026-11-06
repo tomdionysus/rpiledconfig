@@ -147,9 +147,7 @@ TEST(ConfigTest, AKeySetTwiceIsAnError) {
 }
 
 TEST(ConfigTest, RelativePathsResolveAgainstTheFile) {
-  Loaded loaded(
-      "led.path: ../fake-led\n",
-      "/srv/rpiledconfig/etc");
+  Loaded loaded("led.path: ../fake-led\n", "/srv/rpiledconfig/etc");
   ASSERT_TRUE(loaded.ok) << loaded.logger->text();
 
   EXPECT_EQ(loaded.config.led_path, "/srv/rpiledconfig/fake-led");

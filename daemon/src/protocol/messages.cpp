@@ -74,7 +74,8 @@ types::Result<Request> parse_request(const std::string& plaintext) {
     request.ssid = ssid->as_string();
     // What 802.11 allows a network's name to be, and what can go on to NetworkManager and the log.
     if (request.ssid.size() > 32) return Out::failure(errors::bad_request, "an ssid is at most 32 bytes");
-    if (!is_utf8(request.ssid) || has_control_character(request.ssid)) return Out::failure(errors::bad_request, "an ssid must be text, with no control characters");
+    if (!is_utf8(request.ssid) || has_control_character(request.ssid))
+      return Out::failure(errors::bad_request, "an ssid must be text, with no control characters");
 
     const Json* psk = json->get("psk");
     if (psk != nullptr && !psk->is_null()) {
@@ -147,11 +148,7 @@ std::string easyconnect_response(const std::string& uri) { return Json::object()
 std::string forgotten_response(int count) { return Json::object().set("ok", Json::boolean(true)).set("forgotten", Json::number(count)).dump(); }
 
 std::string info_json(const std::string& version, const std::string& led) {
-  return Json::object()
-      .set("protocol", Json::number(protocol_version))
-      .set("version", Json::string(version))
-      .set("led", Json::string(led))
-      .dump();
+  return Json::object().set("protocol", Json::number(protocol_version)).set("version", Json::string(version)).set("led", Json::string(led)).dump();
 }
 
 }  // namespace rpiledconfig::protocol

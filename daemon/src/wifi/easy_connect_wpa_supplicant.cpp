@@ -147,16 +147,17 @@ void EasyConnectWpaSupplicant::_exchange(Socket& socket, const std::string& comm
   const std::string word = command.substr(0, command.find(' '));
   // Weakly: the exchange holds this timer, and a strong reference back would keep both for ever,
   // a leak on every request. The pending receive above is what keeps the exchange alive.
-  exchange->timer = _timers->schedule(_options.reply_timeout, [weak = weak_from_this(), weak_exchange = std::weak_ptr<Exchange>(exchange), socket = &socket, word]() {
-    auto exchange = weak_exchange.lock();
-    if (!exchange || exchange->done) return;
-    exchange->done = true;
-    if (auto self = weak.lock()) {
-      boost::system::error_code ignored;
-      socket->cancel(ignored);
-    }
-    exchange->handler(types::Result<std::string>::failure("wpa_supplicant did not answer " + word));
-  });
+  exchange->timer =
+      _timers->schedule(_options.reply_timeout, [weak = weak_from_this(), weak_exchange = std::weak_ptr<Exchange>(exchange), socket = &socket, word]() {
+        auto exchange = weak_exchange.lock();
+        if (!exchange || exchange->done) return;
+        exchange->done = true;
+        if (auto self = weak.lock()) {
+          boost::system::error_code ignored;
+          socket->cancel(ignored);
+        }
+        exchange->handler(types::Result<std::string>::failure("wpa_supplicant did not answer " + word));
+      });
 }
 
 void EasyConnectWpaSupplicant::start(types::Executor on, types::Handler<std::string> started, types::Handler<EasyConnectCredentials> received) {

@@ -154,8 +154,7 @@ bool make_easyconnect(const std::shared_ptr<loggers::Logger>& logger, const Conf
 
 // Uninstalling from the phone: off is no uninstaller (the app is told
 // uninstall_unavailable), not an error; systemd on a build without sd-bus is.
-bool make_uninstaller(const std::shared_ptr<loggers::Logger>& logger, const Config& config, const Bus& bus,
-                      std::shared_ptr<system::Uninstaller>& out) {
+bool make_uninstaller(const std::shared_ptr<loggers::Logger>& logger, const Config& config, const Bus& bus, std::shared_ptr<system::Uninstaller>& out) {
   if (config.uninstall_driver == "off") return true;
 
   if (config.uninstall_driver == "fake") {
@@ -168,7 +167,8 @@ bool make_uninstaller(const std::shared_ptr<loggers::Logger>& logger, const Conf
   return true;
 #else
   (void)bus;
-  logger->error("uninstall.driver is systemd, but this build has no sd-bus (libsystemd was not found, or this is not Linux); use uninstall.driver: fake or off");
+  logger->error(
+      "uninstall.driver is systemd, but this build has no sd-bus (libsystemd was not found, or this is not Linux); use uninstall.driver: fake or off");
   return false;
 #endif
 }
@@ -225,7 +225,8 @@ int main(int argc, char* argv[]) {
   // which the unit's Restart=on-failure leaves stopped until the next boot.
   const auto time_left = time_left_after_boot(config->service_stop_after_boot_minutes, uptime());
   if (time_left && time_left->count() == 0) {
-    logger->info("service.stop_after_boot_minutes (" + std::to_string(config->service_stop_after_boot_minutes) + ") has passed; not starting until the next boot");
+    logger->info("service.stop_after_boot_minutes (" + std::to_string(config->service_stop_after_boot_minutes) +
+                 ") has passed; not starting until the next boot");
     return 0;
   }
 
@@ -282,12 +283,12 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  logger->info("LED: " + led_driver->describe() + "; BLE: " + ble_driver->describe() + "; WiFi: " + wifi_driver->describe() +
-               "; Wi-Fi Easy Connect: " + (easyconnect ? easyconnect->describe() : std::string("off")) +
-               "; uninstall: " + (uninstaller ? uninstaller->describe() : std::string("off")));
+  logger->info("LED: " + led_driver->describe() + "; BLE: " + ble_driver->describe() + "; WiFi: " + wifi_driver->describe() + "; Wi-Fi Easy Connect: " +
+               (easyconnect ? easyconnect->describe() : std::string("off")) + "; uninstall: " + (uninstaller ? uninstaller->describe() : std::string("off")));
 
   auto modulator = std::make_shared<led::LedModulator>(scoped(logger, "led"), executor, led_driver, timers);
-  auto requests = std::make_shared<session::Requests>(scoped(logger, "requests"), wifi_driver, config->status_report_hostname ? hostname() : std::string(), easyconnect, uninstaller);
+  auto requests = std::make_shared<session::Requests>(scoped(logger, "requests"), wifi_driver, config->status_report_hostname ? hostname() : std::string(),
+                                                      easyconnect, uninstaller);
 
   setup::SetupMode::Options setup_options;
   setup_options.always = config->setup_always;

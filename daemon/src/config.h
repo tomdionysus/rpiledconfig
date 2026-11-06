@@ -7,11 +7,10 @@
 #pragma once
 
 #include <chrono>
-#include <optional>
-
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "loggers/logger.h"
@@ -50,7 +49,6 @@ class Config {
   // Whether the LED lights when its brightness is 0. On a Raspberry Pi 5 the ACT LED
   // lit for 0 and went dark for max_brightness, so the camera saw every frame inverted.
   bool led_active_low = false;
-
 
   // --- ble -------------------------------------------------------------------------
 

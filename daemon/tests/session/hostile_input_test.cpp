@@ -48,6 +48,31 @@ TEST(HostileInputTest, TheHarnessReachesWhatItGuards) {
   EXPECT_FALSE(complained);
 }
 
+// The input the fuzzer found: it read the fixture's key out of the harness's own comparison, proved
+// it, and sent it as a network's name, which is logged as any name is. Not a leak: nothing is
+// logged that the sender did not send.
+TEST(HostileInputTest, ANameTheSenderChoseIsNotTheKeyLeaking) {
+  const std::vector<std::uint8_t> found = {0x02, 0xf2, 0x05, 0x2f, 0x75, 0x75, 0x2a, 0x12, '0',  '1',  '2',  '3',  '4',  '5',  '6',  '7',  '8',  '9',  'a', 'b',
+                                           'c',  'd',  'e',  'f',  ':',  ':',  ':',  ':',  ':',  ':',  ':',  ':',  ':',  ':',  ':',  ':',  ':',  ':',  ':', ':',
+                                           0x75, 0x24, 0x2a, 0xc4, 0xc4, 0xc4, 0xc4, 0x3a, 0x75, 0x75, 0x2a, 0xc4, 0xc4, 0x3a, 0x2a, 0x2e, 0x12, 0xcb, 0xb8};
+  attacker::run(found.data(), found.size(), [](const std::string& what) { ADD_FAILURE() << what; });
+}
+
+// With nothing in the input to echo, a whole pairing logs neither the key nor the passphrase.
+TEST(HostileInputTest, APairingLogsNeitherTheKeyNorThePassphrase) {
+  SetupFixture f;
+  f.start();
+  const auto connection = f.connect();
+  f.blink(connection);
+  ASSERT_EQ(f.authenticate(connection, f.w)[0], protocol::auth_accepted);
+  ASSERT_TRUE(f.request(connection, "{\"op\":\"status\"}"));
+  ASSERT_TRUE(f.request(connection, "{\"op\":\"wifi.configure\",\"ssid\":\"home\",\"psk\":\"canary-passphrase\"}"));
+  ASSERT_TRUE(f.request(connection, "{\"op\":\"finish\"}"));
+
+  EXPECT_FALSE(f.logger->contains(f.id.to_hex())) << f.logger->text();
+  EXPECT_FALSE(f.logger->contains("canary-passphrase")) << f.logger->text();
+}
+
 TEST(HostileInputTest, JsonThatIsNotOrIsTooDeepIsRefused) {
   const std::vector<std::string> bad = {
       std::string(200000, '['),
