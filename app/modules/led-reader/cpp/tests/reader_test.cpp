@@ -143,8 +143,12 @@ TEST(ReaderTest, ProgressIsZeroUntilTheLedAndFullWithinAFrameOfIt) {
   std::optional<double> full;
   for (const auto& s : samples) {
     const auto& state = reader.push(s.t, s.y);
-    if (s.t < dark) EXPECT_EQ(state.coverage, 0) << s.t;
-    if (!state.result) EXPECT_GE(state.coverage, previous) << s.t;
+    if (s.t < dark) {
+      EXPECT_EQ(state.coverage, 0) << s.t;
+    }
+    if (!state.result) {
+      EXPECT_GE(state.coverage, previous) << s.t;
+    }
     previous = state.coverage;
     if (!full && state.coverage >= 1) full = s.t;
     if (state.result) break;
@@ -214,7 +218,9 @@ TEST(ReaderTest, RatePhaseTrials) {
       }
     }
     // 50 ms is here as the warning: its frame is 255 camera frames at 30 fps. The rest are the rates.
-    if (symbol != 50.0) EXPECT_EQ(read, phases) << "T = " << symbol;
+    if (symbol != 50.0) {
+      EXPECT_EQ(read, phases) << "T = " << symbol;
+    }
     std::printf("[ phases   ] T = %2.0f ms (frame %5.2f s, %6.1f camera frames): %3d of %d read, mean %5.0f ms, slowest %6.0f ms\n", symbol, 170 * symbol / 1000, 170 * symbol * 30 / 1000, read, phases, read ? total / read : 0, slowest);
   }
 }

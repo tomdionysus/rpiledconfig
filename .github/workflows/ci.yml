@@ -1,0 +1,91 @@
+#
+# RPiLEDConfig
+#
+# Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+# Licensed under the Apache License, Version 2.0 - see LICENSE
+#
+# The daemon and the LED reader through scripts/ci.sh on Debian trixie, and the app's
+# typecheck, version check and tests with coverage. Each coverage report goes to Codecov
+# under its own flag. There is no Bluetooth, LED or phone here: those are checked on a Pi
+# and a phone.
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    runs-on: ubuntu-24.04
+    container:
+      image: debian:trixie
+      # LeakSanitizer needs ptrace to stop the process's threads.
+      options: --cap-add SYS_PTRACE --security-opt seccomp=unconfined
+    steps:
+      - name: Install packages
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build pkg-config libboost-dev libssl-dev libsystemd-dev \
+            libgtest-dev dbus-daemon lcov clang-format-19 git ca-certificates \
+            curl gnupg  # Codecov's uploader verifies its own signature
+
+      - uses: actions/checkout@v4
+
+      - name: Trust the checkout
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Build and test
+        run: sh scripts/ci.sh
+
+      - name: Upload daemon coverage
+        uses: codecov/codecov-action@v5
+        with:
+          files: build-coverage/daemon.info
+          flags: daemon
+          disable_search: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+
+      - name: Upload LED reader coverage
+        uses: codecov/codecov-action@v5
+        with:
+          files: build-coverage/led-reader.info
+          flags: led-reader
+          disable_search: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+
+  app:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # tags, for the version check
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run version:check
+      - run: npm run coverage
+
+      - name: Upload app coverage
+        uses: codecov/codecov-action@v5
+        with:
+          files: app/coverage/lcov.info
+          flags: app
+          disable_search: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false

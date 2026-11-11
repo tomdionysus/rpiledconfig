@@ -1,0 +1,70 @@
+#
+# RPiLEDConfig
+#
+# Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+# Licensed under the Apache License, Version 2.0 - see LICENSE
+#
+# CodeQL security analysis: the daemon's C++, built as in CI, and the app's TypeScript.
+name: CodeQL
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+  schedule:
+    - cron: "23 4 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  cpp:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      security-events: write
+    container:
+      image: debian:trixie
+    steps:
+      - name: Install packages
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build pkg-config libboost-dev libssl-dev libsystemd-dev \
+            git ca-certificates
+
+      - uses: actions/checkout@v4
+
+      - name: Trust the checkout
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: c-cpp
+          build-mode: manual
+
+      - name: Build
+        run: |
+          cmake -S daemon -B daemon/build-codeql -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build daemon/build-codeql -j "$(nproc)"
+
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:c-cpp"
+
+  typescript:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          build-mode: none
+
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:javascript-typescript"

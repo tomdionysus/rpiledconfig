@@ -1,0 +1,40 @@
+Source: rpiledconfig
+Section: net
+Priority: optional
+Maintainer: Tom Cully <mail@tomcully.com>
+Build-Depends:
+ debhelper-compat (= 13),
+ cmake,
+ pkgconf,
+ libboost-dev,
+ libssl-dev,
+ libsystemd-dev,
+ libgtest-dev <!nocheck>,
+ dbus-daemon <!nocheck>,
+Standards-Version: 4.7.0
+Homepage: https://github.com/tomdionysus/rpiledconfig
+Vcs-Git: https://github.com/tomdionysus/rpiledconfig.git
+Vcs-Browser: https://github.com/tomdionysus/rpiledconfig
+Rules-Requires-Root: no
+
+Package: rpiledconfig
+Architecture: arm64
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ adduser,
+ bluez,
+ network-manager,
+ polkitd,
+Recommends:
+ systemd,
+Description: WiFi setup for a Raspberry Pi over Bluetooth, keyed by its LED
+ rpiledconfig lets the RPi LED Config phone app set a Raspberry Pi's WiFi
+ over Bluetooth LE. When a phone connects it draws a one-time 64-bit key and
+ blinks it on the Pi's activity LED; the phone reads it with its camera and
+ proves it with SPAKE2, and the WiFi network and passphrase then go over an
+ encrypted channel to NetworkManager.
+ .
+ The service runs as rpiledconfig.service, as its own unprivileged user, and
+ advertises for as long as it runs; /etc/rpiledconfig/rpiledconfig.conf says
+ otherwise. /usr/share/doc/rpiledconfig/security.md says what that exposes.

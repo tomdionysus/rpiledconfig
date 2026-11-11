@@ -13,31 +13,20 @@
 
 set -e
 
-UNIT=rpiledconfig.service
-
 case "$1" in
     remove)
-        if [ -d /run/systemd/system ]; then
-            systemctl --system daemon-reload >/dev/null || true
-        fi
-        if [ -x /usr/bin/deb-systemd-helper ]; then
-            deb-systemd-helper mask "$UNIT" >/dev/null || true
-        fi
         if [ -S /run/udev/control ] && command -v udevadm >/dev/null 2>&1; then
             udevadm control --reload-rules || true
         fi
         ;;
 
     purge)
-        if [ -x /usr/bin/deb-systemd-helper ]; then
-            deb-systemd-helper purge "$UNIT" >/dev/null || true
-            deb-systemd-helper unmask "$UNIT" >/dev/null || true
-        fi
-
         # dpkg has removed the conffile; anything left beside it (.dpkg-old, .dpkg-dist,
         # an operator's notes) goes with the directory.
         rm -rf /etc/rpiledconfig
         ;;
 esac
+
+#DEBHELPER#
 
 exit 0

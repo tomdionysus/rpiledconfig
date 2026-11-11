@@ -118,7 +118,7 @@ class BleBluezTest : public ::testing::Test {
 
   // Starts and waits for BlueZ to have both registrations.
   void start() {
-    const auto started = daemon.run([this]() { return ble->start(ble::Advertisement{"RPiLEDConfig-3a9c"}, listener); });
+    const auto started = daemon.run([this]() { return ble->start(ble::Advertisement{"RPiLEDConfig-3a9c", ""}, listener); });
     ASSERT_TRUE(started.ok) << started.error;
     ASSERT_TRUE(eventually([this]() { return bluez->advertisement().has_value(); })) << logger->text();
   }
@@ -404,7 +404,7 @@ TEST_F(BleBluezTest, ABluezThatRestartsIsRegisteredWithAgain) {
 
 TEST_F(BleBluezTest, AnApplicationBluezRefusesIsLoggedAndNotAdvertised) {
   bluez->refuse_application("no, for a reason");
-  ASSERT_TRUE(daemon.run([this]() { return ble->start(ble::Advertisement{"RPiLEDConfig-3a9c"}, listener); }).ok);
+  ASSERT_TRUE(daemon.run([this]() { return ble->start(ble::Advertisement{"RPiLEDConfig-3a9c", ""}, listener); }).ok);
 
   EXPECT_TRUE(eventually([this]() { return logger->contains("BlueZ refused the GATT application: no, for a reason"); })) << logger->text();
   EXPECT_FALSE(bluez->advertisement().has_value());
@@ -419,7 +419,7 @@ class BleBluezWithoutBluezTest : public BleBluezTest {
 };
 
 TEST_F(BleBluezWithoutBluezTest, StartingSaysWhyNothingIsAdvertised) {
-  ASSERT_TRUE(daemon.run([this]() { return ble->start(ble::Advertisement{"RPiLEDConfig-3a9c"}, listener); }).ok);
+  ASSERT_TRUE(daemon.run([this]() { return ble->start(ble::Advertisement{"RPiLEDConfig-3a9c", ""}, listener); }).ok);
   EXPECT_TRUE(eventually([this]() { return logger->contains("Cannot reach the adapter /org/bluez/hci0"); })) << logger->text();
 }
 

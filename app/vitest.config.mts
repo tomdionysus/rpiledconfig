@@ -8,6 +8,15 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],
+    // `npm run coverage`: the logic under src/, as CI sends it to Codecov. Screens and the
+    // native bindings are left out: they are not run here (no component rendering).
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.ts'],
+      exclude: ['src/**/*.test.ts', 'src/test/**'],
+      reporter: ['text-summary', 'lcov'],
+      reportsDirectory: 'coverage',
+    },
   },
   resolve: {
     alias: [

@@ -1,7 +1,7 @@
 # Installing the daemon
 
 The daemon ships as a Debian package, `rpiledconfig`, built on the Pi it is for (README.md,
-Installing the service). A Raspberry Pi on 64-bit Raspberry Pi OS is the reference host. It needs
+Installing the service). A Raspberry Pi on 64-bit Raspberry Pi OS (trixie) is the reference host. It needs
 BlueZ (`bluetooth.service`), NetworkManager and polkit (`polkitd`), all of which Raspberry Pi OS
 ships and runs by default; the package depends on them.
 
@@ -29,9 +29,25 @@ everything the daemon does (below).
 
 Install the package you built with apt, which fetches the dependencies:
 
-    sudo apt install ./build-deb/rpiledconfig_<version>-1_arm64.deb
+    sudo apt install ./build-deb/rpiledconfig_<version>_arm64.deb
 
 There is no 32-bit (armhf) build.
+
+To keep a configuration you already have without a question from dpkg, for example in a script:
+
+    sudo apt -o Dpkg::Options::=--force-confold install ./build-deb/rpiledconfig_<version>_arm64.deb
+
+### Replacing a `cmake --install` installation
+
+A unit `cmake --install` put under `/usr/local` takes precedence over the package's. Remove what
+it installed first, from the build directory it was run in:
+
+    sudo systemctl disable --now rpiledconfig
+    xargs -d '\n' sudo rm -f < install_manifest.txt
+    sudo systemctl daemon-reload
+
+`install_manifest.txt` does not list `/etc/rpiledconfig/rpiledconfig.conf`, which stays and is
+kept by the package. `dpkg -S /usr/bin/rpiledconfig` names the package that owns the binary.
 
 The unit is enabled and started, and advertises over Bluetooth whether the Pi has WiFi or not
 (docs/security.md says what that exposes). With `setup.always: false` a Pi on WiFi idles, checking
@@ -128,9 +144,10 @@ and stop it with Ctrl-C.
 
 ## Upgrading
 
-    sudo apt install ./rpiledconfig_<new version>-1_arm64.deb
+    sudo apt install ./build-deb/rpiledconfig_<new version>_arm64.deb
 
-The configuration is kept; the service restarts if it was running.
+The configuration is kept; dpkg asks only when you changed it and the packaged default
+changed too. The service restarts unless it has been disabled.
 
 ## Removing
 

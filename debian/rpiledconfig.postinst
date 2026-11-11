@@ -8,9 +8,9 @@
 # rpiledconfig postinst: the service account, its directories, udev, the netdev group, and
 # the unit.
 #
-# The unit is enabled and, on a first install, started: the packaged configuration is the
-# Pi's (the real LED, BlueZ, NetworkManager), and a Pi that has just had this installed is
-# a Pi somebody wants to set up. An upgrade restarts it if it was running.
+# debhelper adds what enables the unit and starts it: the packaged configuration
+# is the Pi's (the real LED, BlueZ, NetworkManager), and a Pi that has just had this
+# installed is a Pi somebody wants to set up. An upgrade restarts it unless it was disabled.
 
 set -e
 
@@ -18,7 +18,6 @@ USER_NAME=rpiledconfig
 OLD_STATE_DIR=/var/lib/rpiledconfig
 CONFIG_DIR=/etc/rpiledconfig
 CONFIG_FILE=$CONFIG_DIR/rpiledconfig.conf
-UNIT=rpiledconfig.service
 
 # chown and chmod, unless the administrator has registered an override with
 # dpkg-statoverride, which wins.
@@ -72,31 +71,11 @@ case "$1" in
         ;;
 esac
 
-# As dh_installsystemd writes it: enable on a first install, and respect an administrator's
-# "systemctl disable" on every upgrade after.
-if [ "$1" = "configure" ] || [ "$1" = "abort-upgrade" ] || [ "$1" = "abort-deconfigure" ] || [ "$1" = "abort-remove" ]; then
-    deb-systemd-helper unmask "$UNIT" >/dev/null || true
+#DEBHELPER#
 
-    if deb-systemd-helper --quiet was-enabled "$UNIT"; then
-        deb-systemd-helper enable "$UNIT" >/dev/null || true
-    else
-        deb-systemd-helper update-state "$UNIT" >/dev/null || true
-    fi
-fi
-
-if [ "$1" = "configure" ] || [ "$1" = "abort-upgrade" ] || [ "$1" = "abort-deconfigure" ] || [ "$1" = "abort-remove" ]; then
-    if [ -d /run/systemd/system ]; then
-        systemctl --system daemon-reload >/dev/null || true
-
-        if [ -n "$2" ]; then
-            # An upgrade: the new binary if the old one was running, and nothing if not.
-            systemctl try-restart "$UNIT" >/dev/null || true
-        else
-            deb-systemd-invoke start "$UNIT" >/dev/null || true
-            echo "rpiledconfig is installed, enabled and started."
-            echo "See /usr/share/doc/rpiledconfig/protocol.md"
-        fi
-    fi
+if [ "$1" = "configure" ] && [ -z "${2:-}" ] && [ -d /run/systemd/system ]; then
+    echo "rpiledconfig is installed, enabled and started."
+    echo "See /usr/share/doc/rpiledconfig/security.md for what that exposes."
 fi
 
 exit 0

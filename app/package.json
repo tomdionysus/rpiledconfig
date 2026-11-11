@@ -7,7 +7,8 @@
     "android": "react-native run-android",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
-    "version:check": "node scripts/version-check.mjs"
+    "version:check": "node scripts/version-check.mjs",
+    "coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@noble/ciphers": "^2.4.0",
@@ -36,6 +37,7 @@
     "@react-native/metro-config": "0.86.3",
     "@react-native/typescript-config": "0.86.3",
     "@types/react": "~19.2.2",
+    "@vitest/coverage-v8": "5.1.0",
     "typescript": "~6.0.3",
     "vitest": "^5.0.0"
   },
