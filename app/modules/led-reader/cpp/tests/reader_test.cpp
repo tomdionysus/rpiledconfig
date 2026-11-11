@@ -224,3 +224,34 @@ TEST(ReaderTest, RatePhaseTrials) {
     std::printf("[ phases   ] T = %2.0f ms (frame %5.2f s, %6.1f camera frames): %3d of %d read, mean %5.0f ms, slowest %6.0f ms\n", symbol, 170 * symbol / 1000, 170 * symbol * 30 / 1000, read, phases, read ? total / read : 0, slowest);
   }
 }
+
+// The LED gone long enough for the stream to fall dark: what was gathered is forgotten, and the
+// LED is read afresh when it comes back.
+TEST(ReaderTest, ForgetsWhatItGatheredWhenTheLedGoesDarkAndReadsItAfresh) {
+  const auto first = test::synthesize(vectors_id, {.seconds = 3, .noise = 4, .start_ms = 2000});
+  const auto again = test::synthesize(vectors_id, {.seconds = 14, .noise = 4, .start_ms = 500});
+  double dark = first.front().y;
+  for (const auto& s : first) dark = std::min(dark, s.y);
+
+  Reader reader;
+  double t = 0;
+  bool gathered = false;
+  for (const auto& s : first) {
+    t = s.t;
+    gathered = reader.push(t, s.y).coverage > 0 || gathered;
+  }
+  ASSERT_TRUE(gathered);
+
+  bool forgotten = false;
+  for (int i = 0; i < 30 * 20; ++i) {
+    t += 1000.0 / 30;
+    const auto& state = reader.push(t, dark);
+    forgotten = forgotten || (state.coverage == 0 && !state.led_seen);
+  }
+  EXPECT_TRUE(forgotten);
+
+  bool read = false;
+  const double offset = t + 1000.0 / 30;
+  for (const auto& s : again) read = reader.push(offset + s.t, s.y).result.has_value() || read;
+  EXPECT_TRUE(read);
+}

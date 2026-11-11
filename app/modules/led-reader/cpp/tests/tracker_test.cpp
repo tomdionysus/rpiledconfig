@@ -141,3 +141,36 @@ TEST(TrackerTest, ReadsAtEveryRate) {
     EXPECT_TRUE(read) << "T = " << symbol;
   }
 }
+
+// The phone moved: the LED has left the tile being read and is in another. After a second
+// gone, the other tile is read instead.
+TEST(TrackerTest, FollowsTheLedToAnotherTileOnceItHasBeenGoneASecond) {
+  // Two tiles side by side; the LED a small square in the left one, then in the right.
+  constexpr int width = 80;
+  constexpr int height = 40;
+  const auto levels = test::synthesize(vectors_id, {.seconds = 24, .off = 0, .on = 1, .start_ms = 1100, .jitter_ms = 3});
+  const double moved_at = 4000;
+  std::vector<std::uint8_t> picture(static_cast<std::size_t>(width * height));
+  Tracker tracker;
+  std::optional<int> before;
+  std::optional<int> after;
+  bool read = false;
+  for (const auto& s : levels) {
+    const bool moved = s.t >= moved_at;
+    std::fill(picture.begin(), picture.end(), std::uint8_t{30});
+    if (s.y > 0.5) {
+      const int cx = moved ? 60 : 20;
+      for (int y = 17; y <= 23; ++y) {
+        for (int x = cx - 3; x <= cx + 3; ++x) picture[static_cast<std::size_t>(y * width + x)] = 200;
+      }
+    }
+    const auto& state = tracker.push(s.t, Plane{picture.data(), width, height, width, 1});
+    if (!state.tile) continue;
+    if (!moved) before = state.tile->x;
+    if (s.t >= moved_at + 2000) after = state.tile->x;
+    read = (moved && state.reader.result.has_value()) || read;
+  }
+  ASSERT_TRUE(before && after);
+  EXPECT_NE(*before, *after);
+  EXPECT_TRUE(read);
+}
