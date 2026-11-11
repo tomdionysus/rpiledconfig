@@ -281,6 +281,29 @@ TEST_F(WifiNetworkManagerTest, StatusCarriesTheLatestJoinAndItsReason) {
   EXPECT_TRUE(status().value.connected);
 }
 
+// docs/protocol.md, The latest join: a failure NetworkManager gives another reason for is
+// `other`, with the reason in NetworkManager's words (NMDeviceStateReason) in the message.
+TEST_F(WifiNetworkManagerTest, AJoinThatFailsForAnotherReasonIsOtherInItsOwnWords) {
+  const std::pair<std::uint32_t, std::string> reasons[] = {
+      {8, "the supplicant disconnected"}, {9, "the supplicant's configuration failed"},
+      {10, "the supplicant failed"},      {11, "the supplicant timed out"},
+      {15, "the DHCP lease failed"},      {99, "reason 99"},
+  };
+  for (const auto& [reason, words] : reasons) {
+    nm->activation_fails_with(reason);
+    const std::string ssid = "Net" + std::to_string(reason);
+    ASSERT_TRUE(configure(ssid, "correct horse").ok);
+    ASSERT_TRUE(eventually([&]() {
+      const auto s = status();
+      return s.ok && s.value.join && s.value.join->ssid == ssid && s.value.join->state == "failed";
+    })) << reason;
+    const auto join = *status().value.join;
+    EXPECT_EQ(join.reason, "other") << reason;
+    EXPECT_EQ(join.message, "NetworkManager: " + words);
+  }
+  EXPECT_EQ(wifi->describe(), "networkmanager");
+}
+
 // A typo must not cost a Pi in the field the network it could get back to.
 TEST_F(WifiNetworkManagerTest, AFailedJoinLeavesTheNetworkThatWorkedAndDeletesOnlyItself) {
   ASSERT_TRUE(configure("Home", "correct horse").ok);

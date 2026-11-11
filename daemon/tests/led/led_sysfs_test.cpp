@@ -82,6 +82,65 @@ TEST(LedSysfsTest, ANodeThatIsNotThereIsRefused) {
   led.end();
 }
 
+TEST(LedSysfsTest, ATriggerFileNamingNoTriggerRestoresNone) {
+  FakeNode node;
+  node.dir.write("trigger", "none timer heartbeat\n");
+  auto logger = std::make_shared<MockLogger>();
+  led::LedSysfs led(logger, node.dir.path());
+
+  ASSERT_TRUE(led.begin());
+  EXPECT_EQ(led.saved_trigger(), "none");
+  EXPECT_TRUE(logger->contains("names no current trigger")) << logger->text();
+  EXPECT_EQ(led.describe(), "sysfs " + node.dir.path().string());
+}
+
+// The kernel can refuse a write (the node went, or the LED is gone); the daemon says so and goes on.
+TEST(LedSysfsTest, ABrightnessThatCannotBeWrittenIsWarnedAbout) {
+  FakeNode node;
+  auto logger = std::make_shared<MockLogger>();
+  led::LedSysfs led(logger, node.dir.path());
+  ASSERT_TRUE(led.begin());
+
+  std::filesystem::remove(node.dir.path() / "brightness");
+  std::filesystem::create_directory(node.dir.path() / "brightness");
+  led.set(true);
+  EXPECT_TRUE(logger->contains("Cannot set the LED")) << logger->text();
+
+  led.end();
+  EXPECT_TRUE(logger->contains("Cannot turn the LED off")) << logger->text();
+  EXPECT_EQ(node.dir.read("trigger"), "mmc0") << "the trigger is given back all the same";
+}
+
+TEST(LedSysfsTest, AWriteTheKernelTakesAndThenRefusesIsWarnedAbout) {
+#if defined(__linux__)
+  FakeNode node;
+  auto logger = std::make_shared<MockLogger>();
+  led::LedSysfs led(logger, node.dir.path());
+  ASSERT_TRUE(led.begin());
+
+  // /dev/full opens and then fails every write, as a sysfs attribute does when it refuses a value.
+  std::filesystem::remove(node.dir.path() / "brightness");
+  std::filesystem::create_symlink("/dev/full", node.dir.path() / "brightness");
+  led.set(true);
+  EXPECT_TRUE(logger->contains("Cannot set the LED")) << logger->text();
+  EXPECT_TRUE(logger->contains("brightness")) << logger->text();
+#else
+  GTEST_SKIP() << "needs /dev/full";
+#endif
+}
+
+TEST(LedSysfsTest, ATriggerThatCannotBeGivenBackIsWarnedAbout) {
+  FakeNode node;
+  auto logger = std::make_shared<MockLogger>();
+  led::LedSysfs led(logger, node.dir.path());
+  ASSERT_TRUE(led.begin());
+
+  std::filesystem::remove(node.dir.path() / "trigger");
+  std::filesystem::create_directory(node.dir.path() / "trigger");
+  led.end();
+  EXPECT_TRUE(logger->contains("Cannot give the LED's trigger back")) << logger->text();
+}
+
 TEST(LedSysfsTest, AMissingMaxBrightnessMeansOne) {
   FakeNode node;
   std::filesystem::remove(node.dir.path() / "max_brightness");

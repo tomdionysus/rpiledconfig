@@ -53,6 +53,43 @@ TEST(MessagesTest, WhatIsNotARequestIsBadRequest) {
   }
 }
 
+// docs/protocol.md, Messages: an ssid is 1 to 32 bytes of UTF-8 with no control characters,
+// and a psk is UTF-8 with no NUL. UTF-8 as RFC 3629 has it, every length of it.
+TEST(MessagesTest, AnSsidAndAPskAreUtf8Text) {
+  const auto configure = [](const std::string& ssid, const std::string& psk = "secret12") {
+    return parse_request("{\"op\":\"wifi.configure\",\"ssid\":\"" + ssid + "\",\"psk\":\"" + psk + "\"}");
+  };
+
+  const std::string ssids[] = {"caf\xc3\xa9", "\xe2\x82\xac 5G", "\xf0\x9f\x98\x80", "\xf4\x8f\xbf\xbf", std::string(32, 'x')};
+  for (const auto& ssid : ssids) {
+    EXPECT_TRUE(configure(ssid)) << ssid;
+  }
+  EXPECT_TRUE(configure("home", "p\xc3\xa4ss \xe2\x82\xac"));
+
+  const std::string malformed[] = {
+      "\x80",              // a continuation byte first
+      "\xc0\xaf",          // an overlong lead byte
+      "\xe0\x80\xaf",      // an overlong three-byte form
+      "\xed\xa0\x80",      // a surrogate
+      "\xf0\x80\x80\xaf",  // an overlong four-byte form
+      "\xf4\x90\x80\x80",  // past U+10FFFF
+      "\xf5\x80\x80\x80",  // past U+10FFFF by its lead byte
+      "\xe2\x82",          // cut short
+      "\xe2\x28\xac",      // a bad continuation byte
+  };
+  for (const auto& bad : malformed) {
+    const auto request = configure("a" + bad);
+    EXPECT_FALSE(request);
+    EXPECT_EQ(request.code, errors::bad_request);
+    EXPECT_FALSE(configure("home", bad));
+  }
+
+  EXPECT_FALSE(configure(std::string(33, 'x')));
+  EXPECT_FALSE(configure("tab\\there"));
+  EXPECT_FALSE(configure("del\x7f"));
+  EXPECT_FALSE(configure("home", "nul\\u0000"));
+}
+
 // An op nobody knows is a request all the same; the dispatcher answers unknown_op.
 TEST(MessagesTest, AnUnknownOpStillParses) {
   const auto request = parse_request("{\"op\":\"reboot\"}");
