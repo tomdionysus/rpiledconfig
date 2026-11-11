@@ -12,7 +12,7 @@
   <img src="app/assets/logo-on-light.svg" alt="RPi LED Config logo" width="128">
 </picture>
 
-*v0.5.0*
+*v0.5.1*
 
 WiFi on a Pi can be provisioned via a Bluetooth app, authenticated by a 64-bit secure one-time
 key, communicated by flashing the Pi's activity LED and captured by the phone camera.
