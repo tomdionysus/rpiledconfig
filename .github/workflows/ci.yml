@@ -34,7 +34,7 @@ jobs:
             libgtest-dev dbus-daemon lcov clang-format-19 git ca-certificates \
             curl gnupg  # Codecov's uploader verifies its own signature
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Trust the checkout
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -43,7 +43,7 @@ jobs:
         run: sh scripts/ci.sh
 
       - name: Upload daemon coverage
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           files: build-coverage/daemon.info
           flags: daemon
@@ -52,7 +52,7 @@ jobs:
           fail_ci_if_error: false
 
       - name: Upload LED reader coverage
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           files: build-coverage/led-reader.info
           flags: led-reader
@@ -72,7 +72,7 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends dpkg-dev git ca-certificates lintian
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0  # tags, for the package's version
 
@@ -88,7 +88,7 @@ jobs:
       - name: Lint
         run: lintian --fail-on error,warning build-deb/*.changes
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: deb
           path: build-deb/*.deb
@@ -98,15 +98,15 @@ jobs:
   android:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: zulu
           java-version: 17
           cache: gradle
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -119,7 +119,7 @@ jobs:
         working-directory: app/android
         run: ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a --no-daemon
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: apk
           path: app/android/app/build/outputs/apk/release/app-release.apk
@@ -130,11 +130,11 @@ jobs:
       run:
         working-directory: app
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0  # tags, for the version check
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -146,7 +146,7 @@ jobs:
       - run: npm run coverage
 
       - name: Upload app coverage
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           files: app/coverage/lcov.info
           flags: app
