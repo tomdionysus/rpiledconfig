@@ -12,7 +12,7 @@
   <img src="app/assets/logo-on-light.svg" alt="RPi LED Config logo" width="128">
 </picture>
 
-*v0.5.0*
+*v0.5.1*
 
 WiFi on a Pi can be provisioned via a Bluetooth app, authenticated by a 64-bit secure one-time
 key, communicated by flashing the Pi's activity LED and captured by the phone camera.
@@ -89,6 +89,29 @@ A release of the app has no permission to use the internet (docs/privacy.md).
 
 `docs/protocol.md` has every byte of this.
 
+## Status
+
+The protocol, the service and the Android app are complete and work
+end to end: a Pi found, its LED read, SPAKE2, a network joined, and the service removed
+from the phone.
+
+| | Where it has been run |
+| --- | --- |
+| The service | Raspberry Pi 5 on 64-bit Raspberry Pi OS (trixie), with BlueZ and NetworkManager |
+| The app | One Android 12 phone, in a dark room, at all three speeds |
+| The package | Install, upgrade, removal, purge, and removal from the app, on that Pi |
+
+CI runs the service's tests on Debian trixie, plain, under AddressSanitizer and
+UndefinedBehaviorSanitizer, and for coverage; the service's Bluetooth parsers have fuzz
+targets. Nothing here has had an outside security review.
+
+## Roadmap
+
+- Google Play: what is left is in `docs/play-store.md`.
+- Pairing in a lit room, and on more phones.
+- Wi-Fi Easy Connect from the app: the service's side is there and tested.
+- An iOS app.
+
 ## Installing the service
 
 Build the package on a Pi running 64-bit Raspberry Pi OS (trixie), from a clone of
@@ -148,6 +171,11 @@ clean`; that file says why.
 
 `scripts/make-icons.sh` regenerates the app's icons, the README's logo and the Play
 listing's graphics from `assets/icon.svg`.
+
+## Contributing
+
+`CONTRIBUTING.md` has the rules for changes. A vulnerability is reported privately, as
+`SECURITY.md` says, not in an issue.
 
 ## License
 

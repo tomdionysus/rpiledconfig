@@ -4,9 +4,9 @@
 # Copyright (C) 2026 Tom Cully <mail@tomcully.com>
 # Licensed under the Apache License, Version 2.0 - see LICENSE
 #
-# The daemon and the LED reader through scripts/ci.sh on Debian trixie, and the app's
-# typecheck, version check and tests with coverage. Each coverage report goes to Codecov
-# under its own flag. There is no Bluetooth, LED or phone here: those are checked on a Pi
+# The daemon and the LED reader through scripts/ci.sh on Debian trixie, the Debian package
+# on arm64, the Android release build, and the app's typecheck, version check and tests
+# with coverage. Each coverage report goes to Codecov under its own flag. There is no Bluetooth, LED or phone here: those are checked on a Pi
 # and a phone.
 name: CI
 
@@ -59,6 +59,70 @@ jobs:
           disable_search: true
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
+
+  # The package as a Pi builds it, on arm64: its tests run inside the build, and lintian
+  # fails it on any error or warning.
+  package:
+    runs-on: ubuntu-24.04-arm
+    container:
+      image: debian:trixie
+    steps:
+      - name: Install packages
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends dpkg-dev git ca-certificates lintian
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # tags, for the package's version
+
+      - name: Trust the checkout
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Install build dependencies
+        run: apt-get build-dep -y ./
+
+      - name: Build
+        run: daemon/scripts/build-deb.sh
+
+      - name: Lint
+        run: lintian --fail-on error,warning build-deb/*.changes
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb
+          path: build-deb/*.deb
+
+  # The release build, signed with a generated debug key as there is no upload key here:
+  # it proves the native modules, the LED reader's JNI and the bundle build.
+  android:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: 17
+          cache: gradle
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - run: npm ci
+        working-directory: app
+
+      - name: Build
+        working-directory: app/android
+        run: ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: app/android/app/build/outputs/apk/release/app-release.apk
 
   app:
     runs-on: ubuntu-24.04

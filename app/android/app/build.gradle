@@ -34,8 +34,8 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         // The same number as daemon/CMakeLists.txt project() and the README (check_version.cmake).
-        versionCode 500
-        versionName "0.5.0"
+        versionCode 501
+        versionName "0.5.1"
 
         // -Prpiledconfig.diagnostics=true: the app logs what it measures (adb logcat -s
         // ReactNativeJS) and shows the platform's own words under an error; src/util/diagnostics.ts.
