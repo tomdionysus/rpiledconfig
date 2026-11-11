@@ -175,16 +175,21 @@ export const blePlxTransport: BleTransport = {
   },
 
   prescan() {
+    // Stopped while permissions or the adapter were still being waited for, it must not start
+    // a scan afterwards that nothing would stop.
+    let stopped = false;
     void requestPermissions()
       .then(waitForPoweredOn)
-      .then(() =>
+      .then(() => {
+        if (stopped) return;
         startScan(
           () => {},
           () => {},
-        ),
-      )
+        );
+      })
       .catch(() => {});
     return () => {
+      stopped = true;
       void ble().stopDeviceScan();
     };
   },
