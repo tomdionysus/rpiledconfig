@@ -15,6 +15,13 @@ if(RPILEDCONFIG_FUZZ)
     add_link_options(-fsanitize=address,undefined)
 endif()
 
+# Coverage for the tests: scripts/ci.sh turns it into an lcov report, which CI sends to Codecov.
+option(RPILEDCONFIG_COVERAGE "Build with gcov instrumentation" OFF)
+if(RPILEDCONFIG_COVERAGE)
+    add_compile_options(--coverage -O0)
+    add_link_options(--coverage)
+endif()
+
 set(RPILEDCONFIG_SANITIZE "none" CACHE STRING "Sanitizer to build with: none, address, thread")
 set_property(CACHE RPILEDCONFIG_SANITIZE PROPERTY STRINGS none address thread)
 

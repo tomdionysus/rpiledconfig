@@ -25,6 +25,7 @@ debian/rpiledconfig/
 app/node_modules/
 app/.expo/
 app/dist/
+app/coverage/
 app/ios/
 app/expo-env.d.ts
 app/.kotlin/

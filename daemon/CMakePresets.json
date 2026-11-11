@@ -41,6 +41,15 @@
       }
     },
     {
+      "name": "coverage",
+      "inherits": "base",
+      "displayName": "gcov instrumentation, for an lcov report",
+      "cacheVariables": {
+        "RPILEDCONFIG_BUILD_TESTING": "ON",
+        "RPILEDCONFIG_COVERAGE": "ON"
+      }
+    },
+    {
       "name": "tsan",
       "inherits": "base",
       "displayName": "ThreadSanitizer",
@@ -56,6 +65,7 @@
     { "name": "release", "configurePreset": "release" },
     { "name": "tests", "configurePreset": "tests" },
     { "name": "asan", "configurePreset": "asan" },
+    { "name": "coverage", "configurePreset": "coverage" },
     { "name": "tsan", "configurePreset": "tsan" }
   ],
   "testPresets": [

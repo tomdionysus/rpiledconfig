@@ -1,5 +1,12 @@
 # RPiLEDConfig
 
+[![CI](https://github.com/tomdionysus/rpiledconfig/actions/workflows/ci.yml/badge.svg)](https://github.com/tomdionysus/rpiledconfig/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/tomdionysus/rpiledconfig/graph/badge.svg)](https://codecov.io/gh/tomdionysus/rpiledconfig)
+[![daemon coverage](https://codecov.io/gh/tomdionysus/rpiledconfig/graph/badge.svg?flag=daemon)](https://codecov.io/gh/tomdionysus/rpiledconfig?flags%5B0%5D=daemon)
+[![app coverage](https://codecov.io/gh/tomdionysus/rpiledconfig/graph/badge.svg?flag=app)](https://codecov.io/gh/tomdionysus/rpiledconfig?flags%5B0%5D=app)
+[![LED reader coverage](https://codecov.io/gh/tomdionysus/rpiledconfig/graph/badge.svg?flag=led-reader)](https://codecov.io/gh/tomdionysus/rpiledconfig?flags%5B0%5D=led-reader)
+[![CodeQL](https://github.com/tomdionysus/rpiledconfig/actions/workflows/codeql.yml/badge.svg)](https://github.com/tomdionysus/rpiledconfig/actions/workflows/codeql.yml)
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="app/assets/logo-on-dark.svg">
   <img src="app/assets/logo-on-light.svg" alt="RPi LED Config logo" width="128">
@@ -114,6 +121,10 @@ against arbitrary input:
     cmake -S . -B build-fuzz -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DRPILEDCONFIG_FUZZ=ON
     cmake --build build-fuzz --target fuzz_attacker fuzz_parsers
     build-fuzz/fuzz_attacker -max_total_time=900 -len_control=0 -max_len=4096
+
+On Debian trixie, or a Pi running it, `scripts/ci.sh` runs what CI runs for the daemon
+and the LED reader: the format check, the tests plain and under the sanitizers, and the
+coverage reports. `npm run coverage` in `app/` does the same for the app.
 
 The app (Node 22 or later, a JDK and the Android SDK with NDK 27 for the phone
 build):
