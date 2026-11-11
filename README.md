@@ -89,6 +89,29 @@ A release of the app has no permission to use the internet (docs/privacy.md).
 
 `docs/protocol.md` has every byte of this.
 
+## Status
+
+The protocol, the service and the Android app are complete and work
+end to end: a Pi found, its LED read, SPAKE2, a network joined, and the service removed
+from the phone.
+
+| | Where it has been run |
+| --- | --- |
+| The service | Raspberry Pi 5 on 64-bit Raspberry Pi OS (trixie), with BlueZ and NetworkManager |
+| The app | One Android 12 phone, in a dark room, at all three speeds |
+| The package | Install, upgrade, removal, purge, and removal from the app, on that Pi |
+
+CI runs the service's tests on Debian trixie, plain, under AddressSanitizer and
+UndefinedBehaviorSanitizer, and for coverage; the service's Bluetooth parsers have fuzz
+targets. Nothing here has had an outside security review.
+
+## Roadmap
+
+- Google Play: what is left is in `docs/play-store.md`.
+- Pairing in a lit room, and on more phones.
+- Wi-Fi Easy Connect from the app: the service's side is there and tested.
+- An iOS app.
+
 ## Installing the service
 
 Build the package on a Pi running 64-bit Raspberry Pi OS (trixie), from a clone of
