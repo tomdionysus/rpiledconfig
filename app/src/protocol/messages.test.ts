@@ -26,8 +26,17 @@ describe('messages', () => {
   });
 
   it('decodes a scan and clamps signal to 0..100', () => {
-    const scan = decodeResponse(utf8Encode('{"ok":true,"networks":[{"ssid":"A","signal":120,"secure":true},{"ssid":"B","signal":-3,"secure":false}]}'), 'wifi.scan');
-    expect(scan).toEqual({ ok: true, networks: [{ ssid: 'A', signal: 100, secure: true }, { ssid: 'B', signal: 0, secure: false }] });
+    const scan = decodeResponse(
+      utf8Encode('{"ok":true,"networks":[{"ssid":"A","signal":120,"secure":true},{"ssid":"B","signal":-3,"secure":false}]}'),
+      'wifi.scan',
+    );
+    expect(scan).toEqual({
+      ok: true,
+      networks: [
+        { ssid: 'A', signal: 100, secure: true },
+        { ssid: 'B', signal: 0, secure: false },
+      ],
+    });
   });
 
   it('decodes an error with its code and message', () => {
@@ -49,7 +58,9 @@ describe('messages', () => {
 
   it('decodes requests on the daemon side with the protocol error codes', () => {
     expect(decodeRequest(utf8Encode('{"op":"status"}'))).toEqual({ request: { op: 'status' } });
-    expect(decodeRequest(utf8Encode('{"op":"wifi.configure","ssid":"Home","psk":"pw"}'))).toEqual({ request: { op: 'wifi.configure', ssid: 'Home', psk: 'pw' } });
+    expect(decodeRequest(utf8Encode('{"op":"wifi.configure","ssid":"Home","psk":"pw"}'))).toEqual({
+      request: { op: 'wifi.configure', ssid: 'Home', psk: 'pw' },
+    });
     expect(decodeRequest(utf8Encode('{"op":"wifi.configure","ssid":"Home","psk":""}'))).toEqual({ request: { op: 'wifi.configure', ssid: 'Home' } });
     expect(decodeRequest(utf8Encode('{"op":"wifi.configure"}'))).toMatchObject({ error: 'bad_request' });
     expect(decodeRequest(utf8Encode('{"op":"reboot"}'))).toMatchObject({ error: 'unknown_op' });

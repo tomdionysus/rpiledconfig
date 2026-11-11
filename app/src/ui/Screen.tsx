@@ -34,7 +34,8 @@ export function Screen({ title, eyebrow, showBack = false, scrollable = true, co
           accessibilityLabel="Back"
           hitSlop={8}
           onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
-          style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}>
+          style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+        >
           <Text style={styles.backGlyph}>{'<'}</Text>
         </Pressable>
       ) : null}
@@ -63,7 +64,8 @@ export function Screen({ title, eyebrow, showBack = false, scrollable = true, co
     <ScrollView
       style={styles.flex}
       contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + space.xl }, contentStyle]}
-      keyboardShouldPersistTaps="handled">
+      keyboardShouldPersistTaps="handled"
+    >
       {heading}
       {children}
     </ScrollView>

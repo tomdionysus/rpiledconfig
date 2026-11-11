@@ -43,7 +43,9 @@ export default function FindScreen() {
         setError(
           new PairingError(
             'bluetooth',
-            caught instanceof Error && caught.name === 'BluetoothUnavailable' ? caught.message : 'Bluetooth is not available. Check that it is on and that the app may use it.',
+            caught instanceof Error && caught.name === 'BluetoothUnavailable'
+              ? caught.message
+              : 'Bluetooth is not available. Check that it is on and that the app may use it.',
             caught,
           ),
         );
@@ -94,7 +96,8 @@ export default function FindScreen() {
             accessibilityState={{ checked: option === rate }}
             disabled={asking !== undefined}
             onPress={() => setRate(option)}
-            style={[styles.speed, option === rate && styles.speedChosen]}>
+            style={[styles.speed, option === rate && styles.speedChosen]}
+          >
             <Text style={[styles.speedName, option === rate && styles.speedNameChosen]}>{RATE_INFO[option].label}</Text>
           </Pressable>
         ))}
@@ -115,7 +118,8 @@ export default function FindScreen() {
           accessibilityLabel={`Pi named ${pi.name}`}
           disabled={asking !== undefined}
           onPress={() => void choose(pi)}
-          style={({ pressed }) => [styles.row, pressed && styles.pressed, asking !== undefined && asking !== pi.id && styles.dimmed]}>
+          style={({ pressed }) => [styles.row, pressed && styles.pressed, asking !== undefined && asking !== pi.id && styles.dimmed]}
+        >
           <View style={styles.rowText}>
             <Text style={styles.name}>{pi.name}</Text>
             {pi.rssi !== undefined ? <Text style={styles.rowDetail}>Signal {pi.rssi} dBm</Text> : null}
@@ -132,7 +136,9 @@ export default function FindScreen() {
 
       {error ? (
         <View style={styles.errorBox}>
-          <Text style={styles.errorTitle}>{error.kind === 'bluetooth' ? 'Bluetooth' : error.kind === 'led' ? 'The LED did not start' : 'That Pi did not answer'}</Text>
+          <Text style={styles.errorTitle}>
+            {error.kind === 'bluetooth' ? 'Bluetooth' : error.kind === 'led' ? 'The LED did not start' : 'That Pi did not answer'}
+          </Text>
           <Text style={styles.errorBody}>{error.message}</Text>
           {DIAGNOSTICS && error.detail ? <Text style={styles.errorDetail}>{error.detail}</Text> : null}
           <Button
@@ -145,7 +151,6 @@ export default function FindScreen() {
           />
         </View>
       ) : null}
-
     </Screen>
   );
 }

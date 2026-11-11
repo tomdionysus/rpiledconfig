@@ -15,11 +15,7 @@ function camera(id: string, over: Partial<CameraCandidate> = {}): CameraCandidat
 describe('chooseScanCamera', () => {
   it('skips a back camera with no formats, as the A85 reports camera 2', () => {
     // The A85's list: VisionCamera's own scoring picked "2", which has no formats.
-    const devices = [
-      camera('0', { hardwareLevel: 'limited' }),
-      camera('1', { position: 'front' }),
-      camera('2', { hardwareLevel: 'full', formats: [] }),
-    ];
+    const devices = [camera('0', { hardwareLevel: 'limited' }), camera('1', { position: 'front' }), camera('2', { hardwareLevel: 'full', formats: [] })];
     expect(chooseScanCamera(devices, 30)?.id).toBe('0');
   });
 

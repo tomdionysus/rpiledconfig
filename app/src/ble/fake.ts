@@ -265,7 +265,11 @@ export class FakeDaemon implements BleTransport {
         return { ok: true };
       case 'uninstall':
         if (this.uninstallMode === 'unavailable') {
-          return { ok: false, error: 'uninstall_unavailable', message: 'rpiledconfig-uninstall.service does not exist: this daemon was not installed from the package' };
+          return {
+            ok: false,
+            error: 'uninstall_unavailable',
+            message: 'rpiledconfig-uninstall.service does not exist: this daemon was not installed from the package',
+          };
         }
         this.uninstalled = true;
         this.stopBlinking();

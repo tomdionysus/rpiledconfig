@@ -4,14 +4,7 @@
 // requests and an opener for the daemon's responses; the fake daemon has the
 // reverse pair.
 import { bytesToUint, concat, uintToBytes } from './bytes';
-import {
-  COUNTER_LENGTH,
-  DIRECTION_APP_TO_DAEMON,
-  DIRECTION_DAEMON_TO_APP,
-  GCM_NONCE_LENGTH,
-  GCM_TAG_LENGTH,
-  KEY_LENGTH,
-} from './constants';
+import { COUNTER_LENGTH, DIRECTION_APP_TO_DAEMON, DIRECTION_DAEMON_TO_APP, GCM_NONCE_LENGTH, GCM_TAG_LENGTH, KEY_LENGTH } from './constants';
 import { aes256GcmOpen, aes256GcmSeal } from './crypto';
 
 export type Direction = typeof DIRECTION_APP_TO_DAEMON | typeof DIRECTION_DAEMON_TO_APP;

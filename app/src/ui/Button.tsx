@@ -27,9 +27,19 @@ export function Button({ label, onPress, variant = 'primary', disabled, busy, st
         (disabled || busy) && styles.disabled,
         pressed && styles.pressed,
         style,
-      ]}>
+      ]}
+    >
       {busy ? <ActivityIndicator color={variant === 'primary' ? colors.onAccent : colors.text} /> : null}
-      <Text style={[styles.label, variant === 'primary' && styles.primaryLabel, variant === 'quiet' && styles.quietLabel, variant === 'danger' && styles.dangerLabel]}>{label}</Text>
+      <Text
+        style={[
+          styles.label,
+          variant === 'primary' && styles.primaryLabel,
+          variant === 'quiet' && styles.quietLabel,
+          variant === 'danger' && styles.dangerLabel,
+        ]}
+      >
+        {label}
+      </Text>
     </Pressable>
   );
 }

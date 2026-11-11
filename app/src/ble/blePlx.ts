@@ -35,10 +35,7 @@ function ble(): BleManager {
 async function requestPermissions(): Promise<void> {
   if (Platform.OS !== 'android') return;
   if (Number(Platform.Version) >= 31) {
-    const results = await PermissionsAndroid.requestMultiple([
-      PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
-      PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
-    ]);
+    const results = await PermissionsAndroid.requestMultiple([PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN, PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT]);
     if (!Object.values(results).every((result) => result === PermissionsAndroid.RESULTS.GRANTED)) {
       throw unavailable('Bluetooth permission was not granted.');
     }
@@ -180,7 +177,12 @@ export const blePlxTransport: BleTransport = {
   prescan() {
     void requestPermissions()
       .then(waitForPoweredOn)
-      .then(() => startScan(() => {}, () => {}))
+      .then(() =>
+        startScan(
+          () => {},
+          () => {},
+        ),
+      )
       .catch(() => {});
     return () => {
       void ble().stopDeviceScan();

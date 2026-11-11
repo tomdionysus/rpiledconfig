@@ -94,7 +94,13 @@ export async function joinWifi(session: Session, ssid: string, psk: string | und
  * back to the Pi whenever the link drops. `start` is when the join began;
  * the timeout runs from it. Never rejects.
  */
-export async function followStatus(session: Session, target: JoinTarget, options: JoinOptions = {}, start?: number, lossReported = false): Promise<JoinOutcome> {
+export async function followStatus(
+  session: Session,
+  target: JoinTarget,
+  options: JoinOptions = {},
+  start?: number,
+  lossReported = false,
+): Promise<JoinOutcome> {
   const clock = options.clock ?? session.clock;
   const timeoutMs = options.timeoutMs ?? JOIN_TIMEOUT_MS;
   const pollMs = options.pollMs ?? STATUS_POLL_MS;
@@ -238,7 +244,11 @@ export function describeOutcome(outcome: JoinOutcome, ssid: string): Verdict {
       const other = outcome.status.wifi.connected ? outcome.status.wifi.ssid : undefined;
       const back = other ? ` The Pi is back on ${other}.` : '';
       if (outcome.reason?.reason === 'wrong_passphrase') {
-        return { tone: 'error', title: `Wrong passphrase for ${ssid}`, body: `${ssid} refused the passphrase after ${seconds} seconds.${back} Check it and try again.` };
+        return {
+          tone: 'error',
+          title: `Wrong passphrase for ${ssid}`,
+          body: `${ssid} refused the passphrase after ${seconds} seconds.${back} Check it and try again.`,
+        };
       }
       if (outcome.reason?.reason === 'not_found') {
         return {
@@ -248,7 +258,11 @@ export function describeOutcome(outcome: JoinOutcome, ssid: string): Verdict {
         };
       }
       if (outcome.reason) {
-        return { tone: 'error', title: `Did not join ${ssid}`, body: `The Pi gave up after ${seconds} seconds: ${outcome.reason.message ?? 'no reason given'}.${back}` };
+        return {
+          tone: 'error',
+          title: `Did not join ${ssid}`,
+          body: `The Pi gave up after ${seconds} seconds: ${outcome.reason.message ?? 'no reason given'}.${back}`,
+        };
       }
       return {
         tone: 'error',

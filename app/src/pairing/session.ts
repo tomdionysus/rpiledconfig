@@ -160,7 +160,11 @@ export function parseInfo(bytes: Uint8Array): DaemonInfo {
   if (!record || typeof record.protocol !== 'number' || typeof record.version !== 'string') {
     throw new PairingError('protocol', 'The Pi answered with something that is not RPi LED Config.');
   }
-  return { protocol: record.protocol, version: record.version, ...(record.led === 'off' || record.led === 'blinking' || record.led === 'failed' ? { led: record.led } : {}) };
+  return {
+    protocol: record.protocol,
+    version: record.version,
+    ...(record.led === 'off' || record.led === 'blinking' || record.led === 'failed' ? { led: record.led } : {}),
+  };
 }
 
 /** A daemon this app can talk to: the same protocol, as nothing older is in the field. */
@@ -209,7 +213,13 @@ export async function pair(transport: BleTransport, name: string, idBytes: Uint8
   try {
     await transport.prepare();
   } catch (error) {
-    throw new PairingError('bluetooth', error instanceof Error && error.name === 'BluetoothUnavailable' ? error.message : 'Bluetooth is not available. Check that it is on and that the app may use it.', error);
+    throw new PairingError(
+      'bluetooth',
+      error instanceof Error && error.name === 'BluetoothUnavailable'
+        ? error.message
+        : 'Bluetooth is not available. Check that it is on and that the app may use it.',
+      error,
+    );
   }
   const peripheral = await findPeripheral(transport, name, options.scanTimeoutMs ?? DEFAULT_SCAN_TIMEOUT_MS, clock, options.preferId);
 
@@ -268,7 +278,10 @@ export async function pair(transport: BleTransport, name: string, idBytes: Uint8
     );
     stopAuthMonitor();
     if (result.length === 1 && result[0] === AUTH_REFUSED) {
-      throw new PairingError('refused', 'The Pi refused the key the camera read. It may have expired, or be from another Pi\'s LED: read the LED of the Pi you chose again.');
+      throw new PairingError(
+        'refused',
+        "The Pi refused the key the camera read. It may have expired, or be from another Pi's LED: read the LED of the Pi you chose again.",
+      );
     }
     if (result.length !== AUTH_RESULT_ACCEPTED_LENGTH || result[0] !== AUTH_ACCEPTED) {
       throw new PairingError('protocol', 'The authentication result was malformed.');
@@ -363,7 +376,11 @@ export class Session {
    */
   async reconnect(options: Omit<PairOptions, 'clock' | 'preferId'> = {}): Promise<Session> {
     await this.close();
-    return pair(this.origin.transport, this.origin.peripheral.name, this.origin.idBytes, { ...options, clock: this.origin.clock, preferId: this.origin.peripheral.id });
+    return pair(this.origin.transport, this.origin.peripheral.name, this.origin.idBytes, {
+      ...options,
+      clock: this.origin.clock,
+      preferId: this.origin.peripheral.id,
+    });
   }
 
   status(): Promise<StatusResponse> {

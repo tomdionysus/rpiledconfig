@@ -110,7 +110,11 @@ export function describeCopyOutcome(outcome: CopyOutcome, label: string): Verdic
     case 'unavailable':
       return { tone: 'error', title: 'Easy Connect is not available', body: `${outcome.reason} Type the network instead.` };
     case 'cancelled':
-      return { tone: 'error', title: 'Nothing was sent', body: "Android's screen was closed before it sent a network. Try again, or scan or type the network instead." };
+      return {
+        tone: 'error',
+        title: 'Nothing was sent',
+        body: "Android's screen was closed before it sent a network. Try again, or scan or type the network instead.",
+      };
     default:
       return describeOutcome(outcome, label);
   }

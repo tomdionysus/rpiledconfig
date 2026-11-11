@@ -47,7 +47,12 @@ describe('watchForPis, over time', () => {
     const clock = new ManualClock();
     const { transport, hear } = radio();
     let pis: FoundPi[] = [];
-    const stop = watchForPis(transport, (next) => (pis = next), () => {}, clock);
+    const stop = watchForPis(
+      transport,
+      (next) => (pis = next),
+      () => {},
+      clock,
+    );
 
     hear(PI);
     expect(pis).toEqual([PI]);
@@ -62,7 +67,12 @@ describe('watchForPis, over time', () => {
     const clock = new ManualClock();
     const { transport, hear } = radio();
     let pis: FoundPi[] = [];
-    const stop = watchForPis(transport, (next) => (pis = next), () => {}, clock);
+    const stop = watchForPis(
+      transport,
+      (next) => (pis = next),
+      () => {},
+      clock,
+    );
 
     hear(PI);
     hear(OTHER);
@@ -78,7 +88,12 @@ describe('watchForPis, over time', () => {
     const clock = new ManualClock();
     const { transport, hear } = radio();
     let pis: FoundPi[] = [];
-    const stop = watchForPis(transport, (next) => (pis = next), () => {}, clock);
+    const stop = watchForPis(
+      transport,
+      (next) => (pis = next),
+      () => {},
+      clock,
+    );
 
     hear(PI);
     await clock.advance(PI_STALE_MS);
@@ -92,7 +107,12 @@ describe('watchForPis, over time', () => {
     const clock = new ManualClock();
     const { transport, hear, isStopped } = radio();
     const calls: FoundPi[][] = [];
-    const stop = watchForPis(transport, (next) => calls.push(next), () => {}, clock);
+    const stop = watchForPis(
+      transport,
+      (next) => calls.push(next),
+      () => {},
+      clock,
+    );
 
     hear(PI);
     stop();

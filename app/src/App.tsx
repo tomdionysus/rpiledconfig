@@ -40,9 +40,7 @@ export function App() {
     <View style={styles.root}>
       <SafeAreaProvider>
         <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
-        <AppProvider>
-          {initial ? <Navigator screens={SCREENS} initial={initial} /> : null}
-        </AppProvider>
+        <AppProvider>{initial ? <Navigator screens={SCREENS} initial={initial} /> : null}</AppProvider>
       </SafeAreaProvider>
     </View>
   );

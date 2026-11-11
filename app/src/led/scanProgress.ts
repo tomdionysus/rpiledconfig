@@ -68,7 +68,6 @@ export class ScanProgress {
   }
 
   private reading(state: ReaderSnapshot): Omit<ScanView, 'stalled'> {
-
     if (state.ledSeen) {
       const tile = state.tileX !== undefined && state.tileY !== undefined ? `${state.tileX},${state.tileY}` : undefined;
       // Another tile is another reader, starting from what that tile saw.
@@ -80,7 +79,13 @@ export class ScanProgress {
     }
 
     if (!this.seen) {
-      return { phase: 'looking', progress: 0, label: 'Looking for the blinking LED', detail: '', hint: 'Point the camera at the Pi; the LED is found anywhere in the picture.' };
+      return {
+        phase: 'looking',
+        progress: 0,
+        label: 'Looking for the blinking LED',
+        detail: '',
+        hint: 'Point the camera at the Pi; the LED is found anywhere in the picture.',
+      };
     }
 
     const percent = Math.floor(this.best * 100);
@@ -98,6 +103,12 @@ export class ScanProgress {
     if (lost) {
       return { phase: 'lost', progress: this.best, label: 'Lost sight of the LED', detail: `${percent}%`, hint: 'Point the camera back at the LED.' };
     }
-    return { phase: 'reading', progress: this.best, label: 'Watching the LED', detail: `${percent}%`, hint: 'Hold still: the bar is how much of one frame the camera has watched.' };
+    return {
+      phase: 'reading',
+      progress: this.best,
+      label: 'Watching the LED',
+      detail: `${percent}%`,
+      hint: 'Hold still: the bar is how much of one frame the camera has watched.',
+    };
   }
 }

@@ -31,8 +31,7 @@ export function watchForPis(
   clock: Clock = realClock,
 ): () => void {
   const found = new Map<string, { pi: FoundPi; heard: number }>();
-  const report = () =>
-    onChange([...found.values()].map((entry) => entry.pi).sort((a, b) => (b.rssi ?? -127) - (a.rssi ?? -127) || (a.name < b.name ? -1 : 1)));
+  const report = () => onChange([...found.values()].map((entry) => entry.pi).sort((a, b) => (b.rssi ?? -127) - (a.rssi ?? -127) || (a.name < b.name ? -1 : 1)));
 
   let cancelSweep = () => {};
   const sweep = () => {

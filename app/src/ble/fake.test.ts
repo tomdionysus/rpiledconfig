@@ -158,7 +158,12 @@ describe('FakeDaemon', () => {
     daemon.handle({ op: 'wifi.configure', ssid: 'Neighbours 5G', psk: 'wrong' });
     expect(daemon.wifi.connected).toBe(false);
     await clock.advance(8_000);
-    expect(daemon.wifi).toEqual({ connected: true, ssid: 'Blackraven', ip: FAKE_IP, join: { ssid: 'Neighbours 5G', state: 'failed', reason: 'wrong_passphrase', message: 'NetworkManager: no secrets' } });
+    expect(daemon.wifi).toEqual({
+      connected: true,
+      ssid: 'Blackraven',
+      ip: FAKE_IP,
+      join: { ssid: 'Neighbours 5G', state: 'failed', reason: 'wrong_passphrase', message: 'NetworkManager: no secrets' },
+    });
 
     daemon.joinAfterMs = 'never';
     daemon.handle({ op: 'wifi.configure', ssid: 'Cafe Guest' });

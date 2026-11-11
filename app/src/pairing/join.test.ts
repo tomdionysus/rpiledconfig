@@ -216,13 +216,10 @@ describe('Session.reconnect', () => {
       connectedTo,
       prepare: () => daemon.prepare(),
       scan(onFound, onError) {
-        const stop = daemon.scan(
-          (peripheral) => {
-            onFound({ ...peripheral, id: lookalikeId });
-            if (lookalikeId !== 'moved') onFound(peripheral);
-          },
-          onError,
-        );
+        const stop = daemon.scan((peripheral) => {
+          onFound({ ...peripheral, id: lookalikeId });
+          if (lookalikeId !== 'moved') onFound(peripheral);
+        }, onError);
         return stop;
       },
       connect(id) {

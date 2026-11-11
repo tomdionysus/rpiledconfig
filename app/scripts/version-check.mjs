@@ -39,20 +39,21 @@ const gradle = readFileSync(new URL('../android/app/build.gradle', import.meta.u
 const gradleName = /versionName\s+"([^"]+)"/.exec(gradle)?.[1];
 const gradleCode = Number(/versionCode\s+(\d+)/.exec(gradle)?.[1]);
 if (gradleName !== app.version || gradleCode !== expectedCode) {
-  problems.push(`android/app/build.gradle says ${gradleName ?? 'unset'} (versionCode ${Number.isNaN(gradleCode) ? 'unset' : gradleCode}); expected ${app.version} (${expectedCode})`);
+  problems.push(
+    `android/app/build.gradle says ${gradleName ?? 'unset'} (versionCode ${Number.isNaN(gradleCode) ? 'unset' : gradleCode}); expected ${app.version} (${expectedCode})`,
+  );
 }
 
 // The root README's version line is its first line in italics, `*vX.Y.Z*`, under the logo, with
 // an optional qualifier such as `(in development)` inside the emphasis.
 const readme = readFileSync(new URL('../../README.md', import.meta.url), 'utf8');
-const readmeLine = readme.split('\n').find((line) => /^\*v\d/.test(line.trim()))?.trim();
+const readmeLine = readme
+  .split('\n')
+  .find((line) => /^\*v\d/.test(line.trim()))
+  ?.trim();
 const readmeVersion = /^\*v(\d+\.\d+\.\d+)(?: [^*]*)?\*$/.exec(readmeLine ?? '')?.[1];
 if (readmeVersion !== pkg.version) {
-  problems.push(
-    readmeVersion
-      ? `../README.md says v${readmeVersion}, package.json says ${pkg.version}`
-      : `../README.md has no *v${pkg.version}* line`,
-  );
+  problems.push(readmeVersion ? `../README.md says v${readmeVersion}, package.json says ${pkg.version}` : `../README.md has no *v${pkg.version}* line`);
 }
 
 if (!/^\d+\.\d+\.\d+$/.test(pkg.version)) problems.push(`${pkg.version} is not a bare x.y.z version`);
@@ -60,7 +61,9 @@ if (!/^\d+\.\d+\.\d+$/.test(pkg.version)) problems.push(`${pkg.version} is not a
 // Checked only when this commit is tagged.
 let tag;
 try {
-  tag = execSync('git describe --tags --exact-match', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+  tag = execSync('git describe --tags --exact-match', { stdio: ['ignore', 'pipe', 'ignore'] })
+    .toString()
+    .trim();
 } catch {
   tag = undefined;
 }
