@@ -26,6 +26,11 @@ describe('fragments', () => {
     expect(fragment(new Uint8Array(), 20)).toEqual([new Uint8Array([FLAG_LAST])]);
   });
 
+  it('wants room for the flags byte and at least one byte of data', () => {
+    expect(() => fragment(bytes(3), 1)).toThrow(/room/);
+    expect(fragment(bytes(2), 2)).toEqual([new Uint8Array([0, 0]), new Uint8Array([FLAG_LAST, 1])]);
+  });
+
   it('reassembles in order across messages', () => {
     const reassembler = new Reassembler();
     const one = bytes(50);

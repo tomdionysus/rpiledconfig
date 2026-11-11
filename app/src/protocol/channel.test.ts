@@ -65,5 +65,6 @@ describe('channel', () => {
 
   it('wants a 32-byte key', () => {
     expect(() => new Sealer(new Uint8Array(16), DIRECTION_APP_TO_DAEMON)).toThrow();
+    expect(() => new Opener(new Uint8Array(33), DIRECTION_DAEMON_TO_APP)).toThrow();
   });
 });

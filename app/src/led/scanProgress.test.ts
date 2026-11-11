@@ -87,6 +87,14 @@ describe('ScanProgress', () => {
     expect(`${view.label} ${view.hint}`).not.toMatch(/all of the code|code seen|100%/i);
   });
 
+  it('reads the LED as one tile when the reader does not say which', () => {
+    const p = new ScanProgress(FRAME_MS);
+    p.update({ t: 0, ledSeen: true, coverage: 0.3 });
+    const view = p.update({ t: 100, ledSeen: true, coverage: 0.2 });
+    expect(view.phase).toBe('reading');
+    expect(view.progress).toBe(0.3);
+  });
+
   it('is never stalled once read', () => {
     const p = new ScanProgress(FRAME_MS);
     p.update(at(0, true, 1));

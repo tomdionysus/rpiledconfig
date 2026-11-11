@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { canContinue, needsFor, showAtLaunch, statusesFrom } from './permissions';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { PermissionsAndroid, Platform } from '@/test/react-native';
+import { canContinue, checkNeeds, currentNeeds, needsFor, requestNeeds, showAtLaunch, statusesFrom } from './permissions';
 
 const SCAN = 'android.permission.BLUETOOTH_SCAN';
 const CONNECT = 'android.permission.BLUETOOTH_CONNECT';
@@ -76,5 +77,41 @@ describe('canContinue and showAtLaunch', () => {
 
   it('always shows when something required is missing, such as one taken away in Settings', () => {
     expect(showAtLaunch(needs, { ...all, camera: 'denied' }, true)).toBe(true);
+  });
+});
+
+describe('asking Android', () => {
+  afterEach(() => {
+    Platform.OS = 'ios';
+    Platform.Version = 17;
+    vi.restoreAllMocks();
+  });
+
+  it('needs nothing off Android, and what its version needs on it', () => {
+    expect(currentNeeds()).toEqual([]);
+    Platform.OS = 'android';
+    Platform.Version = 30;
+    expect(currentNeeds()).toEqual(needsFor(30));
+    Platform.Version = '33';
+    expect(currentNeeds()).toEqual(needsFor(33));
+  });
+
+  it('checks without asking, a need granted only with all its permissions', async () => {
+    const granted = new Set([SCAN, CAMERA]);
+    const check = vi.spyOn(PermissionsAndroid, 'check').mockImplementation(async (permission) => granted.has(permission));
+    expect(await checkNeeds(needsFor(31))).toEqual({ bluetooth: 'denied', camera: 'granted', location: 'denied' });
+    expect(check.mock.calls.map(([permission]) => permission).sort()).toEqual([CAMERA, CONNECT, FINE, SCAN].sort());
+  });
+
+  it('asks for everything in one go, coarse location included, and reads the answers', async () => {
+    const requestMultiple = vi.spyOn(PermissionsAndroid, 'requestMultiple').mockResolvedValue({
+      [SCAN]: 'granted',
+      [CONNECT]: 'granted',
+      [CAMERA]: 'never_ask_again',
+      [FINE]: 'denied',
+      [COARSE]: 'granted',
+    });
+    expect(await requestNeeds(needsFor(31))).toEqual({ bluetooth: 'granted', camera: 'blocked', location: 'denied' });
+    expect(requestMultiple).toHaveBeenCalledWith([SCAN, CONNECT, CAMERA, FINE, COARSE]);
   });
 });

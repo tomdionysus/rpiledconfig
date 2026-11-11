@@ -39,4 +39,13 @@ describe('ManualClock', () => {
     await expect(clock.run(sleep(clock, 45_000).then(() => clock.now()))).resolves.toBe(45_000);
     await expect(clock.run(new Promise(() => {}), 5_000, 1_000)).rejects.toThrow(/still pending/);
   });
+
+  it('hands back a promise that fails as it failed', async () => {
+    const clock = new ManualClock();
+    const failing = sleep(clock, 1_000).then(() => {
+      throw new Error('after a second');
+    });
+    await expect(clock.run(failing)).rejects.toThrow('after a second');
+    expect(clock.now()).toBe(1_000);
+  });
 });

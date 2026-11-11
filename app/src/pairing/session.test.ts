@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { FakeDaemon } from '@/ble/fake';
 import type { BleTransport } from '@/ble/transport';
-import { hexToBytes } from '@/protocol/bytes';
+import { hexToBytes, utf8Encode } from '@/protocol/bytes';
 import { appChannel } from '@/protocol/channel';
-import { CHAR_AUTH_RESULT, CHAR_RESPONSE, CHAR_REQUEST } from '@/protocol/constants';
+import { AUTH_ACCEPTED, CHAR_AUTH_RESULT, CHAR_CHALLENGE, CHAR_INFO, CHAR_RESPONSE, CHAR_REQUEST } from '@/protocol/constants';
 import { fragment } from '@/protocol/fragments';
 import { sessionKey } from '@/protocol/keys';
 import { encodeRequest } from '@/protocol/messages';
 import { ManualClock } from '@/util/clock';
-import { LinkLostError, pair, PairingError, RequestError, type PairingPhase } from './session';
+import { LinkLostError, pair, PairingError, parseInfo, RequestError, type PairingPhase } from './session';
 
 const ID = hexToBytes('012345');
 const OTHER_ID = hexToBytes('fedcba');
@@ -368,5 +368,186 @@ describe('a daemon of another protocol', () => {
     const daemon = new FakeDaemon({ pairingKey: ID, protocol });
     const error = await failure(pair(daemon, daemon.name, ID));
     expect(error.kind).toBe('protocol');
+  });
+});
+
+/**
+ * The fake daemon's transport with faults put in its way: `prepare`, `scan` and `connect`
+ * replaced, a characteristic's reads answered by the test, its notifications muted, and the
+ * response monitor's callbacks kept so the test can deliver to them.
+ */
+function faulty(daemon: FakeDaemon, faults: Partial<BleTransport> & { reads?: Record<string, () => Promise<Uint8Array>>; mute?: string[] } = {}) {
+  const taps: { deliver: (value: Uint8Array) => void; error: (error: Error) => void } = { deliver: () => {}, error: () => {} };
+  const disconnects: string[] = [];
+  const transport: BleTransport = {
+    prepare: faults.prepare ?? (() => daemon.prepare()),
+    scan: faults.scan ?? ((onFound, onError) => daemon.scan(onFound, onError)),
+    connect:
+      faults.connect ??
+      (async (id) => {
+        const real = await daemon.connect(id);
+        return {
+          get mtu() {
+            return real.mtu;
+          },
+          read: (characteristic) => faults.reads?.[characteristic]?.() ?? real.read(characteristic),
+          monitor: (characteristic, onValue, onError) => {
+            if (faults.mute?.includes(characteristic)) return () => {};
+            if (characteristic === CHAR_RESPONSE) {
+              taps.deliver = onValue;
+              taps.error = (error) => onError?.(error);
+            }
+            return real.monitor(characteristic, onValue, onError);
+          },
+          write: (characteristic, value) => real.write(characteristic, value),
+          onDisconnected: (listener) => real.onDisconnected(listener),
+          disconnect: () => {
+            disconnects.push(id);
+            return real.disconnect();
+          },
+        };
+      }),
+  };
+  return { transport, taps, disconnects };
+}
+
+describe('pairing that fails on the way', () => {
+  it('says what Bluetooth said when it is unavailable, and something plain otherwise', async () => {
+    const daemon = new FakeDaemon({ pairingKey: ID });
+    const off = Object.assign(new Error('Bluetooth is off. Turn it on and try again.'), { name: 'BluetoothUnavailable' });
+    let error = await failure(pair(faulty(daemon, { prepare: () => Promise.reject(off) }).transport, daemon.name, ID));
+    expect([error.kind, error.message]).toEqual(['bluetooth', 'Bluetooth is off. Turn it on and try again.']);
+
+    error = await failure(pair(faulty(daemon, { prepare: () => Promise.reject(new Error('BleManager destroyed')) }).transport, daemon.name, ID));
+    expect([error.kind, error.message, error.detail]).toEqual([
+      'bluetooth',
+      'Bluetooth is not available. Check that it is on and that the app may use it.',
+      'BleManager destroyed',
+    ]);
+  });
+
+  it('reports a scan that fails', async () => {
+    const daemon = new FakeDaemon({ pairingKey: ID });
+    const scan: BleTransport['scan'] = (_onFound, onError) => {
+      queueMicrotask(() => onError(new Error('scan throttled')));
+      return () => {};
+    };
+    const error = await failure(pair(faulty(daemon, { scan }).transport, daemon.name, ID));
+    expect([error.kind, error.detail]).toEqual(['bluetooth', 'scan throttled']);
+    expect(error.message).toMatch(/scanning failed/);
+  });
+
+  it('reports a connection that cannot be made', async () => {
+    const daemon = new FakeDaemon({ pairingKey: ID });
+    const connect = () => Promise.reject(new Error('GATT 133'));
+    const error = await failure(pair(faulty(daemon, { connect }).transport, daemon.name, ID));
+    expect([error.kind, error.detail]).toEqual(['bluetooth', 'GATT 133']);
+    expect(error.message).toMatch(/Could not connect/);
+  });
+
+  it('takes a Pi under another id when the one it had does not show up', async () => {
+    const clock = new ManualClock();
+    const daemon = new FakeDaemon({ pairingKey: ID, clock });
+    const session = await clock.run(pair(daemon, daemon.name, ID, { clock, preferId: 'gone' }), 5_000, 500);
+    expect(session.peripheral.name).toBe(daemon.name);
+    await session.close();
+  });
+
+  it('refuses Info that is not RPi LED Config, and hangs up', async () => {
+    const daemon = new FakeDaemon({ pairingKey: ID });
+    for (const info of ['not json', '{"protocol":"4","version":"0.5.1"}', 'null']) {
+      const { transport, disconnects } = faulty(daemon, { reads: { [CHAR_INFO]: async () => utf8Encode(info) } });
+      const error = await failure(pair(transport, daemon.name, ID));
+      expect([error.kind, error.message], info).toEqual(['protocol', 'The Pi answered with something that is not RPi LED Config.']);
+      expect(disconnects).toHaveLength(1);
+    }
+  });
+
+  it('refuses a challenge that is not a SPAKE2 share without writing Auth', async () => {
+    const daemon = new FakeDaemon({ pairingKey: ID });
+    const { transport, disconnects } = faulty(daemon, { reads: { [CHAR_CHALLENGE]: async () => new Uint8Array(65) } });
+    const error = await failure(pair(transport, daemon.name, ID));
+    expect([error.kind, error.message]).toEqual(['protocol', "The Pi's challenge was not a valid SPAKE2 share."]);
+    expect(disconnects).toHaveLength(1);
+    expect(daemon.refusalsInARow).toBe(0);
+  });
+
+  it('gives up on an authentication the Pi does not answer', async () => {
+    const clock = new ManualClock();
+    const daemon = new FakeDaemon({ pairingKey: ID, clock });
+    const { transport } = faulty(daemon, { reads: { [CHAR_AUTH_RESULT]: async () => new Uint8Array() }, mute: [CHAR_AUTH_RESULT] });
+    const error = await clock.run(failure(pair(transport, daemon.name, ID, { clock, authTimeoutMs: 3_000 })), 10_000, 500);
+    expect([error.kind, error.message]).toEqual(['timeout', 'The Pi did not answer the authentication.']);
+  });
+
+  it('refuses an authentication result of the wrong shape', async () => {
+    const daemon = new FakeDaemon({ pairingKey: ID });
+    for (const result of [new Uint8Array([AUTH_ACCEPTED]), new Uint8Array([0x02, ...new Uint8Array(32)])]) {
+      const error = await failure(pair(faulty(daemon, { reads: { [CHAR_AUTH_RESULT]: async () => result } }).transport, daemon.name, ID));
+      expect([error.kind, error.message]).toEqual(['protocol', 'The authentication result was malformed.']);
+    }
+  });
+
+  it('calls a read that fails while pairing a lost link', async () => {
+    const daemon = new FakeDaemon({ pairingKey: ID });
+    const { transport } = faulty(daemon, { reads: { [CHAR_CHALLENGE]: () => Promise.reject(new Error('read failed')) } });
+    const error = await failure(pair(transport, daemon.name, ID));
+    expect([error.kind, error.detail]).toEqual(['disconnected', 'read failed']);
+    expect(error.message).toMatch(/lost while pairing/);
+  });
+});
+
+describe('a session that fails', () => {
+  it('ends on a notification error, once, however many follow', async () => {
+    const daemon = new FakeDaemon({ pairingKey: ID });
+    const { transport, taps } = faulty(daemon);
+    const session = await pair(transport, daemon.name, ID);
+    const reasons: Array<LinkLostError | undefined> = [];
+    session.onClosed((reason) => reasons.push(reason));
+    taps.error(new Error('notify failed'));
+    taps.error(new Error('notify failed again'));
+    expect(reasons.map((reason) => [reason?.message, reason?.detail])).toEqual([['The Bluetooth link to the Pi was lost.', 'notify failed']]);
+    expect(session.closedBy?.unverified).toBe(false);
+  });
+
+  it('ends on a fragment that breaks the framing, as an answer that did not verify', async () => {
+    const daemon = new FakeDaemon({ pairingKey: ID });
+    const { transport, taps } = faulty(daemon);
+    const session = await pair(transport, daemon.name, ID);
+    taps.deliver(new Uint8Array([0x02, 1, 2, 3]));
+    expect(session.isClosed).toBe(true);
+    expect(session.closedBy?.unverified).toBe(true);
+    expect(session.closedBy?.message).toMatch(/could not be verified/);
+  });
+
+  it('tells its listeners when it is closed on purpose, and not those that left', async () => {
+    const daemon = new FakeDaemon({ pairingKey: ID });
+    const session = await pair(daemon, daemon.name, ID);
+    const heard: string[] = [];
+    session.onClosed((reason) => heard.push(`stayed ${String(reason)}`));
+    session.onClosed(() => heard.push('left'))();
+    await session.close();
+    await session.close();
+    expect(heard).toEqual(['stayed undefined']);
+    expect(session.closedBy).toBeUndefined();
+  });
+
+  it('turns away a request once closed, and the one it was waiting on', async () => {
+    const clock = new ManualClock();
+    const daemon = new FakeDaemon({ pairingKey: ID, clock });
+    const session = await clock.run(pair(daemon, daemon.name, ID, { clock }));
+    daemon.silent = true;
+    const waiting = session.status().catch((caught: unknown) => caught);
+    await tick();
+    await session.close();
+    expect(await waiting).toBeInstanceOf(LinkLostError);
+    expect(((await waiting) as Error).message).toBe('The link to the Pi is closed.');
+  });
+});
+
+describe('parseInfo', () => {
+  it('keeps what the LED is doing only when it is one of the three states', () => {
+    expect(parseInfo(utf8Encode('{"protocol":4,"version":"0.5.1","led":"blinking"}'))).toEqual({ protocol: 4, version: '0.5.1', led: 'blinking' });
+    expect(parseInfo(utf8Encode('{"protocol":4,"version":"0.5.1","led":"on"}'))).toEqual({ protocol: 4, version: '0.5.1' });
   });
 });

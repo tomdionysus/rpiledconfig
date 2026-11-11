@@ -4,9 +4,9 @@ import { describe, expect, it } from 'vitest';
 import { FAKE_DPP_URI, FAKE_IP, FakeDaemon, type FakeDaemonOptions } from '@/ble/fake';
 import { hexToBytes } from '@/protocol/bytes';
 import { ManualClock } from '@/util/clock';
-import { copyPhoneWifi, describeCopyStep, type CopyStep, type EasyConnectLaunch } from './copyWifi';
+import { copyPhoneWifi, describeCopyOutcome, describeCopyStep, type CopyStep, type EasyConnectLaunch } from './copyWifi';
 import { describeOutcome } from './join';
-import { pair } from './session';
+import { LinkLostError, pair, RequestError, type Session } from './session';
 
 const ID = hexToBytes('012345');
 
@@ -102,5 +102,110 @@ describe('copyPhoneWifi', () => {
     await clock.run(session.easyConnect());
     await session.close();
     expect(daemon.easyConnectListening).toBe(false);
+  });
+});
+
+/** A session that answers as the test says, for the ways a real one fails. */
+function scripted(overrides: Partial<Record<'status' | 'easyConnect' | 'easyConnectStop', () => Promise<unknown>>>, closed = false) {
+  const clock = new ManualClock();
+  const calls: string[] = [];
+  const session = {
+    clock,
+    isClosed: closed,
+    status: overrides.status ?? (async () => ({ ok: true, wifi: { connected: false } })),
+    easyConnect: overrides.easyConnect ?? (async () => FAKE_DPP_URI),
+    async easyConnectStop() {
+      calls.push('stop');
+      return overrides.easyConnectStop?.();
+    },
+  } as unknown as Session;
+  return { session, calls, clock };
+}
+
+describe('copyPhoneWifi, when things go wrong', () => {
+  it('ends at once when the link is gone before it starts', async () => {
+    const lost = new LinkLostError('The Bluetooth link to the Pi was lost.');
+    const { session } = scripted({ status: () => Promise.reject(lost) });
+    const outcome = await copyPhoneWifi(session, async () => 'done');
+    expect(outcome).toEqual({ kind: 'lost', error: lost });
+  });
+
+  it('goes on without knowing the network before when the Pi will not say', async () => {
+    const { session } = scripted({
+      status: () => Promise.reject(new RequestError('wifi_unavailable', 'busy')),
+      easyConnect: () => Promise.reject(new RequestError('easyconnect_unavailable', 'wpa_supplicant has no DPP')),
+    });
+    const outcome = await copyPhoneWifi(session, async () => 'done');
+    expect(outcome).toEqual({ kind: 'unavailable', session, reason: 'wpa_supplicant has no DPP' });
+  });
+
+  it('offers the other ways to a daemon that does not know Easy Connect', async () => {
+    const { session } = scripted({ easyConnect: () => Promise.reject(new RequestError('unknown_op', 'unknown op')) });
+    expect((await copyPhoneWifi(session, async () => 'done')).kind).toBe('unavailable');
+  });
+
+  it('passes on any other refusal', async () => {
+    const busy = new RequestError('busy', 'Another phone is configuring this Pi.');
+    const { session } = scripted({ easyConnect: () => Promise.reject(busy) });
+    expect(await copyPhoneWifi(session, async () => 'done')).toEqual({ kind: 'refused', session, error: busy });
+  });
+
+  it('calls a failure to ask for the code a lost link', async () => {
+    const { session } = scripted({ easyConnect: () => Promise.reject(new LinkLostError('The Pi stopped answering over Bluetooth.')) });
+    const outcome = await copyPhoneWifi(session, async () => 'done');
+    expect(outcome.kind).toBe('lost');
+    if (outcome.kind === 'lost') expect(outcome.error.message).toBe('The Pi stopped answering over Bluetooth.');
+
+    // Native code can reject with a string; it still ends as a lost link with that text.
+    // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
+    const odd = scripted({ easyConnect: () => Promise.reject('a string') });
+    const second = await copyPhoneWifi(odd.session, async () => 'done');
+    if (second.kind === 'lost') expect(second.error.message).toBe('a string');
+    expect(second.kind).toBe('lost');
+  });
+
+  it('says nothing was sent when the user backs out and the Pi cannot be asked', async () => {
+    let asked = 0;
+    const { session, calls } = scripted({
+      status: async () => {
+        asked += 1;
+        if (asked > 1) throw new LinkLostError('The Bluetooth link to the Pi was lost.');
+        return { ok: true, wifi: { connected: false } };
+      },
+      easyConnectStop: () => Promise.reject(new Error('write failed')),
+    });
+    expect(await copyPhoneWifi(session, async () => 'cancelled')).toEqual({ kind: 'cancelled', session });
+    expect(calls).toEqual(['stop']);
+  });
+
+  it('asks nothing more of a session already closed', async () => {
+    const { session, calls } = scripted({}, true);
+    expect(await copyPhoneWifi(session, async () => 'cancelled')).toEqual({ kind: 'cancelled', session });
+    expect(calls).toEqual([]);
+  });
+
+  it('still counts the network the Pi was on as not new when the user backs out', async () => {
+    const on = { ok: true, wifi: { connected: true, ssid: 'Neighbours 5G', ip: '10.0.0.7' } };
+    const { session } = scripted({ status: async () => on });
+    expect((await copyPhoneWifi(session, async () => 'cancelled')).kind).toBe('cancelled');
+  });
+});
+
+describe('what the screen says while copying', () => {
+  const session = {} as Session;
+
+  it('names each step', () => {
+    expect(describeCopyStep({ kind: 'asking' }, 'Blackraven')).toBe('Asking the Pi for its Easy Connect code.');
+    expect(describeCopyStep({ kind: 'sending' }, 'Blackraven')).toBe('Sending Blackraven to the Pi.');
+  });
+
+  it('offers typing when Easy Connect is not there, and again after a cancel', () => {
+    expect(describeCopyOutcome({ kind: 'unavailable', session, reason: 'This phone cannot send its WiFi by Easy Connect.' }, 'x')).toEqual({
+      tone: 'error',
+      title: 'Easy Connect is not available',
+      body: 'This phone cannot send its WiFi by Easy Connect. Type the network instead.',
+    });
+    expect(describeCopyOutcome({ kind: 'cancelled', session }, 'x').title).toBe('Nothing was sent');
+    expect(describeCopyOutcome({ kind: 'lost', error: new Error('gone.') }, 'Blackraven').title).toBe('Lost touch with the Pi');
   });
 });

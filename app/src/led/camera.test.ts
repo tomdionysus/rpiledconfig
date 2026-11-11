@@ -43,4 +43,14 @@ describe('chooseScanCamera', () => {
     expect(chooseScanCamera([camera('0'), camera('1', { formats: [{ maxFps: 30 }, { maxFps: 60 }] })], 30)?.id).toBe('1');
     expect(chooseScanCamera([camera('7'), camera('2'), camera('10')], 30)?.id).toBe('2');
   });
+
+  it('ranks a hardware level it does not know lowest, and a camera without a numeric id last', () => {
+    expect(chooseScanCamera([camera('0', { hardwareLevel: 'external' as CameraCandidate['hardwareLevel'] }), camera('1')], 30)?.id).toBe('1');
+    expect(chooseScanCamera([camera('back-tele'), camera('7')], 30)?.id).toBe('7');
+  });
+
+  it('keeps the first of two cameras it cannot tell apart', () => {
+    const first = camera('x');
+    expect(chooseScanCamera([first, camera('y')], 30)).toBe(first);
+  });
 });

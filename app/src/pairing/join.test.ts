@@ -6,8 +6,9 @@ import { FAKE_IP, FakeDaemon, type FakeDaemonOptions } from '@/ble/fake';
 import type { BleTransport } from '@/ble/transport';
 import { hexToBytes } from '@/protocol/bytes';
 import { ManualClock } from '@/util/clock';
-import { collapseSteps, describeOutcome, describeStep, followStatus, joinWifi, JOIN_TIMEOUT_MS, type JoinStep } from './join';
-import { pair, type Session } from './session';
+import { MessageError, type StatusResponse } from '@/protocol/messages';
+import { collapseSteps, describeOutcome, describeStep, followStatus, isOn, joinWifi, JOIN_TIMEOUT_MS, type JoinOutcome, type JoinStep } from './join';
+import { LinkLostError, pair, PairingError, RequestError, type Session } from './session';
 
 const ID = hexToBytes('012345');
 const PSK = 'correct horse battery staple';
@@ -260,5 +261,129 @@ describe('Session.reconnect', () => {
     expect(again.peripheral.id).toBe('moved');
     expect(transport.connectedTo).toEqual(['moved', 'moved']);
     await again.close();
+  });
+});
+
+/** A session whose status answers are the test's, for what the fake daemon does not do on its own. */
+function scripted(clock: ManualClock, status: () => Promise<StatusResponse>, closedBy?: LinkLostError) {
+  let closed = closedBy !== undefined;
+  const session = {
+    clock,
+    closedBy,
+    get isClosed() {
+      return closed;
+    },
+    status,
+    async close() {
+      closed = true;
+    },
+    reconnect: () => Promise.reject(new PairingError('not_found', 'The Pi did not come back.')),
+  };
+  return session as unknown as Session;
+}
+
+const ON_BLACKRAVEN: StatusResponse = { ok: true, wifi: { connected: true, ssid: 'Blackraven', ip: FAKE_IP } };
+
+describe('followStatus, edge by edge', () => {
+  it('does not retry past an answer that did not verify', async () => {
+    const clock = new ManualClock();
+    const unverified = new LinkLostError("The Pi's answer could not be verified, so the link was dropped.", 'tag', true);
+    const outcome = await clock.run(
+      followStatus(
+        scripted(clock, () => Promise.resolve(ON_BLACKRAVEN), unverified),
+        { ssid: 'Blackraven' },
+      ),
+    );
+    expect(outcome).toEqual({ kind: 'lost', error: unverified, lastStatus: undefined });
+  });
+
+  it('asks again while the Pi says its WiFi is busy', async () => {
+    const clock = new ManualClock();
+    let asked = 0;
+    const session = scripted(clock, async () => {
+      asked += 1;
+      if (asked < 3) throw new RequestError('wifi_unavailable', 'NetworkManager is not answering');
+      return ON_BLACKRAVEN;
+    });
+    const outcome = await clock.run(followStatus(session, { ssid: 'Blackraven' }), 60_000, 500);
+    expect(outcome.kind).toBe('joined');
+    expect(asked).toBe(3);
+    expect(session.isClosed).toBe(false);
+  });
+
+  it('closes the session on an answer that is not one, and reports the Pi lost when it does not come back', async () => {
+    const clock = new ManualClock();
+    const session = scripted(clock, () => Promise.reject(new MessageError('scan response has no networks')));
+    const outcome = await clock.run(followStatus(session, { ssid: 'Blackraven' }), 60_000, 500);
+    expect(session.isClosed).toBe(true);
+    expect(outcome.kind).toBe('lost');
+  });
+
+  it('counts the Pi on the network at the deadline when it never said the join failed', async () => {
+    const clock = new ManualClock();
+    const joining: StatusResponse = { ok: true, wifi: { ...ON_BLACKRAVEN.wifi, join: { ssid: 'Blackraven', state: 'joining' } } };
+    const outcome = await clock.run(
+      followStatus(
+        scripted(clock, async () => joining),
+        { ssid: 'Blackraven' },
+        { timeoutMs: 5_000 },
+      ),
+      60_000,
+      500,
+    );
+    expect(outcome.kind).toBe('joined');
+  });
+
+  it('reports the Pi lost at the deadline when it never answered', async () => {
+    const clock = new ManualClock();
+    const busy = scripted(clock, () => Promise.reject(new RequestError('wifi_unavailable', 'busy')));
+    const outcome = await clock.run(followStatus(busy, { ssid: 'Blackraven' }, { timeoutMs: 5_000 }), 60_000, 500);
+    expect(outcome.kind).toBe('lost');
+    if (outcome.kind === 'lost') expect(outcome.error.message).toBe('The Pi did not answer within 5 seconds.');
+  });
+
+  it('with no SSID asked for, counts any network the Pi was not on before', () => {
+    const before = { connected: true, ssid: 'Neighbours 5G' };
+    expect(isOn(ON_BLACKRAVEN, { before })).toBe(true);
+    expect(isOn({ ok: true, wifi: { connected: true, ssid: 'Neighbours 5G' } }, { before })).toBe(false);
+    expect(isOn(ON_BLACKRAVEN, {})).toBe(true);
+    expect(isOn({ ok: true, wifi: { connected: false } }, {})).toBe(false);
+  });
+});
+
+describe('what the screen says', () => {
+  it('counts the wait down between polls', () => {
+    const waiting: JoinStep = { kind: 'waiting', wifi: { connected: false }, elapsedMs: 5_000, remainingMs: 40_000, deadline: 45_000 };
+    expect(describeStep(waiting, 'Blackraven')).toBe('Waiting for the Pi to join Blackraven: 40 s left.');
+    expect(describeStep(waiting, 'Blackraven', 30_500)).toBe('Waiting for the Pi to join Blackraven: 15 s left.');
+    expect(describeStep(waiting, 'Blackraven', 50_000)).toBe('Waiting for the Pi to join Blackraven: 0 s left.');
+    expect(describeStep({ kind: 'reconnecting', attempt: 2, phase: 'scanning' }, 'Blackraven')).toBe('Reconnecting, attempt 2: looking for the Pi.');
+  });
+
+  it('names the network the Pi is on, with its address when it has one', () => {
+    const session = {} as Session;
+    expect(describeOutcome({ kind: 'joined', session, status: ON_BLACKRAVEN }, 'Blackraven').body).toBe(
+      `The Pi is on Blackraven as ${FAKE_IP}. Finish to take it out of setup mode.`,
+    );
+    expect(describeOutcome({ kind: 'joined', session, status: { ok: true, wifi: { connected: true } } }, 'Blackraven')).toEqual({
+      tone: 'ok',
+      title: 'Joined Blackraven',
+      body: 'The Pi is on Blackraven. Finish to take it out of setup mode.',
+    });
+  });
+
+  it("gives the Pi's own words for a failure it could not name", () => {
+    const session = {} as Session;
+    const failed = (message?: string): JoinOutcome => ({
+      kind: 'not_joined',
+      session,
+      status: { ok: true, wifi: { connected: true, ssid: 'Neighbours 5G' } },
+      elapsedMs: 12_400,
+      reason: { ssid: 'Blackraven', state: 'failed', reason: 'other', ...(message ? { message } : {}) },
+    });
+    expect(describeOutcome(failed('IP configuration could not be reserved'), 'Blackraven').body).toBe(
+      'The Pi gave up after 12 seconds: IP configuration could not be reserved. The Pi is back on Neighbours 5G.',
+    );
+    expect(describeOutcome(failed(), 'Blackraven').body).toBe('The Pi gave up after 12 seconds: no reason given. The Pi is back on Neighbours 5G.');
   });
 });
