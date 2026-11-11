@@ -5,6 +5,8 @@
 
 # RPiLEDConfig
 
+*v0.5.1*
+
 | What it shows | Status |
 | --- | --- |
 | CI: the service's tests, plain and under the sanitizers; the app's checks and tests; the Debian package; the Android build | [![CI](https://github.com/tomdionysus/rpiledconfig/actions/workflows/ci.yml/badge.svg)](https://github.com/tomdionysus/rpiledconfig/actions/workflows/ci.yml) |
@@ -13,8 +15,6 @@
 | Test coverage of the app's TypeScript | [![app coverage](https://codecov.io/gh/tomdionysus/rpiledconfig/graph/badge.svg?flag=app)](https://codecov.io/gh/tomdionysus/rpiledconfig?flags%5B0%5D=app) |
 | Test coverage of the app's native LED reader | [![LED reader coverage](https://codecov.io/gh/tomdionysus/rpiledconfig/graph/badge.svg?flag=led-reader)](https://codecov.io/gh/tomdionysus/rpiledconfig?flags%5B0%5D=led-reader) |
 | CodeQL security analysis of the C++ and the TypeScript | [![CodeQL](https://github.com/tomdionysus/rpiledconfig/actions/workflows/codeql.yml/badge.svg)](https://github.com/tomdionysus/rpiledconfig/actions/workflows/codeql.yml) |
-
-*v0.5.1*
 
 WiFi on a Pi can be provisioned via a Bluetooth app, authenticated by a 64-bit secure one-time
 key, communicated by flashing the Pi's activity LED and captured by the phone camera.
