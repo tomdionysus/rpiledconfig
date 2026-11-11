@@ -342,6 +342,7 @@ endif()
 # for "cmake --install".)
 
 install(TARGETS rpiledconfig RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(FILES packaging/rpiledconfig.8 DESTINATION ${CMAKE_INSTALL_MANDIR}/man8)
 
 install(FILES config/rpiledconfig.example.conf DESTINATION ${CMAKE_INSTALL_DOCDIR})
 install(FILES

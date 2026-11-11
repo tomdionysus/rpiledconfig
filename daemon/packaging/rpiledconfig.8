@@ -1,0 +1,73 @@
+.\"
+.\" RPiLEDConfig - daemon
+.\"
+.\" Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+.\" Licensed under the Apache License, Version 2.0 - see LICENSE
+.\"
+.TH RPILEDCONFIG 8 2026-11-11 "rpiledconfig" "System Administration"
+.SH NAME
+rpiledconfig \- WiFi setup for a Raspberry Pi over Bluetooth, keyed by its LED
+.SH SYNOPSIS
+.B rpiledconfig
+.RB [ \-c
+.IR path ]
+.br
+.B rpiledconfig
+.B \-\-print\-vectors
+.br
+.B rpiledconfig
+.RB \-v | \-h
+.SH DESCRIPTION
+.B rpiledconfig
+advertises a Bluetooth LE service through BlueZ.
+When the RPi LED Config app asks, it draws a one-time 64-bit key
+and blinks it on the Pi's activity LED for the phone's camera to read.
+The phone proves it holds the key with SPAKE2,
+and everything after is encrypted with AES-GCM.
+The app can then list the networks the Pi sees and hand one to NetworkManager,
+and can remove the service from the Pi.
+.PP
+It is started by systemd as
+.BR rpiledconfig.service ,
+runs as the unprivileged user
+.BR rpiledconfig ,
+and stops cleanly on SIGTERM, giving the LED back its trigger.
+.SH OPTIONS
+.TP
+.BR \-c ", " \-\-config " \fIpath\fR"
+Read the configuration from
+.IR path .
+.TP
+.B \-\-print\-vectors
+Print the protocol's test vectors and exit.
+.TP
+.BR \-v ", " \-\-version
+Print the version and exit.
+.TP
+.BR \-h ", " \-\-help
+Print a summary of the options and exit.
+.SH ENVIRONMENT
+.TP
+.B RPILEDCONFIG_CONFIG
+The configuration to read when
+.B \-\-config
+is not given.
+.SH FILES
+.TP
+.I /etc/rpiledconfig/rpiledconfig.conf
+The configuration, read when neither
+.B \-\-config
+nor
+.B RPILEDCONFIG_CONFIG
+is given. Every setting is described in
+.IR /usr/share/doc/rpiledconfig/configuration.md .
+.TP
+.I /usr/share/doc/rpiledconfig/
+The protocol, the security notes, installation and configuration.
+.SH SEE ALSO
+.BR systemctl (1),
+.BR journalctl (1),
+.BR bluetoothctl (1),
+.BR nmcli (1)
+.PP
+https://github.com/tomdionysus/rpiledconfig

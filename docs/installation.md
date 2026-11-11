@@ -15,7 +15,8 @@ ships and runs by default; the package depends on them.
 | `/etc/rpiledconfig/rpiledconfig.conf` | The configuration, a conffile: an upgrade never overwrites your changes. |
 | `/usr/lib/udev/rules.d/60-rpiledconfig.rules` | Gives the `rpiledconfig` group write access to the activity LED's `brightness` and `trigger`. |
 | `/usr/share/polkit-1/rules.d/60-rpiledconfig.rules` | The polkit rule that lets the `rpiledconfig` user, and only it, scan for, add, activate and delete NetworkManager connections, and start `rpiledconfig-uninstall.service`. |
-| `/usr/share/doc/rpiledconfig/` | These docs, the protocol, the example configuration, README, LICENSE and NOTICE. |
+| `/usr/share/man/man8/rpiledconfig.8.gz` | The manual page, `man rpiledconfig`. |
+| `/usr/share/doc/rpiledconfig/` | These docs, the protocol, the example configuration, README and NOTICE, and the licence in `copyright`. |
 
 The daemon keeps no state: its pairing key is in memory only. An upgrade from a version
 that kept a machine ID deletes `/var/lib/rpiledconfig`.

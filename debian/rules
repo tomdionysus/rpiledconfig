@@ -23,6 +23,11 @@ override_dh_auto_configure:
 		-DCMAKE_BUILD_TYPE=RelWithDebInfo \
 		-DRPILEDCONFIG_BUILD_TESTING=$(TESTS)
 
+# The licence is in debian/copyright, which is where Debian looks for it; the copy that
+# "cmake --install" puts beside the docs would be a second one.
+execute_after_dh_auto_install:
+	rm -f debian/rpiledconfig/usr/share/doc/rpiledconfig/LICENSE
+
 # The test binary rather than ctest, with a private bus of its own for the D-Bus tests:
 # the system bus is never touched.
 override_dh_auto_test:
