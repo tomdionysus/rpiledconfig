@@ -10,6 +10,7 @@
 // version or of no LED, must read nothing at all.
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -96,7 +97,9 @@ TEST(RecordingsTest, EveryRecordingReadsWhatItShould) {
     const bool version7 = name.find("-v7") != std::string::npos;
     if (version7 && !r.expected.empty()) {
       EXPECT_EQ(ids, std::vector<std::string>{r.expected}) << name;
-      if (r.within_ms > 0) EXPECT_LE(read_at, r.within_ms) << name;
+      if (r.within_ms > 0) {
+        EXPECT_LE(read_at, r.within_ms) << name;
+      }
       std::printf("[ recording] %s: read at %.2f s\n", name.c_str(), read_at / 1000);
     } else {
       EXPECT_TRUE(ids.empty()) << name << " read an ID from a recording that holds none of frame version 7";

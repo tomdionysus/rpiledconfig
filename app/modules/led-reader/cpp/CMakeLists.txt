@@ -26,5 +26,7 @@ add_executable(led_reader_tests
   tests/recordings_test.cpp
   tests/synth.cpp)
 target_link_libraries(led_reader_tests PRIVATE led_reader_core GTest::gtest_main)
-target_compile_options(led_reader_tests PRIVATE -Wall -Wextra)
+# The tests set what they need of SynthOptions by designated initializers and leave the rest
+# at their defaults, which GCC's -Wextra reports field by field.
+target_compile_options(led_reader_tests PRIVATE -Wall -Wextra -Wno-missing-field-initializers)
 target_compile_definitions(led_reader_tests PRIVATE LED_READER_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/../../../src/led/fixtures")
