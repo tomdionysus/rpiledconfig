@@ -33,14 +33,12 @@ int read_dict(sd_bus_message* message, const std::function<int(const std::string
 
 // Reads the variant the message is positioned at when it holds the given type, and
 // returns 1; returns 0 and reads nothing when it holds something else.
-int read_variant(sd_bus_message* message, std::string& out);               // s, o or g
-int read_variant(sd_bus_message* message, bool& out);                      // b
-int read_variant(sd_bus_message* message, std::uint8_t& out);              // y
-int read_variant(sd_bus_message* message, std::uint16_t& out);             // q
-int read_variant(sd_bus_message* message, std::uint32_t& out);             // u
-int read_variant(sd_bus_message* message, std::int64_t& out);              // x
-int read_variant(sd_bus_message* message, types::Bytes& out);              // ay
-int read_variant(sd_bus_message* message, std::vector<std::string>& out);  // as or ao
+int read_variant(sd_bus_message* message, std::string& out);    // s, o or g
+int read_variant(sd_bus_message* message, bool& out);           // b
+int read_variant(sd_bus_message* message, std::uint8_t& out);   // y
+int read_variant(sd_bus_message* message, std::uint16_t& out);  // q
+int read_variant(sd_bus_message* message, std::uint32_t& out);  // u
+int read_variant(sd_bus_message* message, types::Bytes& out);   // ay
 
 // Reads an array of strings or object paths (as, ao) the message is positioned at.
 int read_strings(sd_bus_message* message, std::vector<std::string>& out);

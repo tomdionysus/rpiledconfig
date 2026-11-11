@@ -50,7 +50,7 @@ export function utf8Encode(text: string): Uint8Array {
 /** Throws on malformed UTF-8: a message that is not text is not a message. */
 export function utf8Decode(bytes: Uint8Array): string {
   let out = '';
-  for (let i = 0; i < bytes.length; ) {
+  for (let i = 0; i < bytes.length;) {
     const b0 = bytes[i];
     let code: number;
     let length: number;

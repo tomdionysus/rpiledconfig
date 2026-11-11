@@ -1,12 +1,14 @@
 // Home: what the app does, in two lines, and the button that starts.
 import { useRouter } from '@/navigation';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, View, type ImageSourcePropType } from 'react-native';
 import { Button } from '@/ui/Button';
 import { Screen } from '@/ui/Screen';
 import { SourceLink } from '@/ui/SourceLink';
 import { colors, radius, space, type as typography } from '@/ui/theme';
 
-const HERO_ICON = require('../../assets/hero-icon.png');
+// Metro bundles an image only through require().
+// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment
+const HERO_ICON: ImageSourcePropType = require('../../assets/hero-icon.png');
 
 const STEPS = [
   ['Find', 'Choose the Pi over Bluetooth; its LED starts blinking.'],

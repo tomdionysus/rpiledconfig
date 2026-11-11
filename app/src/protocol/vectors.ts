@@ -9,7 +9,6 @@ export const X = '0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
 /** y, the daemon's: 32 bytes 21..40. */
 export const Y = '2122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f40';
 
-
 export const VECTORS = {
   pairing_key: PAIRING_KEY,
   key_bytes: '0123456789abcdef',
@@ -29,10 +28,6 @@ export const VECTORS = {
   /** counter 0 || AES-256-GCM(S, nonce 00000001||counter, `{"op":"status"}`) || tag */
   status_request_wire: '00000000000000007db06bfa7ade4d2aa92177f951835e7d18014a51a3a551ba7e37ac5ea5d55d',
   /** The wire above in 20-byte fragments: a flags byte and 19 bytes of slice each. */
-  status_request_fragments_mtu20: [
-    '0000000000000000007db06bfa7ade4d2aa92177',
-    '00f951835e7d18014a51a3a551ba7e37ac5ea5d5',
-    '015d',
-  ],
+  status_request_fragments_mtu20: ['0000000000000000007db06bfa7ade4d2aa92177', '00f951835e7d18014a51a3a551ba7e37ac5ea5d5', '015d'],
   /** The frame as physical runs in units of T, + on and - off, sync first: 398 T in 294 runs. */
 };

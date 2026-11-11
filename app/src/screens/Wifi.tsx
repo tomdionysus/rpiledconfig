@@ -129,7 +129,8 @@ export default function WifiScreen() {
     return (
       <Screen title="Removal started">
         <Text style={styles.body}>
-          The Pi accepted the request and has started removing RPi LED Config: the service stops, and its program and settings are deleted, while its WiFi stays. This app cannot see how that ends. If the Pi is listed again later, the removal did not finish.
+          The Pi accepted the request and has started removing RPi LED Config: the service stops, and its program and settings are deleted, while its WiFi
+          stays. This app cannot see how that ends. If the Pi is listed again later, the removal did not finish.
         </Text>
         <Button label="Home" onPress={() => router.replace('/')} style={styles.removedHome} />
       </Screen>
@@ -278,7 +279,13 @@ export default function WifiScreen() {
                   }
                 />
                 <Text style={styles.detail}>Or, if this Pi will not need setting up from a phone again, remove the service and keep the WiFi it is on.</Text>
-                <Button label="Remove RPi LED Config from this Pi" variant="danger" busy={busy === 'uninstall'} disabled={busy !== undefined} onPress={uninstall} />
+                <Button
+                  label="Remove RPi LED Config from this Pi"
+                  variant="danger"
+                  busy={busy === 'uninstall'}
+                  disabled={busy !== undefined}
+                  onPress={uninstall}
+                />
               </>
             ) : lost ? (
               <Button label="Pair again" onPress={pairAgain} />

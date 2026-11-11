@@ -79,6 +79,15 @@ class MockBluez : public MockService {
 
   // The next RegisterApplication is refused with this error.
   void refuse_application(const std::string& message);
+  // The next RegisterAdvertisement is refused with this error.
+  void refuse_advertisement(const std::string& message);
+  // Setting Powered or Alias is refused, as rfkill or a policy refuses it.
+  void refuse_power();
+  void refuse_alias();
+  // Every Device1.Disconnect is refused with org.bluez.Error.Failed.
+  void refuse_disconnects();
+  // BlueZ drops the advertisement and calls its Release, as when the adapter goes away.
+  void release_advertisement();
 
   // --- Devices ---
 
@@ -136,6 +145,10 @@ class MockBluez : public MockService {
   bool _powered;
   std::string _alias;
   std::string _refuse_application;
+  std::string _refuse_advertisement;
+  bool _refuse_power = false;
+  bool _refuse_alias = false;
+  bool _refuse_disconnects = false;
   std::optional<Application> _application;
   std::optional<Advertisement> _advertisement;
   int _advertisement_registrations = 0;

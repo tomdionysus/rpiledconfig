@@ -126,10 +126,12 @@ struct MockBluez::Handlers {
     return sd_bus_message_append(reply, "b", static_cast<MockBluez*>(userdata)->_powered ? 1 : 0);
   }
 
-  static int set_powered(sd_bus* bus, const char* path, const char* interface, const char* property, sd_bus_message* value, void* userdata, sd_bus_error*) {
+  static int set_powered(sd_bus* bus, const char* path, const char* interface, const char* property, sd_bus_message* value, void* userdata,
+                         sd_bus_error* error) {
     int b = 0;
     const int r = sd_bus_message_read(value, "b", &b);
     if (r < 0) return r;
+    if (static_cast<MockBluez*>(userdata)->_refuse_power) return sd_bus_error_set(error, "org.bluez.Error.Blocked", "Blocked through rfkill");
     static_cast<MockBluez*>(userdata)->_powered = b != 0;
     return sd_bus_emit_properties_changed(bus, path, interface, property, nullptr);
   }
@@ -138,10 +140,11 @@ struct MockBluez::Handlers {
     return sd_bus_message_append(reply, "s", static_cast<MockBluez*>(userdata)->_alias.c_str());
   }
 
-  static int set_alias(sd_bus*, const char*, const char*, const char*, sd_bus_message* value, void* userdata, sd_bus_error*) {
+  static int set_alias(sd_bus*, const char*, const char*, const char*, sd_bus_message* value, void* userdata, sd_bus_error* error) {
     const char* alias = nullptr;
     const int r = sd_bus_message_read(value, "s", &alias);
     if (r < 0) return r;
+    if (static_cast<MockBluez*>(userdata)->_refuse_alias) return sd_bus_error_set(error, "org.bluez.Error.Failed", "Not Permitted");
     static_cast<MockBluez*>(userdata)->_alias = alias;
     return 1;
   }
@@ -261,6 +264,11 @@ struct MockBluez::Handlers {
     if (r < 0) return r;
     if (self->_advertisement) return sd_bus_error_set(error, "org.bluez.Error.AlreadyExists", "Already Exists");
     if (!self->_powered) return sd_bus_error_set(error, "org.bluez.Error.Failed", "Not Powered");
+    if (!self->_refuse_advertisement.empty()) {
+      const auto message = self->_refuse_advertisement;
+      self->_refuse_advertisement.clear();
+      return sd_bus_error_set(error, "org.bluez.Error.Failed", message.c_str());
+    }
 
     auto* pending = new PendingRegistration{self, sd_bus_message_ref(m), sd_bus_message_get_sender(m), path};
     r = sd_bus_call_method_async(sd_bus_message_get_bus(m), nullptr, pending->owner.c_str(), path, "org.freedesktop.DBus.Properties", "GetAll",
@@ -330,6 +338,7 @@ struct MockBluez::Handlers {
   static int device_disconnect(sd_bus_message* m, void* userdata, sd_bus_error* error) {
     auto* device = static_cast<Device*>(userdata);
     ++device->disconnects;
+    if (device->owner->_refuse_disconnects) return sd_bus_error_set(error, "org.bluez.Error.Failed", "Operation already in progress");
     if (!device->connected) return sd_bus_error_set(error, "org.bluez.Error.NotConnected", "Not Connected");
     device->connected = false;
     sd_bus_emit_properties_changed(sd_bus_message_get_bus(m), device->path.c_str(), "org.bluez.Device1", "Connected", nullptr);
@@ -481,6 +490,32 @@ int MockBluez::application_unregistrations() {
 
 void MockBluez::refuse_application(const std::string& message) {
   run([this, message]() { _refuse_application = message; });
+}
+
+void MockBluez::refuse_advertisement(const std::string& message) {
+  run([this, message]() { _refuse_advertisement = message; });
+}
+
+void MockBluez::refuse_power() {
+  run([this]() { _refuse_power = true; });
+}
+
+void MockBluez::refuse_alias() {
+  run([this]() { _refuse_alias = true; });
+}
+
+void MockBluez::refuse_disconnects() {
+  run([this]() { _refuse_disconnects = true; });
+}
+
+// src/advertising.c: an advertisement BlueZ removes on its side is told by a Release call.
+void MockBluez::release_advertisement() {
+  run([this]() {
+    if (!_advertisement) return;
+    const auto ad = *_advertisement;
+    _advertisement.reset();
+    sd_bus_call_method_async(bus(), nullptr, ad.owner.c_str(), ad.path.c_str(), "org.bluez.LEAdvertisement1", "Release", nullptr, nullptr, "");
+  });
 }
 
 std::string MockBluez::connect_device(const std::string& address) {

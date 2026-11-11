@@ -56,6 +56,9 @@ class FakeWpaSupplicant {
 
   void without_dpp() { _without_dpp = true; }
   void refuse_listen() { _refuse_listen = true; }
+  void refuse_attach() { _refuse_attach = true; }
+  // STATUS's freq= line: the channel the interface is associated on, absent when it is not.
+  void associated_at(unsigned frequency) { _frequency = frequency; }
   void silent_on(const std::string& word) {
     std::lock_guard<std::mutex> lock(_mutex);
     _silent_on = word;
@@ -113,6 +116,7 @@ class FakeWpaSupplicant {
     if (!_silent_on.empty() && word == _silent_on) return "";
 
     if (command == "ATTACH") {
+      if (_refuse_attach) return "FAIL\n";
       _attached = from;
       _attached_length = from_length;
       return "OK\n";
@@ -121,7 +125,11 @@ class FakeWpaSupplicant {
       _attached_length = 0;
       return "OK\n";
     }
-    if (command == "STATUS") return "bssid=00:00:00:00:00:00\nwpa_state=DISCONNECTED\np2p_device_address=8a:a2:9e:23:c4:b4\naddress=88:a2:9e:23:c4:b4\n";
+    if (command == "STATUS") {
+      if (_frequency == 0) return "bssid=00:00:00:00:00:00\nwpa_state=DISCONNECTED\np2p_device_address=8a:a2:9e:23:c4:b4\naddress=88:a2:9e:23:c4:b4\n";
+      return "bssid=2c:cf:67:00:00:01\nfreq=" + std::to_string(_frequency) +
+             "\nssid=Home\nwpa_state=COMPLETED\np2p_device_address=8a:a2:9e:23:c4:b4\naddress=88:a2:9e:23:c4:b4";
+    }
 
     if (word.rfind("DPP_", 0) == 0 && _without_dpp) return "UNKNOWN COMMAND\n";
     if (word == "DPP_BOOTSTRAP_GEN") return "1";
@@ -138,6 +146,8 @@ class FakeWpaSupplicant {
   std::atomic<bool> _stop{false};
   std::atomic<bool> _without_dpp{false};
   std::atomic<bool> _refuse_listen{false};
+  std::atomic<bool> _refuse_attach{false};
+  std::atomic<unsigned> _frequency{0};
   std::mutex _mutex;
   std::string _silent_on;
   std::vector<std::string> _commands;
@@ -334,4 +344,64 @@ TEST_F(EasyConnectWpaSupplicantTest, AWpaSupplicantThatDoesNotAnswerIsEasyconnec
   ASSERT_TRUE(started.wait(uri));
   EXPECT_FALSE(uri.ok);
   EXPECT_NE(uri.error.find("did not answer STATUS"), std::string::npos) << uri.error;
+}
+
+// docs/protocol.md, Copying the phone's WiFi: associated on a 2.4 GHz channel, the Pi listens
+// there and lists that channel first, then 1, 6 and 11.
+TEST_F(EasyConnectWpaSupplicantTest, AssociatedOn24GhzItListensOnThatChannel) {
+  wpa->associated_at(2422);
+  ASSERT_TRUE(start().ok);
+  EXPECT_TRUE(wpa->received("DPP_BOOTSTRAP_GEN type=qrcode chan=81/3,81/1,81/6,81/11 mac=88a29e23c4b4"));
+  EXPECT_TRUE(wpa->received("DPP_LISTEN 2422 role=enrollee"));
+}
+
+TEST_F(EasyConnectWpaSupplicantTest, AssociatedOn5GhzItListensOnChannel6) {
+  wpa->associated_at(5180);
+  ASSERT_TRUE(start().ok);
+  EXPECT_TRUE(wpa->received("DPP_BOOTSTRAP_GEN type=qrcode chan=81/1,81/6,81/11 mac=88a29e23c4b4"));
+  EXPECT_TRUE(wpa->received("DPP_LISTEN 2437 role=enrollee"));
+}
+
+TEST_F(EasyConnectWpaSupplicantTest, AWpaSupplicantThatWillNotSendEventsIsEasyconnectUnavailable) {
+  wpa->refuse_attach();
+  const auto uri = start();
+  EXPECT_FALSE(uri.ok);
+  EXPECT_EQ(uri.code, protocol::errors::easyconnect_unavailable);
+  EXPECT_NE(uri.error.find("would not send events"), std::string::npos) << uri.error;
+}
+
+TEST_F(EasyConnectWpaSupplicantTest, ASocketNobodyListensOnIsSaidSo) {
+  wpa.reset();
+  // A socket file left by a wpa_supplicant that has gone.
+  const int fd = ::socket(AF_UNIX, SOCK_DGRAM, 0);
+  sockaddr_un address{};
+  address.sun_family = AF_UNIX;
+  std::strncpy(address.sun_path, (dir.path() / "wlan0").c_str(), sizeof(address.sun_path) - 1);
+  ASSERT_EQ(::bind(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)), 0);
+  ::close(fd);
+
+  const auto uri = start();
+  EXPECT_FALSE(uri.ok);
+  EXPECT_NE(uri.error.find("nobody is listening"), std::string::npos) << uri.error;
+}
+
+TEST_F(EasyConnectWpaSupplicantTest, AControlDirectoryThatIsNotOneIsSaidSo) {
+  dir.write("not-a-directory", "");
+  wifi::EasyConnectWpaSupplicant::Options options;
+  options.control_dir = (dir.path() / "not-a-directory").string();
+  options.interface = "wlan0";
+  daemon.run([&]() { enrollee = std::make_shared<wifi::EasyConnectWpaSupplicant>(logger, daemon.executor(), timers, options); });
+  EXPECT_EQ(daemon.run([this]() { return enrollee->describe(); }), "wpa_supplicant " + options.control_dir + "/wlan0");
+
+  const auto uri = start();
+  EXPECT_FALSE(uri.ok);
+  EXPECT_NE(uri.error.find("cannot connect to"), std::string::npos) << uri.error;
+}
+
+TEST_F(EasyConnectWpaSupplicantTest, OtherDppEventsBeforeAConfigurationAreOnlyLogged) {
+  ASSERT_TRUE(start().ok);
+  wpa->emit("DPP-RX src=02:00:00:00:00:00 freq=2437 type=0");
+  wpa->emit("CTRL-EVENT-SCAN-STARTED ");
+  ASSERT_TRUE(eventually([this]() { return logger->contains("Wi-Fi Easy Connect: DPP-RX src=02:00:00:00:00:00"); })) << logger->text();
+  EXPECT_TRUE(daemon.run([this]() { return enrollee->active(); }));
 }

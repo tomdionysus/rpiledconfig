@@ -70,7 +70,10 @@ export class ManualClock implements Clock {
     const target = this.t + ms;
     await settle();
     for (;;) {
-      const next = this.timers.reduce<Timer | undefined>((best, timer) => (!best || timer.at < best.at || (timer.at === best.at && timer.seq < best.seq) ? timer : best), undefined);
+      const next = this.timers.reduce<Timer | undefined>(
+        (best, timer) => (!best || timer.at < best.at || (timer.at === best.at && timer.seq < best.seq) ? timer : best),
+        undefined,
+      );
       if (!next || next.at > target) break;
       this.timers = this.timers.filter((timer) => timer !== next);
       this.t = next.at;

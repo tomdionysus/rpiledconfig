@@ -410,6 +410,123 @@ TEST_F(BleBluezTest, AnApplicationBluezRefusesIsLoggedAndNotAdvertised) {
   EXPECT_FALSE(bluez->advertisement().has_value());
 }
 
+TEST_F(BleBluezTest, AnAdvertisementBluezRefusesIsLogged) {
+  bluez->refuse_advertisement("Maximum advertisements reached");
+  ASSERT_TRUE(daemon.run([this]() { return ble->start(ble::Advertisement{"RPiLEDConfig-3a9c", ""}, listener); }).ok);
+
+  EXPECT_TRUE(eventually([this]() { return logger->contains("BlueZ refused the advertisement: Maximum advertisements reached"); })) << logger->text();
+  EXPECT_TRUE(bluez->application().has_value()) << "the service is there for a phone that already knows the Pi";
+  EXPECT_EQ(daemon.run([this]() { return ble->describe(); }), "bluez hci0");
+}
+
+// ble.hide_adapter_name refused: said as an error, and the Pi is set up all the same.
+TEST_F(BleBluezTest, AnAliasBluezRefusesIsSaidLoudlyAndTheServiceStillAdvertises) {
+  bluez->refuse_alias();
+  ASSERT_TRUE(daemon.run([this]() { return ble->start(ble::Advertisement{"RPiLEDConfig-3a9c", "RPiLEDConfig-3a9c"}, listener); }).ok);
+
+  ASSERT_TRUE(eventually([this]() { return bluez->advertisement().has_value(); })) << logger->text();
+  EXPECT_TRUE(logger->contains("Could not set the adapter's name, so it is NOT hidden")) << logger->text();
+  EXPECT_EQ(bluez->alias(), "");
+}
+
+TEST_F(BleBluezTest, BluezReleasingTheAdvertisementIsLogged) {
+  start();
+  bluez->release_advertisement();
+  EXPECT_TRUE(eventually([this]() { return logger->contains("BlueZ released the advertisement"); })) << logger->text();
+
+  // Paused and resumed, it is registered again.
+  daemon.run([this]() {
+    ble->advertising_pause();
+    ble->advertising_resume();
+  });
+  EXPECT_TRUE(eventually([this]() { return bluez->advertisement().has_value(); })) << logger->text();
+}
+
+TEST_F(BleBluezTest, ADisconnectBluezRefusesIsLogged) {
+  bluez->refuse_disconnects();
+  start();
+  const auto device = bluez->connect_device("AA:BB:CC:DD:EE:01");
+  ASSERT_TRUE(bluez->read(device, info).ok);
+  const auto connection = only_connection();
+
+  daemon.run([&]() { ble->disconnect(connection); });
+  EXPECT_TRUE(eventually([this]() { return logger->contains("BlueZ would not disconnect dev_AA_BB_CC_DD_EE_01"); })) << logger->text();
+  EXPECT_TRUE(eventually([&]() { return listener->saw("disconnect " + std::to_string(connection)); })) << "the session ends whatever BlueZ says";
+}
+
+// A second central asking again, after being turned away, is turned away again.
+TEST_F(BleBluezTest, ARefusedCentralStaysRefusedUntilItReconnects) {
+  start();
+  const auto first = bluez->connect_device("AA:BB:CC:DD:EE:01");
+  const auto second = bluez->connect_device("AA:BB:CC:DD:EE:02");
+  ASSERT_TRUE(bluez->read(first, info).ok);
+  ASSERT_FALSE(bluez->read(second, challenge).ok);
+
+  const auto again = bluez->read(second, info);
+  EXPECT_FALSE(again.ok);
+  EXPECT_NE(again.error.find("org.bluez.Error.NotPermitted"), std::string::npos) << again.error;
+  EXPECT_FALSE(listener->saw("connect 2"));
+}
+
+TEST_F(BleBluezTest, WithNobodyServingACentralIsTurnedAway) {
+  start();
+  listener.reset();
+
+  const auto device = bluez->connect_device("AA:BB:CC:DD:EE:01");
+  const auto read = bluez->read(device, info);
+  EXPECT_FALSE(read.ok);
+  EXPECT_NE(read.error.find("org.bluez.Error.NotPermitted"), std::string::npos) << read.error;
+}
+
+namespace {
+
+// A listener that turns every central away as it arrives, as the session does when it cannot take one.
+class TurningAway : public ble::BleListener {
+ public:
+  std::weak_ptr<ble::BleBluez> ble;
+  void on_connect(ble::ConnectionId connection) override {
+    if (auto b = ble.lock()) b->disconnect(connection);
+  }
+  void on_disconnect(ble::ConnectionId) override {}
+  void on_write(ble::ConnectionId, ble::Characteristic, Bytes) override {}
+  Bytes on_read(ble::ConnectionId, ble::Characteristic) override { return {}; }
+};
+
+}  // namespace
+
+TEST_F(BleBluezTest, ACentralTheListenerTurnsAwayAtOnceIsRefused) {
+  auto turning_away = std::make_shared<TurningAway>();
+  turning_away->ble = ble;
+  ASSERT_TRUE(daemon.run([&]() { return ble->start(ble::Advertisement{"RPiLEDConfig-3a9c", ""}, turning_away); }).ok);
+  ASSERT_TRUE(eventually([this]() { return bluez->advertisement().has_value(); })) << logger->text();
+
+  const auto device = bluez->connect_device("AA:BB:CC:DD:EE:01");
+  const auto read = bluez->read(device, info);
+  EXPECT_FALSE(read.ok);
+  EXPECT_NE(read.error.find("org.bluez.Error.NotPermitted"), std::string::npos) << read.error;
+  EXPECT_TRUE(eventually([&]() { return bluez->disconnect_calls(device) == 1; }));
+}
+
+class BleBluezUnpoweredTest : public BleBluezTest {
+ protected:
+  void SetUp() override {
+    adapter_powered = false;
+    BleBluezTest::SetUp();
+  }
+};
+
+TEST_F(BleBluezUnpoweredTest, AnAdapterThatIsPoweredOffIsPoweredOn) {
+  start();
+  EXPECT_TRUE(bluez->powered());
+}
+
+TEST_F(BleBluezUnpoweredTest, AnAdapterThatCannotBePoweredOnIsSaidSo) {
+  bluez->refuse_power();
+  ASSERT_TRUE(daemon.run([this]() { return ble->start(ble::Advertisement{"RPiLEDConfig-3a9c", ""}, listener); }).ok);
+  EXPECT_TRUE(eventually([this]() { return logger->contains("Cannot power the adapter on: Blocked through rfkill (rfkill?)"); })) << logger->text();
+  EXPECT_FALSE(bluez->application().has_value());
+}
+
 class BleBluezWithoutBluezTest : public BleBluezTest {
  protected:
   void SetUp() override {

@@ -28,8 +28,8 @@ scripts/   ci.sh, the native half of CI
 - GitHub Actions runs on every push to `main` and `develop` and on pull requests:
   [scripts/ci.sh](scripts/ci.sh) in a Debian trixie container (the format check, the
   daemon's tests plain and under AddressSanitizer and UndefinedBehaviorSanitizer, and
-  coverage for the daemon and the LED reader), the app's typecheck, version check and
-  tests with coverage, the Debian package built and checked with lintian on arm64, and
+  coverage for the daemon and the LED reader), the app's typecheck, lint, format check,
+  version check and tests with coverage, the Debian package built and checked with lintian on arm64, and
   the Android release build. Coverage goes to Codecov under the flags `daemon`, `app` and
   `led-reader`. CodeQL analyses the C++ and the TypeScript.
 - CI has no Bluetooth, LED, WiFi or phone. A change to any of those is tested on a Pi and
@@ -48,8 +48,10 @@ scripts/   ci.sh, the native half of CI
   `daemon/src/main.cpp`; one `io_context`, strands rather than locks; no exceptions across
   interfaces. Every source file starts with the project's header block; copy it from any
   existing file.
-- The app: TypeScript strict, plain React Native. Logic that touches a native module is
-  separated from it so Vitest can test it; native modules are stubbed in `app/src/test/`.
+- The app: TypeScript strict, plain React Native. `npm run lint` (ESLint, with the type
+  checker and React's rules of hooks) and `npm run format:check` (Prettier) must pass;
+  `npm run format` applies Prettier. Logic that touches a native module is separated from it
+  so Vitest can test it; native modules are stubbed in `app/src/test/`.
 - Dependencies are few on purpose. The daemon uses Boost (Asio, headers only), OpenSSL,
   libsystemd and GoogleTest; the app's run-time dependencies are listed in the README. A
   pull request that adds one says why nothing already there will do.

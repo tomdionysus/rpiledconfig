@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { FakeDaemon } from '@/ble/fake';
-import { hexToBytes } from '@/protocol/bytes';
+import { hexToBytes, utf8Encode } from '@/protocol/bytes';
 import { ManualClock } from '@/util/clock';
 import type { BleTransport, Peripheral } from '@/ble/transport';
 import { PI_STALE_MS, setBlinking, watchForPis, type FoundPi } from './discover';
@@ -47,7 +47,12 @@ describe('watchForPis, over time', () => {
     const clock = new ManualClock();
     const { transport, hear } = radio();
     let pis: FoundPi[] = [];
-    const stop = watchForPis(transport, (next) => (pis = next), () => {}, clock);
+    const stop = watchForPis(
+      transport,
+      (next) => (pis = next),
+      () => {},
+      clock,
+    );
 
     hear(PI);
     expect(pis).toEqual([PI]);
@@ -62,7 +67,12 @@ describe('watchForPis, over time', () => {
     const clock = new ManualClock();
     const { transport, hear } = radio();
     let pis: FoundPi[] = [];
-    const stop = watchForPis(transport, (next) => (pis = next), () => {}, clock);
+    const stop = watchForPis(
+      transport,
+      (next) => (pis = next),
+      () => {},
+      clock,
+    );
 
     hear(PI);
     hear(OTHER);
@@ -78,7 +88,12 @@ describe('watchForPis, over time', () => {
     const clock = new ManualClock();
     const { transport, hear } = radio();
     let pis: FoundPi[] = [];
-    const stop = watchForPis(transport, (next) => (pis = next), () => {}, clock);
+    const stop = watchForPis(
+      transport,
+      (next) => (pis = next),
+      () => {},
+      clock,
+    );
 
     hear(PI);
     await clock.advance(PI_STALE_MS);
@@ -92,7 +107,12 @@ describe('watchForPis, over time', () => {
     const clock = new ManualClock();
     const { transport, hear, isStopped } = radio();
     const calls: FoundPi[][] = [];
-    const stop = watchForPis(transport, (next) => calls.push(next), () => {}, clock);
+    const stop = watchForPis(
+      transport,
+      (next) => calls.push(next),
+      () => {},
+      clock,
+    );
 
     hear(PI);
     stop();
@@ -170,5 +190,111 @@ describe('watchForPis and setBlinking', () => {
     const error = await setBlinking(daemon, pi).catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(PairingError);
     expect((error as PairingError).kind).toBe('bluetooth');
+  });
+});
+
+describe('setBlinking, when the Pi does not', () => {
+  /** A Pi whose Info reads are the test's, in turn; the last one repeats. */
+  function pi(infos: Array<string | Error>) {
+    const written: number[] = [];
+    let disconnected = 0;
+    const transport = {
+      async connect() {
+        return {
+          mtu: 185,
+          async read() {
+            const next = infos.length > 1 ? infos.shift()! : infos[0];
+            if (next instanceof Error) throw next;
+            return utf8Encode(next);
+          },
+          async write(_characteristic: string, value: Uint8Array) {
+            written.push(...value);
+          },
+          async disconnect() {
+            disconnected += 1;
+          },
+        };
+      },
+    } as unknown as BleTransport;
+    return { transport, written, disconnected: () => disconnected };
+  }
+  const PI = { id: 'a', name: 'RPiLEDConfig-3a9c' };
+  const off = '{"protocol":4,"version":"0.5.1","led":"off"}';
+
+  it('waits for the Pi to say it is blinking', async () => {
+    const clock = new ManualClock();
+    const { transport } = pi([off, off, off, '{"protocol":4,"version":"0.5.1","led":"blinking"}']);
+    const info = await clock.run(setBlinking(transport, PI, 'normal', clock), 5_000, 100);
+    expect(info.led).toBe('blinking');
+  });
+
+  it('gives up on an LED the Pi never says it is driving, and hangs up', async () => {
+    const clock = new ManualClock();
+    const { transport, disconnected } = pi([off]);
+    const error = await clock.run(
+      setBlinking(transport, PI, 'normal', clock).catch((caught: unknown) => caught),
+      5_000,
+      100,
+    );
+    expect(error).toBeInstanceOf(PairingError);
+    expect((error as PairingError).kind).toBe('led');
+    expect(disconnected()).toBe(1);
+  });
+
+  it('calls a failed read a lost link', async () => {
+    const { transport, disconnected } = pi([new Error('read failed')]);
+    const error = await setBlinking(transport, PI).catch((caught: unknown) => caught);
+    expect((error as PairingError).kind).toBe('disconnected');
+    expect((error as PairingError).detail).toBe('read failed');
+    expect(disconnected()).toBe(1);
+  });
+
+  it('refuses a Pi of another protocol before asking it to blink', async () => {
+    const { transport, written } = pi(['{"protocol":5,"version":"9.0.0"}']);
+    const error = await setBlinking(transport, PI).catch((caught: unknown) => caught);
+    expect((error as PairingError).kind).toBe('protocol');
+    expect(written).toEqual([]);
+  });
+});
+
+describe('watchForPis, the list', () => {
+  it('puts the strongest first, then by name, and a Pi without a signal last', () => {
+    let onFound: (peripheral: Peripheral) => void = () => {};
+    const transport = {
+      scan(found: (peripheral: Peripheral) => void) {
+        onFound = found;
+        return () => {};
+      },
+    } as unknown as BleTransport;
+    let pis: FoundPi[] = [];
+    const stop = watchForPis(
+      transport,
+      (next) => (pis = next),
+      () => {},
+      new ManualClock(),
+    );
+    onFound({ id: 'c', name: 'RPiLEDConfig-cccc' });
+    onFound({ id: 'b', name: 'RPiLEDConfig-bbbb', rssi: -70 });
+    onFound({ id: 'a', name: 'RPiLEDConfig-aaaa', rssi: -70 });
+    onFound({ id: 'd', name: 'RPiLEDConfig-dddd', rssi: -40 });
+    expect(pis.map((p) => p.id)).toEqual(['d', 'a', 'b', 'c']);
+    stop();
+  });
+
+  it('reports a scan that fails, in plain words', () => {
+    const transport = {
+      scan(_found: unknown, onError: (error: Error) => void) {
+        onError(new Error('scan throttled'));
+        return () => {};
+      },
+    } as unknown as BleTransport;
+    const errors: PairingError[] = [];
+    watchForPis(
+      transport,
+      () => {},
+      (error) => errors.push(error),
+      new ManualClock(),
+    )();
+    expect(errors.map((error) => [error.kind, error.detail])).toEqual([['bluetooth', 'scan throttled']]);
   });
 });

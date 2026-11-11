@@ -2,11 +2,13 @@
 // control, and a scrolling or fixed body.
 import { useRouter } from '@/navigation';
 import React from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View, type ImageSourcePropType, type StyleProp, type ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, space, type as typography, TOUCH_TARGET } from './theme';
 
-const TITLE_ICON = require('../../assets/title-icon.png');
+// Metro bundles an image only through require().
+// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-assignment
+const TITLE_ICON: ImageSourcePropType = require('../../assets/title-icon.png');
 
 interface ScreenProps {
   title?: string;
@@ -32,7 +34,8 @@ export function Screen({ title, eyebrow, showBack = false, scrollable = true, co
           accessibilityLabel="Back"
           hitSlop={8}
           onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
-          style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}>
+          style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+        >
           <Text style={styles.backGlyph}>{'<'}</Text>
         </Pressable>
       ) : null}
@@ -61,7 +64,8 @@ export function Screen({ title, eyebrow, showBack = false, scrollable = true, co
     <ScrollView
       style={styles.flex}
       contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + space.xl }, contentStyle]}
-      keyboardShouldPersistTaps="handled">
+      keyboardShouldPersistTaps="handled"
+    >
       {heading}
       {children}
     </ScrollView>

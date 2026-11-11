@@ -27,8 +27,10 @@ class EchoService : public MockService {
   using MockService::MockService;
   ~EchoService() override { stop(); }
 
-  void emit_ping() {
-    run([this]() { sd_bus_emit_signal(bus(), "/test", "com.tomcully.Test", "Ping", "s", "hello"); });
+  void emit_ping(int times = 1) {
+    run([this, times]() {
+      for (int i = 0; i < times; ++i) sd_bus_emit_signal(bus(), "/test", "com.tomcully.Test", "Ping", "s", "hello");
+    });
   }
 
   int unanswered() {
@@ -223,6 +225,96 @@ TEST_F(LoopFixture, SignalsAreDispatchedThroughAMatch) {
   EXPECT_TRUE(eventually([&]() { return pings.load() == 2; })) << pings.load();
 
   daemon.run([&]() { slot.reset(); });
+}
+
+// More than one pump's worth at once: the rest waits behind whatever else the io thread has.
+TEST_F(LoopFixture, ABurstOfSignalsIsAllDispatched) {
+  REQUIRE_TEST_BUS();
+
+  std::atomic<int> pings{0};
+  std::atomic<bool> installed{false};
+  struct Context {
+    std::atomic<int>* pings;
+    std::atomic<bool>* installed;
+  } context{&pings, &installed};
+
+  dbus::Slot slot;
+  daemon.run([&]() {
+    sd_bus_slot* raw = nullptr;
+    sd_bus_match_signal_async(
+        loop->bus(), &raw, nullptr, "/test", "com.tomcully.Test", "Ping",
+        [](sd_bus_message*, void* userdata, sd_bus_error*) {
+          ++*static_cast<Context*>(userdata)->pings;
+          return 0;
+        },
+        [](sd_bus_message*, void* userdata, sd_bus_error*) {
+          *static_cast<Context*>(userdata)->installed = true;
+          return 0;
+        },
+        &context);
+    slot.reset(raw);
+    loop->kick();
+  });
+  ASSERT_TRUE(eventually([&]() { return installed.load(); }));
+
+  // Held up while the burst arrives, so the next pump finds it all queued.
+  daemon.run([&]() {
+    service->emit_ping(300);
+    std::this_thread::sleep_for(200ms);
+  });
+  EXPECT_TRUE(eventually([&]() { return pings.load() == 300; })) << pings.load();
+  daemon.run([&]() { slot.reset(); });
+}
+
+// Calls larger than the socket takes at once: the rest is written as the socket drains.
+TEST_F(LoopFixture, CallsLargerThanTheSocketBufferAreAllAnswered) {
+  REQUIRE_TEST_BUS();
+
+  const std::string large(256 * 1024, 'x');
+  constexpr int count = 16;
+  std::atomic<int> answered{0};
+  daemon.run([&]() {
+    for (int i = 0; i < count; ++i) {
+      auto message = loop->method_call("com.tomcully.Test", "/test", "com.tomcully.Test", "Echo");
+      sd_bus_message_append(message.get(), "s", large.c_str());
+      loop->call(std::move(message), [&answered, &large](sd_bus_message* reply, const dbus::CallError* error) {
+        const char* text = nullptr;
+        if (!error && sd_bus_message_read(reply, "s", &text) > 0 && text == large) ++answered;
+      });
+    }
+  });
+  EXPECT_TRUE(eventually([&]() { return answered.load() == count; }, 10s)) << answered.load();
+}
+
+// A handler may close the loop it is answered on; the bus goes once the handler has returned.
+TEST_F(LoopFixture, AHandlerMayCloseTheLoop) {
+  REQUIRE_TEST_BUS();
+
+  std::atomic<bool> answered{false};
+  daemon.run([&]() {
+    auto message = loop->method_call("com.tomcully.Test", "/test", "com.tomcully.Test", "Echo");
+    sd_bus_message_append(message.get(), "s", "last");
+    loop->call(std::move(message), [&](sd_bus_message*, const dbus::CallError*) {
+      loop->close();
+      EXPECT_TRUE(loop->is_open()) << "not from inside the reply";
+      answered = true;
+    });
+  });
+  ASSERT_TRUE(eventually([&]() { return answered.load(); }));
+  EXPECT_TRUE(eventually([&]() { return !daemon.run([this]() { return loop->is_open(); }); }));
+  EXPECT_TRUE(logger->contains("Disconnected from")) << logger->text();
+}
+
+// Dropped while still open, as at exit: it lets the bus go without asio closing sd-bus's descriptor.
+TEST_F(LoopFixture, ALoopDroppedOpenLetsTheBusGo) {
+  REQUIRE_TEST_BUS();
+
+  daemon.run([&]() { loop.reset(); });
+
+  // The bus and the service are still there for a connection of its own.
+  loop = std::make_shared<dbus::SdBusLoop>(logger, daemon.executor(), test_bus_address());
+  ASSERT_TRUE(daemon.run([this]() { return loop->open(); }).ok) << logger->text();
+  EXPECT_EQ(call("Echo").text, "over the bus");
 }
 
 TEST_F(LoopFixture, AfterCloseACallIsAnsweredDisconnected) {

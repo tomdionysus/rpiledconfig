@@ -92,6 +92,37 @@ TEST(JsonTest, RefusesWhatIsNotJson) {
   EXPECT_FALSE(Json::parse("01"));
 }
 
+// RFC 8259, section 7: every escape, \u in each UTF-8 length, and surrogates only in pairs.
+TEST(JsonTest, ReadsEveryEscapeAndRefusesBrokenOnes) {
+  const auto json = Json::parse("\"\\/\\b\\f\\r\\t\\u0041\\u00e9\\u20ac\\uD83D\\uDE00\"");
+  ASSERT_TRUE(json);
+  EXPECT_EQ(json->as_string(), "/\b\f\r\tA\xc3\xa9\xe2\x82\xac\xf0\x9f\x98\x80");
+
+  for (const char* text : {"\"\\u00g0\"", "\"\\u12\"", "\"\\ud83d\"", "\"\\ud83dx\"", "\"\\ud83d\\u0041\"", "\"\\ude00\"", "\"\\"}) {
+    EXPECT_FALSE(Json::parse(text)) << text;
+  }
+}
+
+TEST(JsonTest, RefusesMembersAndItemsWithoutTheirCommas) {
+  EXPECT_FALSE(Json::parse("{\"a\":1 \"b\":2}"));
+  EXPECT_FALSE(Json::parse("[1 2]"));
+  EXPECT_FALSE(Json::parse("{\"a\" 1}"));
+  EXPECT_FALSE(Json::parse("{1:2}"));
+}
+
+TEST(JsonTest, NumbersAreJsonNumbers) {
+  EXPECT_DOUBLE_EQ(Json::parse("0.5")->as_number(), 0.5);
+  EXPECT_DOUBLE_EQ(Json::parse("1E+2")->as_number(), 100);
+  for (const char* text : {"-", "1.", ".5", "1e", "1e+", "+1", "1e400"}) EXPECT_FALSE(Json::parse(text)) << text;
+}
+
+TEST(JsonTest, WritesNullAndKeepsOneOfEachKey) {
+  EXPECT_EQ(Json().dump(), "null");
+  EXPECT_EQ(Json::object().set("a", Json::number(1)).set("a", Json::number(2)).dump(), "{\"a\":2}");
+  // A repeated key in what arrives is the last one, as most parsers have it.
+  EXPECT_DOUBLE_EQ(Json::parse("{\"a\":1,\"a\":2}")->get("a")->as_number(), 2);
+}
+
 TEST(JsonTest, RefusesNestingPastThirtyTwo) {
   std::string deep;
   for (int i = 0; i < 40; ++i) deep += "[";

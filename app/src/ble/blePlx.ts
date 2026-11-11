@@ -35,10 +35,7 @@ function ble(): BleManager {
 async function requestPermissions(): Promise<void> {
   if (Platform.OS !== 'android') return;
   if (Number(Platform.Version) >= 31) {
-    const results = await PermissionsAndroid.requestMultiple([
-      PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
-      PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
-    ]);
+    const results = await PermissionsAndroid.requestMultiple([PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN, PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT]);
     if (!Object.values(results).every((result) => result === PermissionsAndroid.RESULTS.GRANTED)) {
       throw unavailable('Bluetooth permission was not granted.');
     }
@@ -51,7 +48,7 @@ async function requestPermissions(): Promise<void> {
 /** Resolves once the adapter is powered on, or rejects with a readable reason. */
 async function waitForPoweredOn(): Promise<void> {
   let latest: string = await ble().state();
-  if (latest === State.PoweredOn) return;
+  if (latest === (State.PoweredOn as string)) return;
   if (isFinalAdapterState(latest)) throw unavailable(adapterMessage(latest));
   await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -178,11 +175,21 @@ export const blePlxTransport: BleTransport = {
   },
 
   prescan() {
+    // Stopped while permissions or the adapter were still being waited for, it must not start
+    // a scan afterwards that nothing would stop.
+    let stopped = false;
     void requestPermissions()
       .then(waitForPoweredOn)
-      .then(() => startScan(() => {}, () => {}))
+      .then(() => {
+        if (stopped) return;
+        startScan(
+          () => {},
+          () => {},
+        );
+      })
       .catch(() => {});
     return () => {
+      stopped = true;
       void ble().stopDeviceScan();
     };
   },

@@ -72,10 +72,10 @@ export default function ScanScreen() {
   // Not useCameraDevice('back'): it can pick a camera with no formats, and
   // useCameraFormat then throws during render (src/led/camera.ts).
   const devices = useCameraDevices();
-  const device = useMemo(() => chooseScanCamera(devices, FPS), [devices]);
+  const device = useMemo(() => chooseScanCamera(devices, FPS), [devices, FPS]);
   const format = useMemo(
     () => (device && device.formats.length > 0 ? getCameraFormat(device, [{ fps: FPS }, { videoResolution: { width: 1280, height: 720 } }]) : undefined),
-    [device],
+    [device, FPS],
   );
   // VisionCamera refuses an fps outside the format's range, so the rate asked for is
   // clamped to what the format gives; the log says both.
@@ -95,9 +95,7 @@ export default function ScanScreen() {
   const progress = useRef(new ScanProgress(frameMs(rate)));
   const [scan, setScan] = useState<ScanView>(() => new ScanProgress(frameMs(rate)).update({ t: 0, ledSeen: false, coverage: 0 }));
   const [active, setActive] = useState(true);
-  const [frameError, setFrameError] = useState<string | undefined>(
-    reader ? undefined : 'the LED reader is not built into this app on this platform',
-  );
+  const [frameError, setFrameError] = useState<string | undefined>(reader ? undefined : 'the LED reader is not built into this app on this platform');
   const lastLog = useRef(0);
 
   const onState = useRunOnJS((next: LedReaderState) => {
@@ -108,7 +106,9 @@ export default function ScanScreen() {
       while (times.length > 0 && next.t - times[0] > 1000) times.shift();
     }
     const view = progress.current.update(next);
-    setScan((current) => (current.phase === view.phase && current.progress === view.progress && current.hint === view.hint && current.stalled === view.stalled ? current : view));
+    setScan((current) =>
+      current.phase === view.phase && current.progress === view.progress && current.hint === view.hint && current.stalled === view.stalled ? current : view,
+    );
     if (DIAGNOSTICS && (next.t - lastLog.current >= 1000 || next.idHex)) {
       // `adb logcat -s ReactNativeJS` on Android: what the reader measured, once a second.
       lastLog.current = next.t;
@@ -129,9 +129,10 @@ export default function ScanScreen() {
       if (!reader) return;
       try {
         const next = reader.call(frame) as unknown as LedReaderState | undefined;
-        if (next) onState(next);
+        // Posted to the JS thread; the camera's thread does not wait for it.
+        if (next) void onState(next);
       } catch (error) {
-        onFrameError(error instanceof Error ? error.message : String(error));
+        void onFrameError(error instanceof Error ? error.message : String(error));
       }
     },
     [reader, onState, onFrameError],
@@ -215,9 +216,7 @@ export default function ScanScreen() {
   if (!device || cameraError) {
     return (
       <View style={[styles.root, styles.prompt]}>
-        <Text style={styles.promptBody}>
-          {cameraError ? `The camera stopped: ${cameraError}` : 'This phone has no back camera the app can use.'}
-        </Text>
+        <Text style={styles.promptBody}>{cameraError ? `The camera stopped: ${cameraError}` : 'This phone has no back camera the app can use.'}</Text>
         <Button label="Back" variant="quiet" onPress={() => router.back()} />
       </View>
     );
@@ -233,7 +232,10 @@ export default function ScanScreen() {
           the square at the viewfinder's centre is over the frame's centre (where the
           luminance is measured; a "cover" preview keeps the centres together) and covers no
           text. */}
-      <View style={[styles.viewfinder, { height: Math.round(window.height * VIEWFINDER_FRACTION) }]} onLayout={(event: LayoutChangeEvent) => setView(event.nativeEvent.layout)}>
+      <View
+        style={[styles.viewfinder, { height: Math.round(window.height * VIEWFINDER_FRACTION) }]}
+        onLayout={(event: LayoutChangeEvent) => setView(event.nativeEvent.layout)}
+      >
         <Camera
           ref={camera}
           style={StyleSheet.absoluteFill}
@@ -263,10 +265,8 @@ export default function ScanScreen() {
             accessibilityRole="button"
             accessibilityLabel="Focus on the square"
             onPress={() => void lockOnReticle()}
-            style={[
-              styles.reticle,
-              { width: boxSide, height: boxSide, top: (view.height - boxSide) / 2, left: (view.width - boxSide) / 2 },
-            ]}>
+            style={[styles.reticle, { width: boxSide, height: boxSide, top: (view.height - boxSide) / 2, left: (view.width - boxSide) / 2 }]}
+          >
             {(['tl', 'tr', 'bl', 'br'] as const).map((corner) => (
               <View key={corner} style={[styles.corner, styles[corner], state?.level ? styles.cornerLit : null]} />
             ))}
@@ -276,7 +276,12 @@ export default function ScanScreen() {
       </View>
       <View style={[styles.overlay, { paddingBottom: insets.bottom + space.md }]}>
         <View style={styles.panel}>
-          <Progress value={scan.progress} label={scan.label} detail={scan.detail} tone={scan.phase === 'lost' || scan.phase === 'decoding' ? 'warn' : 'accent'} />
+          <Progress
+            value={scan.progress}
+            label={scan.label}
+            detail={scan.detail}
+            tone={scan.phase === 'lost' || scan.phase === 'decoding' ? 'warn' : 'accent'}
+          />
           <Text style={styles.check} numberOfLines={2}>
             {result ? `${result.errors} wrong and ${result.erasures} unreadable bytes repaired.` : scan.hint}
           </Text>
@@ -288,7 +293,9 @@ export default function ScanScreen() {
           ) : null}
           {scan.stalled && !result && target ? (
             <>
-              <Text style={styles.check}>No valid read after {Math.round((STALLED_AFTER_FRAMES * frameMs(rate)) / 1000)} s at {RATE_INFO[rate].label} speed.</Text>
+              <Text style={styles.check}>
+                No valid read after {Math.round((STALLED_AFTER_FRAMES * frameMs(rate)) / 1000)} s at {RATE_INFO[rate].label} speed.
+              </Text>
               {slower ? (
                 <Button label={`Try slower: ${RATE_INFO[slower].label}`} busy={retrying} onPress={() => void readAgain(slower)} />
               ) : (

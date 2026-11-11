@@ -45,7 +45,9 @@ export default function PermissionsScreen() {
           return;
         }
         // A need Android called blocked stays so until it is granted: a check cannot tell.
-        setStatuses((before) => Object.fromEntries(needs.map((need) => [need.id, now[need.id] === 'granted' ? 'granted' : (before?.[need.id] ?? now[need.id])])));
+        setStatuses((before) =>
+          Object.fromEntries(needs.map((need) => [need.id, now[need.id] === 'granted' ? 'granted' : (before?.[need.id] ?? now[need.id])])),
+        );
       });
     });
     return () => subscription.remove();

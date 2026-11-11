@@ -1,6 +1,6 @@
-// react-native-ble-plx under test: nothing that reaches it is exercised by
-// the logic tests (the fake transport stands in), so this is only enough for
-// the module to import.
+// react-native-ble-plx under test. The pairing logic is tested over the fake transport
+// (src/ble/fake.ts); the transport over this library (src/ble/blePlx.ts) is tested against a
+// manager the test puts in `testing.manager`, which `new BleManager()` hands back.
 export enum State {
   Unknown = 'Unknown',
   Resetting = 'Resetting',
@@ -17,9 +17,12 @@ export enum ScanMode {
   LowLatency = 2,
 }
 
+export const testing: { manager?: object } = {};
+
 export class BleManager {
   constructor() {
-    throw new Error('BleManager is native; tests use the fake transport');
+    if (!testing.manager) throw new Error('BleManager is native; a test sets testing.manager, or uses the fake transport');
+    return testing.manager;
   }
 }
 

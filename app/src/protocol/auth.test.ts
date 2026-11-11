@@ -1,4 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { p256 } from '@noble/curves/nist.js';
+import { afterEach, describe, expect, it } from 'vitest';
+import { base64Encode } from '@/ble/base64';
+import { NativeModules } from '@/test/react-native';
 import { acceptAuth, appAuth, verifyConfirmation } from './auth';
 import { bytesToHex, hexToBytes, utf8Encode } from './bytes';
 import { AUTH_WRITE_LENGTH } from './constants';
@@ -79,11 +82,47 @@ describe('SPAKE2', () => {
     }
   });
 
+  // RFC 9382, section 7: a share of exactly w*N (or w*M) makes K the identity, and the
+  // exchange is aborted rather than keyed from it.
+  it('refuses a share that makes the shared point the identity', () => {
+    const w = BigInt(`0x${bytesToHex(passwordScalar(ID))}`);
+    const wN = p256.Point.fromHex('03d8bbd6c639c62937b04d997f38c3770719c629d7014d49a24b4f98baa1292b49').multiply(w).toBytes(false);
+    const x = randomScalar();
+    expect(() => finish('a', passwordScalar(ID), x, share('a', passwordScalar(ID), x), wN)).toThrow(/shared point is the identity/);
+    // And the daemon's side turns the same away without answering.
+    const wM = p256.Point.fromHex('02886e2f97ace46e55ba9dd7242579f2993b64e16ef3dcab95afd497333d8fa12f').multiply(w).toBytes(false);
+    const y = randomScalar();
+    const pB = share('b', passwordScalar(ID), y);
+    expect(acceptAuth(passwordScalar(ID), y, pB, Uint8Array.from([...wM, ...new Uint8Array(32)]))).toBeUndefined();
+  });
+
   it('refuses a zero, out-of-range or short scalar', () => {
     const w = passwordScalar(ID);
     expect(() => share('a', w, new Uint8Array(32))).toThrow(Spake2Error);
     expect(() => share('a', w, new Uint8Array(32).fill(0xff))).toThrow(Spake2Error);
     expect(() => share('a', w, new Uint8Array(31).fill(1))).toThrow(Spake2Error);
+  });
+});
+
+describe('randomScalar', () => {
+  afterEach(() => {
+    delete NativeModules.RpiRandom;
+  });
+
+  /** The phone's random source, giving `draws` in turn and then the last again. */
+  function source(...draws: Uint8Array[]) {
+    NativeModules.RpiRandom = { randomBytes: () => base64Encode(draws.length > 1 ? draws.shift()! : draws[0]) };
+  }
+
+  it('draws again past zero and past the order, as rejection sampling does', () => {
+    const valid = new Uint8Array(32).fill(0x11);
+    source(new Uint8Array(32), new Uint8Array(32).fill(0xff), valid);
+    expect(randomScalar()).toEqual(valid);
+  });
+
+  it('gives up on a source that never gives a usable scalar', () => {
+    source(new Uint8Array(32));
+    expect(() => randomScalar()).toThrow(Spake2Error);
   });
 });
 

@@ -50,6 +50,21 @@ TEST(WpaControlTest, TheSsidIsUnescapedAsPrintfEncodeWroteIt) {
   EXPECT_FALSE(wpa::decode_ssid("trailing\\"));
 }
 
+// printf_encode's other escapes: \n, \r and \e, and \x in either case.
+TEST(WpaControlTest, TheSsidsOtherEscapesAreUnescaped) {
+  EXPECT_EQ(wpa::decode_ssid("a\\nb\\rc\\ed"), "a\nb\rc\033d");
+  EXPECT_EQ(wpa::decode_ssid("\\x4A\\x4b"), "JK");
+  EXPECT_FALSE(wpa::decode_ssid("\\xg1"));
+  EXPECT_FALSE(wpa::decode_ssid("\\x1g"));
+}
+
+TEST(WpaControlTest, AnEventWithNoArgumentIsItsName) {
+  const auto event = wpa::parse_event("<3>CTRL-EVENT-TERMINATING\n");
+  EXPECT_EQ(event.name, "CTRL-EVENT-TERMINATING");
+  EXPECT_EQ(event.argument, "");
+  EXPECT_EQ(wpa::parse_event("<3 no close").name, "<3") << "a level that never closes is left in place";
+}
+
 TEST(WpaControlTest, ThePassphraseIsHex) {
   EXPECT_EQ(wpa::decode_hex_text("636f727265637420686f727365"), "correct horse");
   EXPECT_EQ(wpa::decode_hex_text("636f727265637420686f727365\n"), "correct horse");
@@ -66,4 +81,6 @@ TEST(WpaControlTest, TheMacComesFromStatusWithoutColons) {
   EXPECT_EQ(wpa::status_mac(status), "88a29e23c4b4") << "address=, not p2p_device_address=";
   EXPECT_FALSE(wpa::status_mac("wpa_state=INACTIVE\n"));
   EXPECT_FALSE(wpa::status_mac("address=88:a2:9e\n"));
+  EXPECT_FALSE(wpa::status_mac("address=88:a2:9e:23:c4:zz\n"));
+  EXPECT_EQ(wpa::status_mac("address=88:a2:9e:23:c4:b4"), "88a29e23c4b4") << "the last line needs no newline";
 }

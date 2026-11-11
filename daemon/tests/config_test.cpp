@@ -123,6 +123,41 @@ TEST(ConfigTest, AnUnclosedQuoteIsAnError) {
   EXPECT_TRUE(loaded.logger->contains("line 1"));
 }
 
+// Double quotes take \n, \t, \\ and \"; single quotes take everything as it is.
+TEST(ConfigTest, QuotedValuesTakeTheirEscapes) {
+  Loaded escaped("ble.name_prefix: \"a\\\"b\\\\c\" # comment\n");
+  ASSERT_TRUE(escaped.ok) << escaped.logger->text();
+  EXPECT_EQ(escaped.config.ble_name_prefix, "a\"b\\c");
+
+  Loaded single("led.path: '/sys/class/leds/a\\nb'\n");
+  ASSERT_TRUE(single.ok) << single.logger->text();
+  EXPECT_EQ(single.config.led_path, "/sys/class/leds/a\\nb");
+
+  // A newline or a tab is taken; the name prefix then refuses it as not printable.
+  Loaded control("ble.name_prefix: \"a\\tb\"\n");
+  EXPECT_FALSE(control.ok);
+  Loaded newline("led.path: \"/a\\nb\"\n");
+  ASSERT_TRUE(newline.ok) << newline.logger->text();
+  EXPECT_EQ(newline.config.led_path, "/a\nb");
+}
+
+TEST(ConfigTest, AnUnknownEscapeOrTextAfterTheQuoteIsAnError) {
+  Loaded unknown("ble.adapter: \"hci\\x1\"\n");
+  EXPECT_FALSE(unknown.ok);
+  EXPECT_TRUE(unknown.logger->contains("unknown escape \\x")) << unknown.logger->text();
+
+  Loaded after("ble.adapter: \"hci1\" hci2\n");
+  EXPECT_FALSE(after.ok);
+  EXPECT_TRUE(after.logger->contains("text after the closing quote: hci2")) << after.logger->text();
+}
+
+TEST(ConfigTest, AKeyWithASpaceInItIsAnError) {
+  Loaded loaded("setup always: true\n");
+  EXPECT_FALSE(loaded.ok);
+  EXPECT_TRUE(loaded.logger->contains("no key before the colon")) << loaded.logger->text();
+  EXPECT_FALSE(Loaded(": true\n").ok);
+}
+
 TEST(ConfigTest, AnUnknownKeyIsAnErrorNamingTheLine) {
   Loaded loaded(
       "log.level: info\n"
