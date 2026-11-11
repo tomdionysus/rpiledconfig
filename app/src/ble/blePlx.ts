@@ -51,7 +51,7 @@ async function requestPermissions(): Promise<void> {
 /** Resolves once the adapter is powered on, or rejects with a readable reason. */
 async function waitForPoweredOn(): Promise<void> {
   let latest: string = await ble().state();
-  if (latest === State.PoweredOn) return;
+  if (latest === (State.PoweredOn as string)) return;
   if (isFinalAdapterState(latest)) throw unavailable(adapterMessage(latest));
   await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => {

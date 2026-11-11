@@ -237,7 +237,7 @@ describe('pair', () => {
     const session = await pair(injecting, daemon.name, ID);
     const closed = new Promise<LinkLostError | undefined>((resolve) => session.onClosed(resolve));
     // A last fragment holding a counter and a tag under no key the app has.
-    deliver(new Uint8Array([0x01, ...new Array(8).fill(0), ...new Array(32).fill(0xaa)]));
+    deliver(new Uint8Array([0x01, ...Array<number>(8).fill(0), ...Array<number>(32).fill(0xaa)]));
     const reason = await closed;
     expect(reason?.unverified).toBe(true);
     expect(session.isClosed).toBe(true);

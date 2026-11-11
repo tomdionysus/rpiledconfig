@@ -69,7 +69,8 @@ export type ErrorCode = 'bad_request' | 'unknown_op' | 'wifi_unavailable' | 'wif
 
 export interface ErrorResponse {
   ok: false;
-  error: ErrorCode | string;
+  // A code from a newer daemon is still a string; `string & {}` keeps the known ones named.
+  error: ErrorCode | (string & {});
   message: string;
 }
 

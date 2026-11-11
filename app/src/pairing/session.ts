@@ -50,6 +50,8 @@ export type PairingErrorKind = 'bluetooth' | 'not_found' | 'led' | 'protocol' | 
 /** A raw platform error's text, kept for diagnostics and never shown as the message. */
 export function detailOf(cause: unknown): string | undefined {
   if (cause === undefined) return undefined;
+  // Platforms reject with strings and plain objects as well as Errors; any text helps.
+  // eslint-disable-next-line @typescript-eslint/no-base-to-string
   return cause instanceof Error ? cause.message : String(cause);
 }
 
@@ -178,6 +180,8 @@ function withTimeout<T>(promise: Promise<T>, ms: number, error: () => Error, clo
       },
       (reason) => {
         cancel();
+        // The original rejection, passed through unchanged.
+        // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
         reject(reason);
       },
     );

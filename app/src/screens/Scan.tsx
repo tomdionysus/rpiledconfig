@@ -72,10 +72,10 @@ export default function ScanScreen() {
   // Not useCameraDevice('back'): it can pick a camera with no formats, and
   // useCameraFormat then throws during render (src/led/camera.ts).
   const devices = useCameraDevices();
-  const device = useMemo(() => chooseScanCamera(devices, FPS), [devices]);
+  const device = useMemo(() => chooseScanCamera(devices, FPS), [devices, FPS]);
   const format = useMemo(
     () => (device && device.formats.length > 0 ? getCameraFormat(device, [{ fps: FPS }, { videoResolution: { width: 1280, height: 720 } }]) : undefined),
-    [device],
+    [device, FPS],
   );
   // VisionCamera refuses an fps outside the format's range, so the rate asked for is
   // clamped to what the format gives; the log says both.
@@ -129,9 +129,10 @@ export default function ScanScreen() {
       if (!reader) return;
       try {
         const next = reader.call(frame) as unknown as LedReaderState | undefined;
-        if (next) onState(next);
+        // Posted to the JS thread; the camera's thread does not wait for it.
+        if (next) void onState(next);
       } catch (error) {
-        onFrameError(error instanceof Error ? error.message : String(error));
+        void onFrameError(error instanceof Error ? error.message : String(error));
       }
     },
     [reader, onState, onFrameError],

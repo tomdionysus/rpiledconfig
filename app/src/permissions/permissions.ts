@@ -115,5 +115,5 @@ export async function checkNeeds(needs: Need[]): Promise<Record<string, NeedStat
 export async function requestNeeds(needs: Need[]): Promise<Record<string, NeedStatus>> {
   const permissions = needs.flatMap((need) => [...need.permissions, ...(need.alsoRequest ?? [])]);
   const answers = await PermissionsAndroid.requestMultiple(permissions as never[]);
-  return statusesFrom(needs, answers as Record<string, string>);
+  return statusesFrom(needs, answers);
 }

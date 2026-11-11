@@ -75,7 +75,7 @@ export default function FindScreen() {
         setAsking(undefined);
       }
     },
-    [rate, router, services.transport, setPairingKey, setTarget],
+    [experiment, rate, router, services.transport, setPairingKey, setTarget],
   );
 
   return (
