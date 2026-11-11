@@ -5,8 +5,21 @@ daemon/compile_commands.json
 daemon/.cache/
 daemon/.local/
 
-# Packages from packaging/build-debs.sh
+# Release builds kept locally: APKs, the Play bundle, older packages
 /dist/
+
+# The Debian package build (daemon/scripts/build-deb.sh)
+/build-deb/
+debian/changelog
+debian/build/
+debian/.debhelper/
+debian/debhelper-build-stamp
+debian/files
+debian/*.substvars
+debian/*.debhelper
+debian/*.debhelper.log
+debian/tmp/
+debian/rpiledconfig/
 
 # App
 app/node_modules/

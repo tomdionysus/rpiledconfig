@@ -19,7 +19,7 @@ set(RPILEDCONFIG_SANITIZE "none" CACHE STRING "Sanitizer to build with: none, ad
 set_property(CACHE RPILEDCONFIG_SANITIZE PROPERTY STRINGS none address thread)
 
 # Single-config generators leave CMAKE_BUILD_TYPE empty, which means no optimisation
-# and no debug info. Packaging passes Release explicitly.
+# and no debug info. The package passes RelWithDebInfo (debian/rules).
 get_property(RPILEDCONFIG_MULTI_CONFIG GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
 
 if(NOT RPILEDCONFIG_MULTI_CONFIG AND NOT CMAKE_BUILD_TYPE)
@@ -187,7 +187,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT RPILEDCONFIG_FUZZ)
         -fstack-protector-strong
         -fstack-clash-protection
         -D_GLIBCXX_ASSERTIONS
-        $<$<CONFIG:Release,RelWithDebInfo>:-D_FORTIFY_SOURCE=3>)
+        # A distribution's build flags may set a level of their own first (dpkg-buildflags does).
+        $<$<CONFIG:Release,RelWithDebInfo>:-U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=3>)
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64")
         target_compile_options(rpiledconfig_core PUBLIC -mbranch-protection=standard)
     endif()
@@ -340,7 +341,6 @@ install(FILES
             ../README.md
             ../LICENSE
             ../NOTICE
-            packaging/debian/copyright
         DESTINATION ${CMAKE_INSTALL_DOCDIR})
 file(GLOB RPILEDCONFIG_DOCS "${CMAKE_CURRENT_SOURCE_DIR}/../docs/*.md")
 install(FILES ${RPILEDCONFIG_DOCS} DESTINATION ${CMAKE_INSTALL_DOCDIR})
@@ -371,10 +371,6 @@ if(RPILEDCONFIG_INSTALL_SYSTEM_FILES)
     install(FILES packaging/rpiledconfig-uninstall.service DESTINATION ${RPILEDCONFIG_SYSTEMD_UNIT_DIR})
     install(FILES packaging/60-rpiledconfig.rules DESTINATION ${RPILEDCONFIG_UDEV_RULES_DIR})
     install(FILES packaging/polkit-rpiledconfig.rules DESTINATION ${RPILEDCONFIG_POLKIT_RULES_DIR} RENAME 60-rpiledconfig.rules)
-endif()
-
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    include("${CMAKE_CURRENT_SOURCE_DIR}/packaging/cpack.cmake")
 endif()
 
 # --- Editor support ---------------------------------------------------------------------

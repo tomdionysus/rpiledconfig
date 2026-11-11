@@ -35,7 +35,7 @@ connection.
 | `daemon/` | The service, `rpiledconfig`. C++20, Boost.Asio, OpenSSL, BlueZ and NetworkManager over sd-bus; systemd. |
 | `app/` | The phone app, RPi LED Config. React Native and TypeScript, for Android. At run time: react-native-ble-plx, react-native-vision-camera with react-native-worklets-core, react-native-safe-area-context and the noble libraries. The LED reader is native: `app/modules/led-reader`, C++ behind a VisionCamera frame-processor plugin. |
 | `docs/` | The protocol (`protocol.md`), what is exposed (`security.md`), installation, configuration, releasing to Google Play (`play-store.md`), and the app's privacy policy (`privacy.md`). |
-| `packaging/` | A Docker build of the Debian package, kept but not used. The package's own files are in `daemon/packaging/`. |
+| `debian/` | The Debian package, built with debhelper by `daemon/scripts/build-deb.sh`. The files it installs are in `daemon/packaging/`. |
 
 ## How it works
 
@@ -84,11 +84,17 @@ A release of the app has no permission to use the internet (docs/privacy.md).
 
 ## Installing the service
 
-Build the package on a Pi, on 64-bit Raspberry Pi OS, from `daemon/`:
+Build the package on a Pi running 64-bit Raspberry Pi OS (trixie), from a clone of
+this repository:
 
-    cmake -S . -B build-deb -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -DRPILEDCONFIG_BUILD_TESTING=OFF
-    cmake --build build-deb && (cd build-deb && cpack -G DEB)
-    sudo apt install ./build-deb/rpiledconfig_0.5.0-1_arm64.deb
+    sudo apt install dpkg-dev && sudo apt build-dep ./
+    daemon/scripts/build-deb.sh
+    sudo apt install ./build-deb/rpiledconfig_*_arm64.deb
+
+The build runs the daemon's tests; `DEB_BUILD_OPTIONS=nocheck` skips them. The version
+comes from `git describe`: a tag gives its own, such as `0.5.0`, and a build three
+commits later `0.5.0+git3.gabc1234`. `rpiledconfig-dbgsym` beside it holds the debug
+symbols.
 
 The package enables and starts the service. It needs BlueZ, NetworkManager and
 polkit, which Raspberry Pi OS ships. `docs/installation.md` covers the rest, and
