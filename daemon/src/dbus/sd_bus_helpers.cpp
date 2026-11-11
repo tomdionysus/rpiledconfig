@@ -83,7 +83,6 @@ int read_variant(sd_bus_message* message, bool& out) {
 int read_variant(sd_bus_message* message, std::uint8_t& out) { return read_basic_variant(message, SD_BUS_TYPE_BYTE, out); }
 int read_variant(sd_bus_message* message, std::uint16_t& out) { return read_basic_variant(message, SD_BUS_TYPE_UINT16, out); }
 int read_variant(sd_bus_message* message, std::uint32_t& out) { return read_basic_variant(message, SD_BUS_TYPE_UINT32, out); }
-int read_variant(sd_bus_message* message, std::int64_t& out) { return read_basic_variant(message, SD_BUS_TYPE_INT64, out); }
 
 int read_variant(sd_bus_message* message, types::Bytes& out) {
   if (variant_contents(message) != "ay") return 0;
@@ -99,18 +98,6 @@ int read_variant(sd_bus_message* message, types::Bytes& out) {
   const auto* bytes = static_cast<const std::uint8_t*>(data);
   out.assign(bytes, bytes + size);
 
-  r = sd_bus_message_exit_container(message);
-  return r < 0 ? r : 1;
-}
-
-int read_variant(sd_bus_message* message, std::vector<std::string>& out) {
-  const auto contents = variant_contents(message);
-  if (contents != "as" && contents != "ao") return 0;
-
-  int r = sd_bus_message_enter_container(message, SD_BUS_TYPE_VARIANT, contents.c_str());
-  if (r < 0) return r;
-  r = read_strings(message, out);
-  if (r < 0) return r;
   r = sd_bus_message_exit_container(message);
   return r < 0 ? r : 1;
 }
