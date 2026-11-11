@@ -1,0 +1,57 @@
+name: Bug report
+description: Something in the service or the app does not do what the docs say.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A security problem goes privately, as SECURITY.md says, not here.
+        Leave out WiFi passphrases, and anything else you would not want public.
+  - type: dropdown
+    id: side
+    attributes:
+      label: Where
+      options:
+        - The service on the Pi
+        - The app
+        - Pairing (the LED read or authentication)
+        - The Debian package
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+      description: The steps, what the app showed, and what you expected instead.
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: "`rpiledconfig --version` on the Pi, and the app's version from Android's app info for RPi LED Config."
+      placeholder: rpiledconfig 0.5.1, app 0.5.1
+    validations:
+      required: true
+  - type: input
+    id: hardware
+    attributes:
+      label: Pi, OS and phone
+      placeholder: Raspberry Pi 5, Raspberry Pi OS trixie 64-bit, Pixel 7 on Android 15
+    validations:
+      required: true
+  - type: dropdown
+    id: speed
+    attributes:
+      label: LED speed, if the LED read is involved
+      options:
+        - Not involved
+        - Fast
+        - Normal
+        - Robust
+  - type: textarea
+    id: journal
+    attributes:
+      label: The service's log
+      description: "`journalctl -u rpiledconfig -b --no-pager` from the time it happened."
+      render: text

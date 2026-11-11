@@ -149,6 +149,11 @@ clean`; that file says why.
 `scripts/make-icons.sh` regenerates the app's icons, the README's logo and the Play
 listing's graphics from `assets/icon.svg`.
 
+## Contributing
+
+`CONTRIBUTING.md` has the rules for changes. A vulnerability is reported privately, as
+`SECURITY.md` says, not in an issue.
+
 ## License
 
 Apache License 2.0; see LICENSE and NOTICE.
