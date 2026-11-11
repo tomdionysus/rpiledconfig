@@ -1,16 +1,18 @@
-# RPiLEDConfig
-
-[![CI](https://github.com/tomdionysus/rpiledconfig/actions/workflows/ci.yml/badge.svg)](https://github.com/tomdionysus/rpiledconfig/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/tomdionysus/rpiledconfig/graph/badge.svg)](https://codecov.io/gh/tomdionysus/rpiledconfig)
-[![daemon coverage](https://codecov.io/gh/tomdionysus/rpiledconfig/graph/badge.svg?flag=daemon)](https://codecov.io/gh/tomdionysus/rpiledconfig?flags%5B0%5D=daemon)
-[![app coverage](https://codecov.io/gh/tomdionysus/rpiledconfig/graph/badge.svg?flag=app)](https://codecov.io/gh/tomdionysus/rpiledconfig?flags%5B0%5D=app)
-[![LED reader coverage](https://codecov.io/gh/tomdionysus/rpiledconfig/graph/badge.svg?flag=led-reader)](https://codecov.io/gh/tomdionysus/rpiledconfig?flags%5B0%5D=led-reader)
-[![CodeQL](https://github.com/tomdionysus/rpiledconfig/actions/workflows/codeql.yml/badge.svg)](https://github.com/tomdionysus/rpiledconfig/actions/workflows/codeql.yml)
-
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="app/assets/logo-on-dark.svg">
   <img src="app/assets/logo-on-light.svg" alt="RPi LED Config logo" width="128">
 </picture>
+
+# RPiLEDConfig
+
+| What it shows | Status |
+| --- | --- |
+| CI: the service's tests, plain and under the sanitizers; the app's checks and tests; the Debian package; the Android build | [![CI](https://github.com/tomdionysus/rpiledconfig/actions/workflows/ci.yml/badge.svg)](https://github.com/tomdionysus/rpiledconfig/actions/workflows/ci.yml) |
+| Test coverage, all three parts together | [![codecov](https://codecov.io/gh/tomdionysus/rpiledconfig/graph/badge.svg)](https://codecov.io/gh/tomdionysus/rpiledconfig) |
+| Test coverage of the service | [![daemon coverage](https://codecov.io/gh/tomdionysus/rpiledconfig/graph/badge.svg?flag=daemon)](https://codecov.io/gh/tomdionysus/rpiledconfig?flags%5B0%5D=daemon) |
+| Test coverage of the app's TypeScript | [![app coverage](https://codecov.io/gh/tomdionysus/rpiledconfig/graph/badge.svg?flag=app)](https://codecov.io/gh/tomdionysus/rpiledconfig?flags%5B0%5D=app) |
+| Test coverage of the app's native LED reader | [![LED reader coverage](https://codecov.io/gh/tomdionysus/rpiledconfig/graph/badge.svg?flag=led-reader)](https://codecov.io/gh/tomdionysus/rpiledconfig?flags%5B0%5D=led-reader) |
+| CodeQL security analysis of the C++ and the TypeScript | [![CodeQL](https://github.com/tomdionysus/rpiledconfig/actions/workflows/codeql.yml/badge.svg)](https://github.com/tomdionysus/rpiledconfig/actions/workflows/codeql.yml) |
 
 *v0.5.1*
 
