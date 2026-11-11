@@ -153,7 +153,7 @@ The app (Node 22 or later, a JDK and the Android SDK with NDK 27 for the phone
 build):
 
     cd app
-    npm install && npm run typecheck && npm test
+    npm install && npm run typecheck && npm run lint && npm test
 
 The native LED reader's C++ core and its tests:
 

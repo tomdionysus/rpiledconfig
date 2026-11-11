@@ -6,6 +6,9 @@
     "start": "react-native start",
     "android": "react-native run-android",
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint .",
+    "format": "prettier --write 'src/**/*.{ts,tsx}' 'scripts/*.mjs' '*.{js,mjs,mts}'",
+    "format:check": "prettier --check 'src/**/*.{ts,tsx}' 'scripts/*.mjs' '*.{js,mjs,mts}'",
     "test": "vitest run",
     "version:check": "node scripts/version-check.mjs",
     "coverage": "vitest run --coverage"
@@ -31,6 +34,7 @@
     "@babel/preset-env": "^7.25.3",
     "@babel/preset-typescript": "^7.27.1",
     "@babel/runtime": "^7.25.0",
+    "@eslint/js": "10.0.1",
     "@react-native-community/cli": "20.1.0",
     "@react-native-community/cli-platform-android": "20.1.0",
     "@react-native/babel-preset": "0.86.3",
@@ -38,7 +42,13 @@
     "@react-native/typescript-config": "0.86.3",
     "@types/react": "~19.2.2",
     "@vitest/coverage-v8": "5.1.0",
+    "eslint": "10.14.0",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "globals": "17.14.0",
+    "prettier": "3.10.0",
     "typescript": "~6.0.3",
+    "typescript-eslint": "8.72.2",
     "vitest": "^5.0.0"
   },
   "engines": {
