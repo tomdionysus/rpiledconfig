@@ -498,18 +498,19 @@ std::string MockNetworkManager::_activate(const std::string& connection, const s
     auto it = _actives.find(path);
     if (it == _actives.end() || _wifi->active != path) return;
 
-    const bool ok = _activation_succeeds;
-    it->second->state = ok ? activated : deactivated;
+    if (!_activation_succeeds) {
+      // As NetworkManager does it: the device fails with the reason first (120 is failed,
+      // 50 config, the reason NMDeviceStateReason), then the active connection is
+      // deactivated with device-disconnected (3).
+      it->second->state = deactivated;
+      sd_bus_emit_signal(bus(), _wifi->path.c_str(), device_interface, "StateChanged", "uuu", 120u, 50u, _failure_reason);
+      sd_bus_emit_signal(bus(), path.c_str(), active_interface, "StateChanged", "uu", it->second->state, 3u);
+      sd_bus_emit_properties_changed(bus(), path.c_str(), active_interface, "State", nullptr);
+      return _deactivate_device();
+    }
 
-    // As NetworkManager does it: the device fails with the reason first (120 is failed,
-    // 50 config, the reason NMDeviceStateReason), then the active connection is
-    // deactivated with device-disconnected (3).
-    if (!ok) sd_bus_emit_signal(bus(), _wifi->path.c_str(), device_interface, "StateChanged", "uuu", 120u, 50u, _failure_reason);
-    sd_bus_emit_signal(bus(), path.c_str(), active_interface, "StateChanged", "uu", it->second->state, ok ? 0u : 3u);
-    sd_bus_emit_properties_changed(bus(), path.c_str(), active_interface, "State", nullptr);
-
-    if (!ok) return _deactivate_device();
-
+    // NetworkManager configures the address before the connection is activated, so a
+    // status asked for on the activation already has it.
     auto ip4 = std::make_unique<Ip4Object>();
     ip4->owner = this;
     ip4->path = "/org/freedesktop/NetworkManager/IP4Config/" + std::to_string(_next++);
@@ -526,6 +527,10 @@ std::string MockNetworkManager::_activate(const std::string& connection, const s
 
     sd_bus_emit_properties_changed(bus(), _wifi->path.c_str(), device_interface, "Ip4Config", nullptr);
     sd_bus_emit_properties_changed(bus(), _wifi->path.c_str(), wireless_interface, "ActiveAccessPoint", nullptr);
+
+    it->second->state = activated;
+    sd_bus_emit_signal(bus(), path.c_str(), active_interface, "StateChanged", "uu", it->second->state, 0u);
+    sd_bus_emit_properties_changed(bus(), path.c_str(), active_interface, "State", nullptr);
   };
 
   if (now) {
