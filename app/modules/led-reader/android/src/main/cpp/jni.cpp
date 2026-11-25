@@ -57,18 +57,17 @@ JNIEXPORT jlong JNICALL Java_com_tomcully_ledreader_LedReaderPlugin_nativeCreate
   return reinterpret_cast<jlong>(new Tracker(config));
 }
 
-JNIEXPORT void JNICALL Java_com_tomcully_ledreader_LedReaderPlugin_nativeDestroy(JNIEnv*, jclass, jlong handle) {
-  delete reinterpret_cast<Tracker*>(handle);
-}
+JNIEXPORT void JNICALL Java_com_tomcully_ledreader_LedReaderPlugin_nativeDestroy(JNIEnv*, jclass, jlong handle) { delete reinterpret_cast<Tracker*>(handle); }
 
 JNIEXPORT jint JNICALL Java_com_tomcully_ledreader_LedReaderPlugin_nativeFieldCount(JNIEnv*, jclass) { return field_count; }
 
 JNIEXPORT jboolean JNICALL Java_com_tomcully_ledreader_LedReaderPlugin_nativePush(JNIEnv* env, jclass, jlong handle, jdouble t_ms, jobject buffer, jint width,
-                                                                                 jint height, jint row_stride, jint pixel_stride, jdoubleArray out) {
+                                                                                  jint height, jint row_stride, jint pixel_stride, jdoubleArray out) {
   auto* tracker = reinterpret_cast<Tracker*>(handle);
   const auto* data = static_cast<const std::uint8_t*>(env->GetDirectBufferAddress(buffer));
   const jlong capacity = env->GetDirectBufferCapacity(buffer);
-  if (tracker == nullptr || data == nullptr || capacity < static_cast<jlong>(row_stride) * (height - 1) + static_cast<jlong>(width) * pixel_stride) return JNI_FALSE;
+  if (tracker == nullptr || data == nullptr || capacity < static_cast<jlong>(row_stride) * (height - 1) + static_cast<jlong>(width) * pixel_stride)
+    return JNI_FALSE;
   if (env->GetArrayLength(out) < field_count) return JNI_FALSE;
 
   const auto& s = tracker->push(t_ms, Plane{data, width, height, row_stride, pixel_stride});

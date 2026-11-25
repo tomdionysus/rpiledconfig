@@ -54,7 +54,8 @@ void Tracker::_measure(const Plane& plane) {
       // The four brightest, smallest first.
       if (v <= top[0]) continue;
       top[0] = v;
-      for (int i = 0; i < 3 && top[static_cast<std::size_t>(i)] > top[static_cast<std::size_t>(i + 1)]; ++i) std::swap(top[static_cast<std::size_t>(i)], top[static_cast<std::size_t>(i + 1)]);
+      for (int i = 0; i < 3 && top[static_cast<std::size_t>(i)] > top[static_cast<std::size_t>(i + 1)]; ++i)
+        std::swap(top[static_cast<std::size_t>(i)], top[static_cast<std::size_t>(i + 1)]);
     }
   }
   for (std::size_t i = 0; i < _top.size(); ++i) _values[i] = (_top[i][0] + _top[i][1] + _top[i][2] + _top[i][3]) / 4.0;
@@ -89,7 +90,9 @@ void Tracker::_locate(const Plane& plane) {
   const int rows = (y1 - y0 + step - 1) / step;
   if (columns <= 0 || rows <= 0) return;
 
-  const auto sample = [&](int column, int row) { return plane.data[static_cast<std::ptrdiff_t>(y0 + row * step) * plane.row_stride + static_cast<std::ptrdiff_t>(x0 + column * step) * plane.pixel_stride]; };
+  const auto sample = [&](int column, int row) {
+    return plane.data[static_cast<std::ptrdiff_t>(y0 + row * step) * plane.row_stride + static_cast<std::ptrdiff_t>(x0 + column * step) * plane.pixel_stride];
+  };
 
   if (_dark_tile != _chosen) {
     _state.spot.reset();

@@ -111,8 +111,10 @@ bool Detector::push(double t, double y) {
     _run_start = t;
   }
   const bool was_on = _level;
-  if (!_level && y > mid + band) _level = true;
-  else if (_level && y < mid - band) _level = false;
+  if (!_level && y > mid + band)
+    _level = true;
+  else if (_level && y < mid - band)
+    _level = false;
   if (_level != was_on) {
     _runs.push_back(Run{t, t - _run_start});
     _run_start = t;
@@ -130,7 +132,7 @@ bool Detector::push(double t, double y) {
     for (const auto& run : _runs) {
       if (run.length > longest) blinking = false;
       // Shorter than a symbol less a camera frame's blur: at the protocol's 45 ms, 27 ms.
-    if (run.length >= 0.6 * _config.symbol) ++plausible;
+      if (run.length >= 0.6 * _config.symbol) ++plausible;
     }
     blinking = blinking && plausible >= min_runs;
   }
@@ -147,8 +149,10 @@ bool Detector::push(double t, double y) {
     _seen = blinking;
     if (!_seen) _seen_since.reset();
   } else {
-    if (!blinking) _finding_since.reset();
-    else if (!_finding_since) _finding_since = t;
+    if (!blinking)
+      _finding_since.reset();
+    else if (!_finding_since)
+      _finding_since = t;
     if (_finding_since && t - *_finding_since >= find_hold_ms) {
       _seen = true;
       _seen_since = *_finding_since - window_ms;

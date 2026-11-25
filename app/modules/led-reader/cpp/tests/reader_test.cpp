@@ -53,7 +53,8 @@ TEST(ReaderTest, ReadsACleanStreamInUnderAFrame) {
 // From wherever the camera comes in: the tail before the first sync counts.
 TEST(ReaderTest, ReadsInUnderTenSecondsFromAnyStart) {
   for (double start = 0; start < frame_symbols * symbol_ms; start += 700) {
-    const auto out = run(test::synthesize(vectors_id, {.seconds = 14, .noise = 6, .start_ms = start, .jitter_ms = 3, .seed = static_cast<std::uint32_t>(start)}));
+    const auto out =
+        run(test::synthesize(vectors_id, {.seconds = 14, .noise = 6, .start_ms = start, .jitter_ms = 3, .seed = static_cast<std::uint32_t>(start)}));
     ASSERT_EQ(out.ids, std::set<Id>{vectors_id}) << "start " << start;
     EXPECT_LT(*out.read_at, goal_ms) << "start " << start;
   }
@@ -79,15 +80,15 @@ TEST(ReaderTest, ReadsAt24FpsWithTheClockFivePercentOffEitherWayAndAt60Fps) {
 TEST(ReaderTest, ReadsWhatARealPhoneCameraSeesInUnderTenSeconds) {
   for (std::uint32_t seed = 1; seed <= 8; ++seed) {
     const auto out = run(test::synthesize(test::id_from(0x64958d1c7ab3e205ULL), {.seconds = 20,
-                                                                                    .noise = 12,
-                                                                                    .off = 20,
-                                                                                    .on = 69,
-                                                                                    .start_ms = 900.0 * seed,
-                                                                                    .jitter_ms = 3,
-                                                                                    .content_jitter_ms = 8,
-                                                                                    .exposure_ms = 12,
-                                                                                    .saturation = 3,
-                                                                                    .seed = seed}));
+                                                                                 .noise = 12,
+                                                                                 .off = 20,
+                                                                                 .on = 69,
+                                                                                 .start_ms = 900.0 * seed,
+                                                                                 .jitter_ms = 3,
+                                                                                 .content_jitter_ms = 8,
+                                                                                 .exposure_ms = 12,
+                                                                                 .saturation = 3,
+                                                                                 .seed = seed}));
     ASSERT_EQ(out.ids, std::set<Id>{test::id_from(0x64958d1c7ab3e205ULL)}) << seed;
     EXPECT_LT(*out.read_at, goal_ms) << seed;
   }
@@ -96,15 +97,9 @@ TEST(ReaderTest, ReadsWhatARealPhoneCameraSeesInUnderTenSeconds) {
 // A bright room: the LED a small step over a bright background, with drift.
 TEST(ReaderTest, ReadsALowContrastLedInABrightDriftingRoom) {
   for (std::uint32_t seed = 1; seed <= 5; ++seed) {
-    const auto out = run(test::synthesize(vectors_id, {.seconds = 20,
-                                                       .noise = 8,
-                                                       .off = 170,
-                                                       .on = 215,
-                                                       .drift_amplitude = 15,
-                                                       .start_ms = 1300.0 * seed,
-                                                       .jitter_ms = 3,
-                                                       .exposure_ms = 10,
-                                                       .seed = seed}));
+    const auto out = run(test::synthesize(
+        vectors_id,
+        {.seconds = 20, .noise = 8, .off = 170, .on = 215, .drift_amplitude = 15, .start_ms = 1300.0 * seed, .jitter_ms = 3, .exposure_ms = 10, .seed = seed}));
     ASSERT_EQ(out.ids, std::set<Id>{vectors_id}) << seed;
     EXPECT_LT(*out.read_at, goal_ms) << seed;
   }
@@ -164,17 +159,17 @@ TEST(ReaderTest, SymbolTimeTrials) {
       double slowest = 0;
       for (std::uint32_t seed = 1; seed <= 8; ++seed) {
         const auto out = run(test::synthesize(test::id_from(0x64958d1c7ab3e205ULL), {.fps = fps,
-                                                                                        .seconds = 20,
-                                                                                        .symbol = symbol,
-                                                                                        .noise = 12,
-                                                                                        .off = 20,
-                                                                                        .on = 69,
-                                                                                        .start_ms = 700.0 * seed,
-                                                                                        .jitter_ms = 3,
-                                                                                        .content_jitter_ms = fps > 30 ? 4.0 : 8.0,
-                                                                                        .exposure_ms = fps > 30 ? 8.0 : 12.0,
-                                                                                        .saturation = 3,
-                                                                                        .seed = seed}),
+                                                                                     .seconds = 20,
+                                                                                     .symbol = symbol,
+                                                                                     .noise = 12,
+                                                                                     .off = 20,
+                                                                                     .on = 69,
+                                                                                     .start_ms = 700.0 * seed,
+                                                                                     .jitter_ms = 3,
+                                                                                     .content_jitter_ms = fps > 30 ? 4.0 : 8.0,
+                                                                                     .exposure_ms = fps > 30 ? 8.0 : 12.0,
+                                                                                     .saturation = 3,
+                                                                                     .seed = seed}),
                              ReaderConfig{symbol});
         if (out.ids == std::set<Id>{test::id_from(0x64958d1c7ab3e205ULL)}) {
           ++read;
@@ -221,7 +216,8 @@ TEST(ReaderTest, RatePhaseTrials) {
     if (symbol != 50.0) {
       EXPECT_EQ(read, phases) << "T = " << symbol;
     }
-    std::printf("[ phases   ] T = %2.0f ms (frame %5.2f s, %6.1f camera frames): %3d of %d read, mean %5.0f ms, slowest %6.0f ms\n", symbol, 170 * symbol / 1000, 170 * symbol * 30 / 1000, read, phases, read ? total / read : 0, slowest);
+    std::printf("[ phases   ] T = %2.0f ms (frame %5.2f s, %6.1f camera frames): %3d of %d read, mean %5.0f ms, slowest %6.0f ms\n", symbol,
+                170 * symbol / 1000, 170 * symbol * 30 / 1000, read, phases, read ? total / read : 0, slowest);
   }
 }
 
