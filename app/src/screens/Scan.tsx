@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // The camera screen: VisionCamera frames go to the native LED reader
 // (modules/led-reader), which finds and decodes the LED on the camera's
 // thread. Its state is the UI.

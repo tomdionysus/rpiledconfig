@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // The WiFi join from configure to verdict, against the fake daemon in manual
 // time: a link that survives, a link that drops after or before the answer,
 // a slow join, a wrong passphrase, a Pi that never comes back.

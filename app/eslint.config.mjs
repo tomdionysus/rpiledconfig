@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // ESLint for the app's TypeScript: the recommended rules, typescript-eslint's with the
 // type checker (an unawaited promise in the Bluetooth code is a bug, not a style), and
 // React's rules of hooks. Formatting is Prettier's (.prettierrc.json), so no rule here

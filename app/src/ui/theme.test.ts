@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // The design tokens' own rules: every accent colour is the one hue, and text is readable on
 // every surface by WCAG 2.2's contrast ratio (1.4.3: 4.5:1 for text, 3:1 for large text and
 // for the parts of controls, 1.4.11).

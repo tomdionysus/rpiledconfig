@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // The app's own native modules (android/.../RpiPackage.kt) as the logic sees them: what is
 // asked of each, and that a module missing or failing costs only what it would have given.
 import { afterEach, describe, expect, it, vi } from 'vitest';

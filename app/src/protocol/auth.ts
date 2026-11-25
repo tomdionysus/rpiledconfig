@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // Authentication, docs/protocol.md: SPAKE2 with the app as A and the daemon
 // as B, empty identities, and AUTH_AAD. Nothing sent over Bluetooth can be
 // used to test a guess of the key offline.

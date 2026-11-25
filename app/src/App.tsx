@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // The root: providers, the status bar, and the screens in the order the setup runs:
 // home, find, scan, pair, wifi; before them all, the permissions the app needs, when any is missing.
 import React, { useEffect, useState } from 'react';

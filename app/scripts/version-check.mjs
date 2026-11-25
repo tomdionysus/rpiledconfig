@@ -1,4 +1,10 @@
 #!/usr/bin/env node
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 /**
  * Checks that every stated version agrees: package.json, package-lock.json,
  * app.json, android/app/build.gradle, the root README's `*vX.Y.Z*` line

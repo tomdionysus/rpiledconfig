@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // Pairing over Bluetooth: scan for the Pi chosen on the find screen, by its name,
 // connect, check Info, authenticate both ways. The session logic is in
 // pairing/session.ts; this screen only shows where it is.

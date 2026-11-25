@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // The app's screens as a stack, with the small API the screens use: push, replace, back,
 // and the parameters a route was opened with. A few screens in one straight line need no
 // navigation library. Only the top screen is mounted; the one under it comes back when

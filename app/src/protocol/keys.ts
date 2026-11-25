@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // Key derivation from docs/protocol.md: the SPAKE2 password scalar w from
 // the pairing key, and the session key S from Ke.
 import { utf8Encode } from './bytes';

@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // What the app needs of the phone, why, and where each stands. The decisions are plain functions
 // over answers, so they can be tested; the screen (screens/Permissions.tsx) only asks Android and
 // shows them.

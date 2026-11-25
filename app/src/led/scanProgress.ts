@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // What the scan screen says, from the native reader's state frame by frame.
 // The reader reports what it measures now (whether the LED passes its test in
 // this second, the share of the code its current tile has seen); the screen

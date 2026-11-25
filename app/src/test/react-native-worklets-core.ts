@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // react-native-worklets-core under test: a worklet is an ordinary function here.
 export function useRunOnJS<T extends (...args: never[]) => unknown>(fn: T): T {
   return fn;

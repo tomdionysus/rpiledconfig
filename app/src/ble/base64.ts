@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // react-native-ble-plx moves characteristic values as base64 strings. These
 // are the two conversions the transport needs, written out so the bundle
 // does not carry a Buffer polyfill for them.

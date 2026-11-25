@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // The protocol's constants, every one from docs/protocol.md. A change here is a
 // change to the document and to daemon/src/protocol/ as well.
 

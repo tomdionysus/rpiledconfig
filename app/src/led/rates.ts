@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // The LED's rates (docs/protocol.md, Symbols). The phone chooses one and asks the Pi for it, so
 // the two cannot disagree. Kept apart from the screens so it can be tested.
 import { BLINK_FAST, BLINK_NORMAL, BLINK_ROBUST } from '@/protocol/constants';

@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // Before anything else: what the app needs of the phone and why, asked for together, so that
 // Android's prompts do not arrive one at a time in the middle of setting a Pi up. What is refused
 // is explained, with another try, or a way to Settings where Android will not ask again.

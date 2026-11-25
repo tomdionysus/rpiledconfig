@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 import { p256 } from '@noble/curves/nist.js';
 import { afterEach, describe, expect, it } from 'vitest';
 import { base64Encode } from '@/ble/base64';

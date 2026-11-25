@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // The name of the WiFi network this phone is on, to mark it in the list. Android only:
 // the SSID needs ACCESS_FINE_LOCATION granted and location switched on, and without them
 // Android reports "<unknown ssid>". The app's own RpiWifiInfo module

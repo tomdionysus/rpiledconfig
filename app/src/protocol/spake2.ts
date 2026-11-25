@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // SPAKE2 of RFC 9382, ciphersuite SPAKE2-P256-SHA256-HKDF-HMAC, over
 // @noble/curves. Both roles are here: the app is A, and the fake daemon plays
 // B. Scalars are 32 bytes big-endian; points are SEC1 uncompressed, 65 bytes.

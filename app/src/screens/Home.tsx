@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // Home: what the app does, in two lines, and the button that starts.
 import { useRouter } from '@/navigation';
 import { Image, StyleSheet, Text, View, type ImageSourcePropType } from 'react-native';

@@ -1,3 +1,9 @@
+#
+# RPiLEDConfig - ci
+#
+# Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+# Licensed under the Apache License, Version 2.0 - see LICENSE
+#
 # Dependabot proposes version updates for the actions CI uses and the app's npm packages,
 # monthly and grouped, so a bump is one pull request to review rather than many. A new
 # dependency is never proposed: Dependabot only updates what is already there.

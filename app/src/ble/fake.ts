@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // A daemon in TypeScript: the BLE service of docs/protocol.md, behind the
 // BleTransport interface, with a fake WiFi backend. It is what the pairing
 // tests run against, and

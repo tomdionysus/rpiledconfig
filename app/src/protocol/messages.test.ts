@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 import { describe, expect, it } from 'vitest';
 import { utf8Decode, utf8Encode } from './bytes';
 import { decodeRequest, decodeResponse, encodeRequest, encodeResponse, MessageError } from './messages';

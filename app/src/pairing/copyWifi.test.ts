@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // Copying the phone's WiFi by Easy Connect, against the fake daemon, with
 // Android's configurator played by the test.
 import { describe, expect, it } from 'vitest';

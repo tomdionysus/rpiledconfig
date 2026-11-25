@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // What the pairing logic needs from Bluetooth, and nothing more, so the
 // session can be driven by react-native-ble-plx on a phone and by the fake
 // daemon in tests and development.

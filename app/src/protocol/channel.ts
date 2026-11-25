@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // The encrypted channel after authentication: AES-256-GCM under S, one
 // counter per direction, replay refused (docs/protocol.md, The encrypted
 // channel). One object per direction, so the app has a sealer for its
