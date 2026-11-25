@@ -66,6 +66,9 @@ class Reader {
     double start;
     double symbol;
     double score;
+    // 1 when on is bright, -1 when the LED lights at brightness 0 and the frame arrives
+    // inverted (docs/protocol.md, Symbols).
+    double polarity = 1;
   };
 
   std::vector<Alignment> _align(const std::vector<Sample>& samples) const;

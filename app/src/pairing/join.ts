@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // Joining a network, from `wifi.configure` to a verdict. The Pi's WiFi and
 // Bluetooth share one radio, so the BLE link may drop as it joins
 // (docs/protocol.md, Setup mode): a drop after configure is expected, and the

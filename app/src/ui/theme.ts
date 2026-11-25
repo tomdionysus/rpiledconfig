@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // The app's design tokens. Dark only; one accent hue, the green of the Pi's
 // activity LED, which every accent colour below is derived from.
 import { Platform } from 'react-native';

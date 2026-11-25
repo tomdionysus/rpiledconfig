@@ -46,10 +46,6 @@ class Config {
   // sees on the board; PWR (led1) is the power LED.
   std::string led_path = "/sys/class/leds/ACT";
 
-  // Whether the LED lights when its brightness is 0. On a Raspberry Pi 5 the ACT LED
-  // lit for 0 and went dark for max_brightness, so the camera saw every frame inverted.
-  bool led_active_low = false;
-
   // --- ble -------------------------------------------------------------------------
 
   // bluez talks to BlueZ over D-Bus (milestone 2); fake is a harness for the tests and

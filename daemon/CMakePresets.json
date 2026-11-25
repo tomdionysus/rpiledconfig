@@ -1,6 +1,6 @@
 {
   "version": 6,
-  "cmakeMinimumRequired": { "major": 3, "minor": 23, "patch": 0 },
+  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
   "configurePresets": [
     {
       "name": "base",
@@ -13,7 +13,7 @@
       }
     },
     {
-      "name": "debug",
+      "name": "default",
       "inherits": "base",
       "displayName": "Debug",
       "binaryDir": "${sourceDir}/build"
@@ -61,16 +61,11 @@
     }
   ],
   "buildPresets": [
-    { "name": "debug", "configurePreset": "debug" },
+    { "name": "default", "configurePreset": "default" },
     { "name": "release", "configurePreset": "release" },
     { "name": "tests", "configurePreset": "tests" },
     { "name": "asan", "configurePreset": "asan" },
     { "name": "coverage", "configurePreset": "coverage" },
     { "name": "tsan", "configurePreset": "tsan" }
-  ],
-  "testPresets": [
-    { "name": "tests", "configurePreset": "tests", "output": { "outputOnFailure": true } },
-    { "name": "asan", "configurePreset": "asan", "output": { "outputOnFailure": true } },
-    { "name": "tsan", "configurePreset": "tsan", "output": { "outputOnFailure": true } }
   ]
 }

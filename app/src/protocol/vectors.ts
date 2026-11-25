@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // The protocol's fixed test vectors (docs/protocol.md, Test vectors), computed
 // once with this code and held here as hex. The daemon's tests print the
 // same bytes with --print-vectors; vectors.test.ts checks the code still

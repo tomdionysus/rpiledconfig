@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // Random bytes from the system's secure source. On the phone, the app's own RpiRandom module
 // (android/.../RpiPackage.kt), synchronous because SPAKE2's scalars are drawn inside
 // synchronous code; under test, node's crypto. Hermes has no crypto.getRandomValues of its own.

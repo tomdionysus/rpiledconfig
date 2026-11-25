@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 import { describe, expect, it } from 'vitest';
 import { FLAG_LAST, MAX_MESSAGE_LENGTH } from './constants';
 import { fragment, FragmentError, fragmentSizeForMtu, Reassembler } from './fragments';

@@ -109,12 +109,12 @@ TEST(ConfigTest, ValuesMayBeQuoted) {
   EXPECT_EQ(loaded.config.led_path, "/sys/class/leds/with # hash");
 }
 
-TEST(ConfigTest, TheLedMayBeActiveLow) {
-  EXPECT_FALSE(Loaded("").config.led_active_low);
-
+// led.active_low is gone (the app reads either polarity), but a configuration that still sets
+// it must start, with a warning that it can be deleted.
+TEST(ConfigTest, TheGoneLedActiveLowIsTakenWithAWarning) {
   Loaded loaded("led.active_low: true\n");
   ASSERT_TRUE(loaded.ok) << loaded.logger->text();
-  EXPECT_TRUE(loaded.config.led_active_low);
+  EXPECT_TRUE(loaded.logger->contains("led.active_low is no longer used"));
 }
 
 TEST(ConfigTest, AnUnclosedQuoteIsAnError) {

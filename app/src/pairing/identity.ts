@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // What the WiFi screen calls the Pi it is talking to. A Pi can be set not to report its hostname
 // (status.report_hostname, docs/configuration.md); the screen then says so, and shows the one-time
 // key, the one thing that is certainly this Pi's. Kept apart from the screen so it can be tested.

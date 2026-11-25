@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // The BleTransport over react-native-ble-plx. Thin by design: permissions,
 // the adapter state, one scan, one connection, and the base64 that the
 // library speaks. Everything with a decision in it is in pairing/session.ts.

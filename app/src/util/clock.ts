@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // Time as the pairing client and the fake daemon see it. Every wait and
 // deadline in those goes through a Clock, so a test can run a 45-second WiFi
 // join or the daemon's 30-second authentication limit in a few milliseconds

@@ -11,10 +11,13 @@
 #   cmake -DRPILEDCONFIG_VERSION=0.1.0 -DRPILEDCONFIG_REPO_ROOT=/path/to/rpiledconfig -P check_version.cmake
 #
 # Without RPILEDCONFIG_VERSION the version is read from daemon/CMakeLists.txt, so the
-# script runs on its own too. Registered as the CTest test version_agrees, and run by the
-# package build before anything is compiled.
+# script runs on its own too. daemon/CMakeLists.txt includes it, so every configuration
+# checks, and the package build runs it before anything is compiled.
 
-cmake_minimum_required(VERSION 3.19)
+# Included, the project's own cmake_minimum_required and policies stand.
+if(CMAKE_SCRIPT_MODE_FILE)
+    cmake_minimum_required(VERSION 3.24)
+endif()
 
 if(NOT RPILEDCONFIG_REPO_ROOT)
     get_filename_component(RPILEDCONFIG_REPO_ROOT "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)

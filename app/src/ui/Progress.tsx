@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // A labelled progress bar, for the decoder's bits and the pairing steps.
 import { StyleSheet, Text, View } from 'react-native';
 import { colors, radius, space, type as typography } from './theme';

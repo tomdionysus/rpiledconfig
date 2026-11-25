@@ -31,15 +31,9 @@ TEST(DetectorTest, FindsTheLedWithinThreeSecondsAndKeepsIt) {
 
 TEST(DetectorTest, KeepsTheLedThroughABloomingPhoneCamera) {
   for (std::uint32_t seed = 1; seed <= 5; ++seed) {
-    const auto samples = test::synthesize(test::id_from(0x64958d1c7ab3e205ULL), {.seconds = 30,
-                                                                                    .noise = 12,
-                                                                                    .off = 20,
-                                                                                    .on = 69,
-                                                                                    .jitter_ms = 3,
-                                                                                    .content_jitter_ms = 8,
-                                                                                    .exposure_ms = 12,
-                                                                                    .saturation = 3,
-                                                                                    .seed = seed});
+    const auto samples = test::synthesize(
+        test::id_from(0x64958d1c7ab3e205ULL),
+        {.seconds = 30, .noise = 12, .off = 20, .on = 69, .jitter_ms = 3, .content_jitter_ms = 8, .exposure_ms = 12, .saturation = 3, .seed = seed});
     Detector detector;
     double found = -1;
     int lost = 0;

@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // Whether the app shows its diagnostics: the reader's statistics in the log, the join
 // dialog's keystrokes, and the platform's own words under an error.
 //

@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // That the app is open source, and the link to it. Android's browser opens it: the app itself has
 // no permission to use the internet.
 import { Linking, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';

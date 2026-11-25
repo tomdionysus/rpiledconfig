@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // Which camera reads the LED. VisionCamera's own choice (useCameraDevice) scores
 // back cameras by hardware level and lens type and never asks whether a camera
 // has any formats; on a Blackview A85 it picks camera 2, an auxiliary back

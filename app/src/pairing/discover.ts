@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // Before the LED: find the Pis in setup mode over BLE, and ask the chosen one
 // to blink its key (docs/protocol.md, The idea and Blink). The LED is dark
 // until a phone asks, so this is the first step of setting a Pi up.

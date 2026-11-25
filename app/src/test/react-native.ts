@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // Just enough React Native for logic under test. `Platform.OS` defaults to
 // ios. Keep this to environment facts; a module needing more should separate
 // its logic from its runtime.

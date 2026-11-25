@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PermissionsAndroid, Platform } from '@/test/react-native';
 import { canContinue, checkNeeds, currentNeeds, needsFor, requestNeeds, showAtLaunch, statusesFrom } from './permissions';

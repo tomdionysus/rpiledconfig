@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // Fragmenting a message's wire form into BLE writes and putting it back
 // together (docs/protocol.md, Fragments). The flags byte leads each
 // fragment; only bit 0 (last) is defined.

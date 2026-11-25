@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // Copying the phone's WiFi to the Pi with Wi-Fi Easy Connect
 // (docs/protocol.md, Copying the phone's WiFi). The Pi hands over its DPP
 // bootstrap URI on the encrypted channel; Android's own configurator screen

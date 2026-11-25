@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // The fake daemon held to docs/protocol.md where the pairing tests do not
 // reach: the details a client never sees when it behaves.
 import { describe, expect, it } from 'vitest';

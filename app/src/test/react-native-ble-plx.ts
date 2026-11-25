@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // react-native-ble-plx under test. The pairing logic is tested over the fake transport
 // (src/ble/fake.ts); the transport over this library (src/ble/blePlx.ts) is tested against a
 // manager the test puts in `testing.manager`, which `new BleManager()` hands back.

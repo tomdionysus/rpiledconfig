@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // Step 1: the Pis in setup mode nearby, over Bluetooth. Choosing one asks it
 // to blink its key (docs/protocol.md, Blink); its LED is dark until then. The
 // discovery and the Blink write are in pairing/discover.ts.

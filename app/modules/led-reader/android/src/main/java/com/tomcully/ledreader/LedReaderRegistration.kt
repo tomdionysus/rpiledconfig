@@ -1,4 +1,8 @@
-// RPiLEDConfig - app. Copyright (C) 2026 Tom Cully <mail@tomcully.com>. Licensed under the Apache License, Version 2.0 - see LICENSE.
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
 //
 // Registers the "ledReader" frame-processor plugin with VisionCamera. The application calls
 // this at start, before any JS looks the plugin up.

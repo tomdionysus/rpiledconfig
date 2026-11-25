@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // The app's side of docs/protocol.md after the LED: find the Pi the user
 // chose by its name, check Info, run SPAKE2, derive the session key,
 // and then carry requests over the encrypted channel in fragments. Transport-agnostic: the same code runs over react-native-ble-plx

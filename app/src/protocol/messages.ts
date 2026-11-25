@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // The requests and responses inside the encrypted channel: small flat JSON
 // (docs/protocol.md, Messages). Encoding keeps the key order the document
 // shows; decoding validates the shape, since the daemon's version may differ.

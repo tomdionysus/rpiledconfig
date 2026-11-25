@@ -1,26 +1,48 @@
 #
-# RPiLEDConfig
+# RPiLEDConfig - ci
 #
 # Copyright (C) 2026 Tom Cully <mail@tomcully.com>
 # Licensed under the Apache License, Version 2.0 - see LICENSE
 #
-# The daemon and the LED reader through scripts/ci.sh on Debian trixie, the Debian package
-# on arm64, the Android release build, and the app's typecheck, version check and tests
-# with coverage. Each coverage report goes to Codecov under its own flag. There is no Bluetooth, LED or phone here: those are checked on a Pi
-# and a phone.
+# tools/ci.sh's steps on Debian trixie for the daemon and the LED reader: the header and
+# format check; release builds on x86-64 and arm64; clang with its thread-safety analysis;
+# ASan and UBSan on both, TSan; the fuzz targets; coverage to Codecov. Then the Debian
+# package on arm64, linted; a build and test on macOS; the Android release build; and the
+# app's typecheck, lint, format and version checks and tests with coverage. There is no
+# Bluetooth, LED or phone here: those are checked on a Pi and a phone.
 name: CI
 
 on:
   push:
     branches: [main, develop]
+    paths-ignore: ["TODO/**", "docs/**", "**/*.md"]
   pull_request:
+    paths-ignore: ["TODO/**", "docs/**", "**/*.md"]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  native:
-    runs-on: ubuntu-24.04
+  linux:
+    name: ${{ matrix.step }} (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { step: check, arch: x86-64, runner: ubuntu-24.04 }
+          - { step: release, arch: x86-64, runner: ubuntu-24.04 }
+          - { step: release, arch: arm64, runner: ubuntu-24.04-arm }
+          - { step: clang, arch: x86-64, runner: ubuntu-24.04 }
+          - { step: asan, arch: x86-64, runner: ubuntu-24.04 }
+          - { step: asan, arch: arm64, runner: ubuntu-24.04-arm }
+          - { step: tsan, arch: x86-64, runner: ubuntu-24.04 }
+          - { step: fuzz, arch: x86-64, runner: ubuntu-24.04 }
     container:
       image: debian:trixie
       # LeakSanitizer needs ptrace to stop the process's threads.
@@ -30,8 +52,29 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
-            build-essential cmake ninja-build pkg-config libboost-dev libssl-dev libsystemd-dev \
-            libgtest-dev dbus-daemon lcov clang-format-19 git ca-certificates \
+            g++ clang clang-format-19 libclang-rt-19-dev cmake ninja-build pkg-config \
+            libboost-dev libssl-dev libsystemd-dev libgtest-dev dbus-daemon git ca-certificates
+
+      - uses: actions/checkout@v4
+
+      - name: Trust the checkout
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: ${{ matrix.step }}
+        run: tools/ci.sh ${{ matrix.step }}
+
+  coverage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    container:
+      image: debian:trixie
+    steps:
+      - name: Install packages
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            g++ cmake ninja-build pkg-config libboost-dev libssl-dev libsystemd-dev libgtest-dev \
+            dbus-daemon lcov git ca-certificates \
             curl gnupg  # Codecov's uploader verifies its own signature
 
       - uses: actions/checkout@v4
@@ -40,12 +83,12 @@ jobs:
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Build and test
-        run: sh scripts/ci.sh
+        run: tools/ci.sh coverage
 
       - name: Upload daemon coverage
         uses: codecov/codecov-action@v5
         with:
-          files: build-coverage/daemon.info
+          files: build-ci/daemon.info
           flags: daemon
           disable_search: true
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -54,7 +97,7 @@ jobs:
       - name: Upload LED reader coverage
         uses: codecov/codecov-action@v5
         with:
-          files: build-coverage/led-reader.info
+          files: build-ci/led-reader.info
           flags: led-reader
           disable_search: true
           token: ${{ secrets.CODECOV_TOKEN }}
@@ -62,8 +105,9 @@ jobs:
 
   # The package as a Pi builds it, on arm64: its tests run inside the build, and lintian
   # fails it on any error or warning.
-  package:
+  deb:
     runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
     container:
       image: debian:trixie
     steps:
@@ -83,7 +127,7 @@ jobs:
         run: apt-get build-dep -y ./
 
       - name: Build
-        run: daemon/scripts/build-deb.sh
+        run: tools/build-deb.sh
 
       - name: Lint
         run: lintian --fail-on error,warning build-deb/*.changes
@@ -93,10 +137,35 @@ jobs:
           name: deb
           path: build-deb/*.deb
 
+  # The daemon with its fakes, as on the development Mac, and the LED reader.
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - name: Install packages
+        run: brew install boost openssl@3 googletest ninja
+
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: |
+          cmake -S daemon -B build/daemon -G Ninja -DCMAKE_BUILD_TYPE=Release -DRPILEDCONFIG_BUILD_TESTING=ON \
+            -DRPILEDCONFIG_WARNINGS_AS_ERRORS=ON -DCMAKE_PREFIX_PATH="$(brew --prefix)" -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)"
+          cmake --build build/daemon -j "$(sysctl -n hw.ncpu)"
+          cmake -S app/modules/led-reader/cpp -B build/led-reader -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DRPILEDCONFIG_WARNINGS_AS_ERRORS=ON -DCMAKE_PREFIX_PATH="$(brew --prefix)"
+          cmake --build build/led-reader -j "$(sysctl -n hw.ncpu)"
+
+      - name: Test
+        run: |
+          build/daemon/rpiledconfig_tests
+          build/led-reader/led_reader_tests
+
   # The release build, signed with a generated debug key as there is no upload key here:
   # it proves the native modules, the LED reader's JNI and the bundle build.
   android:
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -126,6 +195,7 @@ jobs:
 
   app:
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: app

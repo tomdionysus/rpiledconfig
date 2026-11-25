@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // Module resolution for running src/ TypeScript under Node's type stripping
 // from a script: the `@/` alias the app's tsconfig defines, and the
 // extensionless relative imports the app's sources use.

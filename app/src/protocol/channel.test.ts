@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 import { describe, expect, it } from 'vitest';
 import { bytesToHex, hexToBytes, utf8Decode, utf8Encode } from './bytes';
 import { appChannel, ChannelError, daemonChannel, nonce, Opener, Sealer } from './channel';

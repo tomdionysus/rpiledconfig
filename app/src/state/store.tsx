@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // What the screens share: the one-time key read from the LED, the Pi chosen to
 // read it from, the session once paired, and the services. Plain React
 // context; the app is one linear flow and needs nothing more.

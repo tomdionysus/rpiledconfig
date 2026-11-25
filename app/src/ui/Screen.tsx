@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // Standard screen chrome: safe areas, a compact header with an optional back
 // control, and a scrolling or fixed body.
 import { useRouter } from '@/navigation';

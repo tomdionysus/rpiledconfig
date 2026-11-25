@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // The native LED reader: a VisionCamera frame-processor plugin (android/, cpp/) that finds the
 // blinking LED anywhere in the frame and decodes frame version 7 on the camera's thread. The
 // application registers the plugin at start (LedReaderRegistration.kt); here it is only looked

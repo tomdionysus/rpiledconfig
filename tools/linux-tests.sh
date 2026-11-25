@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# RPiLEDConfig - daemon
+# RPiLEDConfig - tools
 #
 # Copyright (C) 2026 Tom Cully <mail@tomcully.com>
 # Licensed under the Apache License, Version 2.0 - see LICENSE
@@ -10,7 +10,7 @@
 # temporary directory, and stopped afterwards. The system bus is never touched; the tests
 # own org.bluez and org.freedesktop.NetworkManager on the private bus only.
 #
-#   daemon/scripts/linux-tests.sh [--deps-env FILE] [gtest arguments...]
+#   tools/linux-tests.sh [--deps-env FILE] [gtest arguments...]
 #
 # Nothing is installed. What the build needs, from Debian packages:
 #
@@ -24,7 +24,7 @@
 set -eu
 
 here=$(cd "$(dirname "$0")" && pwd)
-daemon_dir=$(cd "$here/.." && pwd)
+daemon_dir=$(cd "$here/../daemon" && pwd)
 
 deps_env=${RPILEDCONFIG_DEPS_ENV:-}
 if [ "${1:-}" = "--deps-env" ]; then

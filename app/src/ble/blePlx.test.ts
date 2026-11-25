@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // The transport over react-native-ble-plx, against a fake of the library's manager and device:
 // what it asks Android for, how it waits for the adapter, what a scan reports, and that a
 // connection keeps its writes in order and goes quiet once it is closed.

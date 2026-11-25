@@ -88,7 +88,7 @@ std::shared_ptr<loggers::Logger> scoped(const std::shared_ptr<loggers::Logger>& 
 // replaced by a fake that would blink and advertise and never configure anything.
 
 std::shared_ptr<led::Led> make_led(const std::shared_ptr<loggers::Logger>& logger, const Config& config) {
-  if (config.led_driver == "sysfs") return std::make_shared<led::LedSysfs>(scoped(logger, "led"), config.led_path, config.led_active_low);
+  if (config.led_driver == "sysfs") return std::make_shared<led::LedSysfs>(scoped(logger, "led"), config.led_path);
   return std::make_shared<led::LedFake>();
 }
 

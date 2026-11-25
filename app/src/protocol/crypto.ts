@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // The primitives the protocol needs, over the noble libraries (pure
 // TypeScript, so the same code runs in vitest and on the phone). Randomness
 // comes from the app's own native module (src/native/random.ts).

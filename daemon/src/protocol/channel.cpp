@@ -6,6 +6,8 @@
 //
 #include "channel.h"
 
+#include <algorithm>
+#include <cstddef>
 #include <utility>
 
 #include "crypto.h"
@@ -47,10 +49,11 @@ types::Bytes Sealer::seal(const types::Bytes& plaintext) {
   const auto sealed = crypto::aes256gcm_seal(_key, make_nonce(_direction, counter), plaintext);
   if (sealed.empty()) return {};
 
-  types::Bytes wire;
-  wire.reserve(counter_length + sealed.size());
-  append_u64(wire, counter);
-  wire.insert(wire.end(), sealed.begin(), sealed.end());
+  // Sized once and written in place: GCC 14 at -O3 reports push_back and insert into a
+  // reserved vector here as overflows (-Wstringop-overflow, -Wfree-nonheap-object).
+  types::Bytes wire(counter_length + sealed.size());
+  for (std::size_t i = 0; i < counter_length; ++i) wire[i] = static_cast<std::uint8_t>((counter >> (8 * (counter_length - 1 - i))) & 0xFF);
+  std::copy(sealed.begin(), sealed.end(), wire.begin() + static_cast<std::ptrdiff_t>(counter_length));
 
   return wire;
 }

@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // What the app remembers between launches: the LED rate, and that permissions have been asked for. On the phone, the app's own RpiSettings
 // module (android/.../RpiPackage.kt); synchronous, so the first screen already has it. Where
 // the module is not there (under test), nothing is remembered.

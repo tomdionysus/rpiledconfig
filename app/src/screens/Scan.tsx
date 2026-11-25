@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // The camera screen: VisionCamera frames go to the native LED reader
 // (modules/led-reader), which finds and decodes the LED on the camera's
 // thread. Its state is the UI.
@@ -97,6 +103,9 @@ export default function ScanScreen() {
   const [active, setActive] = useState(true);
   const [frameError, setFrameError] = useState<string | undefined>(reader ? undefined : 'the LED reader is not built into this app on this platform');
   const lastLog = useRef(0);
+  // Diagnostics: every frame's time, brightness and tile, logged a second at a time, so a scan
+  // can be replayed through the reader off the phone.
+  const samples = useRef<string[]>([]);
 
   const onState = useRunOnJS((next: LedReaderState) => {
     setState(next);
@@ -104,6 +113,11 @@ export default function ScanScreen() {
       const times = frameTimes.current;
       times.push(next.t);
       while (times.length > 0 && next.t - times[0] > 1000) times.shift();
+      samples.current.push(`${next.t.toFixed(2)}:${next.sample.toFixed(2)}:${next.tileX ?? '-'}/${next.tileY ?? '-'}`);
+      if (samples.current.length >= 30 || next.idHex) {
+        console.log(`[samples] ${samples.current.join(' ')}`);
+        samples.current = [];
+      }
     }
     const view = progress.current.update(next);
     setScan((current) =>

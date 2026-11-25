@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // WiFi over the paired session: pick a network from the Pi's scan, or type its
 // name, and give its passphrase. The join flow (pairing/join.ts) expects the BLE
 // link to drop and reconnects.

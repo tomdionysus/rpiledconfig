@@ -70,15 +70,18 @@ void symbol_sums(const std::vector<double>& totals, int offset, std::vector<doub
   }
 }
 
-// The score of a frame starting at symbol j: the sync agreeing plus every data symbol's
-// decisiveness. `run` holds running totals of the sums and `strength` of their magnitudes.
-double score_at(const std::vector<double>& run, const std::vector<double>& strength, int j) {
+// The score of a frame starting at symbol j at `polarity` (1, or -1 for an inverted LED): the
+// sync agreeing plus every data symbol's decisiveness. `run` holds running totals of the sums
+// and `strength` of their magnitudes.
+double score_at(const std::vector<double>& run, const std::vector<double>& strength, int j, double polarity) {
   const auto at = [&](const std::vector<double>& v, int i) { return v[static_cast<std::size_t>(i)]; };
   const double on = at(run, j + static_cast<int>(sync_on)) - at(run, j);
   const double off = at(run, j + static_cast<int>(sync_symbols)) - at(run, j + static_cast<int>(sync_on));
   const double data = at(strength, j + frame_t) - at(strength, j + static_cast<int>(sync_symbols));
-  return on - off + data;
+  return polarity * (on - off) + data;
 }
+
+constexpr std::array<double, 2> polarities{1, -1};
 
 void running(const std::vector<double>& sums, std::vector<double>& run, std::vector<double>& strength) {
   run.assign(sums.size() + 1, 0.0);
@@ -197,11 +200,13 @@ std::vector<Reader::Alignment> Reader::_align(const std::vector<Sample>& samples
   }
   const double origin = t.front();
 
-  // The best rate and offset for each symbol the frame could start at.
-  std::array<double, frame_symbols> best_score;
+  // The best rate and offset for each symbol the frame could start at, at each polarity:
+  // entry p * frame_t + j.
+  constexpr std::size_t starts = 2 * frame_symbols;
+  std::array<double, starts> best_score;
   best_score.fill(-std::numeric_limits<double>::infinity());
-  std::array<double, frame_symbols> best_symbol{};
-  std::array<int, frame_symbols> best_offset{};
+  std::array<double, starts> best_symbol{};
+  std::array<int, starts> best_offset{};
   std::vector<double> totals;
   std::vector<double> sums;
   std::vector<double> run;
@@ -213,28 +218,33 @@ std::vector<Reader::Alignment> Reader::_align(const std::vector<Sample>& samples
     for (int offset = 0; offset < bins_per_symbol; offset += coarse_offset_step) {
       symbol_sums(totals, offset, sums);
       running(sums, run, strength);
-      for (int j = 0; j < frame_t; ++j) {
-        const double score = score_at(run, strength, j);
-        if (score <= best_score[static_cast<std::size_t>(j)]) continue;
-        best_score[static_cast<std::size_t>(j)] = score;
-        best_symbol[static_cast<std::size_t>(j)] = symbol;
-        best_offset[static_cast<std::size_t>(j)] = offset;
+      for (std::size_t p = 0; p < polarities.size(); ++p) {
+        for (int j = 0; j < frame_t; ++j) {
+          const double score = score_at(run, strength, j, polarities[p]);
+          const std::size_t at = p * frame_symbols + static_cast<std::size_t>(j);
+          if (score <= best_score[at]) continue;
+          best_score[at] = score;
+          best_symbol[at] = symbol;
+          best_offset[at] = offset;
+        }
       }
     }
   }
   std::vector<Alignment> coarse;
-  for (int j = 0; j < frame_t; ++j) {
-    const auto s = static_cast<std::size_t>(j);
-    coarse.push_back(Alignment{origin + (static_cast<double>(best_offset[s]) / bins_per_symbol + j) * best_symbol[s], best_symbol[s], best_score[s]});
+  for (std::size_t s = 0; s < starts; ++s) {
+    const int j = static_cast<int>(s % frame_symbols);
+    coarse.push_back(Alignment{origin + (static_cast<double>(best_offset[s]) / bins_per_symbol + j) * best_symbol[s], best_symbol[s], best_score[s],
+                               polarities[s / frame_symbols]});
   }
   std::sort(coarse.begin(), coarse.end(), [](const Alignment& a, const Alignment& b) { return a.score > b.score; });
 
-  // Leaders a few symbols apart, not the neighbours of one peak.
+  // Leaders a few symbols apart, not the neighbours of one peak; a start at the other
+  // polarity is never a neighbour.
   std::vector<Alignment> leaders;
   for (const auto& c : coarse) {
     if (static_cast<int>(leaders.size()) >= refine_top) break;
     bool near = false;
-    for (const auto& l : leaders) near = near || cyclic_gap(l.start, c.start, frame_t * c.symbol) < 3 * c.symbol;
+    for (const auto& l : leaders) near = near || (l.polarity == c.polarity && cyclic_gap(l.start, c.start, frame_t * c.symbol) < 3 * c.symbol);
     if (!near) leaders.push_back(c);
   }
 
@@ -255,8 +265,8 @@ std::vector<Reader::Alignment> Reader::_align(const std::vector<Sample>& samples
         const int bin = ((shift % fold_bins) + fold_bins) % fold_bins;
         symbol_sums(totals, bin % bins_per_symbol, sums);
         running(sums, run, strength);
-        const double score = score_at(run, strength, bin / bins_per_symbol);
-        if (score > best.score) best = Alignment{anchored + static_cast<double>(shift) / bins_per_symbol * symbol, symbol, score};
+        const double score = score_at(run, strength, bin / bins_per_symbol, lead.polarity);
+        if (score > best.score) best = Alignment{anchored + static_cast<double>(shift) / bins_per_symbol * symbol, symbol, score, lead.polarity};
       }
     }
     refined.push_back(best);
@@ -277,7 +287,7 @@ bool Reader::_read_window(const std::vector<Sample>& samples, const std::vector<
       position -= std::floor(position / frame_t) * frame_t;
       const int h = std::min(frame_t - 1, static_cast<int>(position));
       const double weight = std::sin(3.14159265358979 * (position - h));
-      value[static_cast<std::size_t>(h)] += s.d * weight;
+      value[static_cast<std::size_t>(h)] += a.polarity * s.d * weight;
       seen[static_cast<std::size_t>(h)] = 1;
     }
     std::vector<double> magnitudes;

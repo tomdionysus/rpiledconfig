@@ -1,3 +1,9 @@
+//
+// RPiLEDConfig - app
+//
+// Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+// Licensed under the Apache License, Version 2.0 - see LICENSE
+//
 // Byte helpers the protocol code shares: hex, UTF-8, concatenation and
 // big-endian integers. Written out rather than through Buffer, which the
 // bundle does not otherwise carry.
