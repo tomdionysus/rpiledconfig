@@ -24,8 +24,7 @@ std::string parse_current_trigger(const std::string& trigger_file) {
   return trigger_file.substr(open + 1, close - open - 1);
 }
 
-LedSysfs::LedSysfs(std::shared_ptr<loggers::Logger> logger, std::filesystem::path path, bool active_low)
-    : _logger(std::move(logger)), _path(std::move(path)), _active_low(active_low) {}
+LedSysfs::LedSysfs(std::shared_ptr<loggers::Logger> logger, std::filesystem::path path) : _logger(std::move(logger)), _path(std::move(path)) {}
 
 types::Status LedSysfs::begin() {
   std::string error;
@@ -51,16 +50,14 @@ types::Status LedSysfs::begin() {
   }
 
   _begun = true;
-  _logger->info("Driving " + _path.string() + " (trigger was " + _saved_trigger + ", max_brightness " + _max_brightness + (_active_low ? ", active low" : "") +
-                ")");
+  _logger->info("Driving " + _path.string() + " (trigger was " + _saved_trigger + ", max_brightness " + _max_brightness + ")");
 
   return types::Status::success();
 }
 
 void LedSysfs::set(bool on) {
   std::string error;
-  const bool high = on != _active_low;
-  if (!_write("brightness", high ? _max_brightness : "0", error)) _logger->warn("Cannot set the LED: " + error);
+  if (!_write("brightness", on ? _max_brightness : "0", error)) _logger->warn("Cannot set the LED: " + error);
 }
 
 void LedSysfs::end() {

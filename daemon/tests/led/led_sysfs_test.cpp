@@ -56,20 +56,6 @@ TEST(LedSysfsTest, BeginTakesTheTriggerOverAndEndGivesItBack) {
   EXPECT_EQ(node.dir.read("brightness"), "0");
 }
 
-// led.active_low: an LED that lights at brightness 0 (the Raspberry Pi 5's ACT) gets the
-// opposite level written, so what the camera sees is what the protocol says.
-TEST(LedSysfsTest, AnActiveLowLedIsDrivenInverted) {
-  FakeNode node;
-  auto logger = std::make_shared<MockLogger>();
-  led::LedSysfs led(logger, node.dir.path(), true);
-  ASSERT_TRUE(led.begin());
-
-  led.set(true);
-  EXPECT_EQ(node.dir.read("brightness"), "0") << "on is brightness 0 for an active-low LED";
-  led.set(false);
-  EXPECT_EQ(node.dir.read("brightness"), "255");
-}
-
 TEST(LedSysfsTest, ANodeThatIsNotThereIsRefused) {
   auto logger = std::make_shared<MockLogger>();
   led::LedSysfs led(logger, "/nonexistent/leds/ACT");

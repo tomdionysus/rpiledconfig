@@ -80,6 +80,11 @@ This is frame version 7.
 The LED sends one symbol every T: on for a `1`, off for a `0`. T is one of three
 rates, and the phone chooses (Blink, below):
 
+On and off here are what the daemon writes: `max_brightness` for on, 0 for off.
+Some boards light their LED at 0 (the Raspberry Pi 5's ACT LED does), and the
+daemon cannot tell which it has, so the camera may see the whole frame inverted.
+The decoder reads either way; nothing is configured.
+
 | Rate | Blink byte | T | One frame | Camera frames per symbol at 30 fps |
 | --- | --- | --- | --- | --- |
 | Normal | 0x01 | 51 ms | 8.67 s | 1.53 |
@@ -183,8 +188,10 @@ Reading. The frame repeats unchanged, so the stream is cyclic and every
 sample, wherever the camera came in, belongs to one known symbol of the
 frame. The decoder does not look for edges or wait for a sync. Once it holds
 most of a frame of samples, and then every half second, it folds them onto
-one cycle at clock rates across the 5% tolerance and scores every start: the
-sync's ten symbols must agree, and each data symbol adds how decisive it is.
+one cycle at clock rates across the 5% tolerance and scores every start, at
+both polarities: the sync's ten symbols must agree, either as sent or with
+every symbol inverted, and each data symbol adds how decisive it is. A start
+is read at the polarity it was found at.
 The best few starts are refined in rate and start and read out: each word's
 five symbols, weighted towards the middle of each symbol, are matched
 against the 16 words, and the best is its nibble, with the margin over the
@@ -199,7 +206,8 @@ Then:
   rather than guessed, which doubles what the code can repair.
 - Decode with errors and erasures, then check the CRC.
 
-One frame that passes the CRC is a read, and nothing else is: in under one frame from
+One frame that passes the CRC is a read, and nothing else is (reading both polarities
+doubles the chances a non-frame has of passing): in under one frame from
 whenever the camera first sees the LED, and sooner when the code can fill what is missing.
 
 The progress shown is only what was measured: nothing until the LED is found, then the share of

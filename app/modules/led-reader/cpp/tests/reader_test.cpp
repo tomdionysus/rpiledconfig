@@ -117,6 +117,36 @@ TEST(ReaderTest, RepairsWrongSymbols) {
   ASSERT_EQ(out.ids, std::set<Id>{vectors_id});
 }
 
+// An LED that lights at brightness 0, as the Raspberry Pi 5's ACT LED does, shows the whole
+// frame inverted (docs/protocol.md, Symbols): read at every rate as quickly as the right way up.
+TEST(ReaderTest, ReadsAnInvertedLedAtEveryRate) {
+  const Id id = test::id_from(0x64958d1c7ab3e205ULL);
+  for (const double symbol : {33.0, 51.0, 77.0}) {
+    for (std::uint32_t seed = 1; seed <= 4; ++seed) {
+      const test::SynthOptions config{.seconds = 2.5 * 170 * symbol / 1000,
+                                      .symbol = symbol,
+                                      .noise = 12,
+                                      .off = 20,
+                                      .on = 69,
+                                      .start_ms = 37.0 * symbol * seed,
+                                      .jitter_ms = 3,
+                                      .content_jitter_ms = 8,
+                                      .exposure_ms = 12,
+                                      .saturation = 3,
+                                      .seed = seed};
+      const auto upright = run(test::synthesize(id, config), ReaderConfig{symbol});
+      auto samples = test::synthesize(id, config);
+      for (auto& s : samples) s.y = config.off + config.on - s.y;
+      const auto inverted = run(samples, ReaderConfig{symbol});
+      ASSERT_EQ(upright.ids, std::set<Id>{id}) << "T " << symbol << " seed " << seed;
+      ASSERT_EQ(inverted.ids, std::set<Id>{id}) << "T " << symbol << " seed " << seed;
+      // Within two tries (500 ms). Not within one: at T 33 seed 1 the inverted stream read
+      // 267 ms after the upright one.
+      EXPECT_LE(*inverted.read_at, *upright.read_at + 500) << "T " << symbol << " seed " << seed;
+    }
+  }
+}
+
 TEST(ReaderTest, NeverReadsAWrongIdFromAnotherLight) {
   test::Lcg random(77);
   std::vector<bool> levels;

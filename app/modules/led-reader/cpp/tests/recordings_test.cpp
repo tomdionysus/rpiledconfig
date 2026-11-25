@@ -6,8 +6,8 @@
 //
 // Every recording in app/src/led/fixtures is a test of the reader. A frame version 7
 // recording (a `-v7` in its name) must read the ID in `expected` (within
-// `expected.withinMs` of the first sample, if given); any other recording, of an older frame
-// version or of no LED, must read nothing at all.
+// `expected.withinMs` of the first sample, if given) at its `symbolMs`; any other recording,
+// of an older frame version or of no LED, must read nothing at all.
 #include <gtest/gtest.h>
 
 #include <algorithm>
@@ -27,6 +27,8 @@ struct Recording {
   std::vector<double> y;
   std::string expected;
   double within_ms = 0;
+  // The T the Pi was asked for; recordings without one were made at the reader's default.
+  double symbol_ms = 0;
 };
 
 std::vector<double> numbers_after(const std::string& text, const std::string& key) {
@@ -51,6 +53,8 @@ Recording load(const std::filesystem::path& path) {
   Recording r;
   r.t = numbers_after(text, "t");
   r.y = numbers_after(text, "y");
+  const auto symbol = text.find("\"symbolMs\": ");
+  if (symbol != std::string::npos) r.symbol_ms = std::stod(text.substr(symbol + 12, 12));
   const auto expected = text.find("\"expected\"");
   if (expected != std::string::npos) {
     const auto id = text.find("\"idHex\": \"", expected);
@@ -83,7 +87,7 @@ TEST(RecordingsTest, EveryRecordingReadsWhatItShould) {
     ASSERT_EQ(r.t.size(), r.y.size()) << name;
     ASSERT_FALSE(r.t.empty()) << name;
 
-    Reader reader;
+    Reader reader(r.symbol_ms > 0 ? ReaderConfig{r.symbol_ms} : ReaderConfig{});
     std::vector<std::string> ids;
     double read_at = -1;
     for (std::size_t i = 0; i < r.t.size(); ++i) {

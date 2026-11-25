@@ -20,9 +20,9 @@ namespace rpiledconfig::led {
 // at a directory pretending to be the node.
 class LedSysfs : public Led {
  public:
-  // active_low: the LED lights at brightness 0 (led.active_low), so set() writes the
-  // opposite level.
-  LedSysfs(std::shared_ptr<loggers::Logger> logger, std::filesystem::path path, bool active_low = false);
+  // On is max_brightness and off is 0, whichever of them lights the LED: the app reads the
+  // frame either way up (docs/protocol.md, Symbols).
+  LedSysfs(std::shared_ptr<loggers::Logger> logger, std::filesystem::path path);
 
   // Reads the trigger the kernel has (the one in brackets), sets none, and learns
   // max_brightness. Failure when the node is not there or cannot be written, which is the
@@ -44,7 +44,6 @@ class LedSysfs : public Led {
   std::filesystem::path _path;
   std::string _saved_trigger;
   std::string _max_brightness = "1";
-  bool _active_low = false;
   bool _begun = false;
 };
 

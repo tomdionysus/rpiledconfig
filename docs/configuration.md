@@ -18,7 +18,6 @@ file, not to where the daemon was started.
 | `log.level` | `info` | `debug`, `info`, `warn` or `error`. |
 | `led.driver` | `sysfs` on Linux, `fake` elsewhere | `sysfs` drives a kernel LED; `fake` logs what it would do. |
 | `led.path` | `/sys/class/leds/ACT` | The LED's sysfs directory: `ACT`, the activity LED (`led0` on Raspberry Pi 3 and earlier), or `PWR`, the power LED (`led1` on older boards). |
-| `led.active_low` | `false` | `true` when the LED lights at brightness 0 (the Raspberry Pi 5's `ACT`); without it the LED shows the frame inverted. |
 | `ble.driver` | `bluez` on Linux, `fake` elsewhere | `bluez` serves GATT through BlueZ over D-Bus; `fake` serves nothing and logs. |
 | `ble.adapter` | `hci0` | The BlueZ adapter to advertise on, by its name under `/org/bluez` (`ls /sys/class/bluetooth`). Powered on at start if it is off. |
 | `ble.hide_adapter_name` | `false` | Give the Bluetooth adapter the advertised name while advertising, and hand its own name back afterwards. See below. |

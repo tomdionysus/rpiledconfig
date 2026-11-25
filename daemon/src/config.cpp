@@ -227,7 +227,12 @@ bool Config::_apply(const std::string& key, const std::string& value, int line, 
     return true;
   }
 
-  if (key == "led.active_low") return take_bool(led_active_low);
+  // Gone: the app reads the LED either way up (docs/protocol.md, Symbols). Still taken, as
+  // state.dir is, so that a configuration that set it still starts.
+  if (key == "led.active_low") {
+    _logger->warn("Configuration line " + std::to_string(line) + ": led.active_low is no longer used, and can be deleted");
+    return true;
+  }
 
   if (key == "ble.driver") {
     ble_driver = value;
