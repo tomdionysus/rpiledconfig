@@ -34,7 +34,7 @@ jobs:
             build-essential cmake ninja-build pkg-config libboost-dev libssl-dev libsystemd-dev \
             libgtest-dev git ca-certificates
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Trust the checkout
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -62,7 +62,7 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: github/codeql-action/init@v3
         with:
