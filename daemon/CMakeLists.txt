@@ -6,7 +6,7 @@
 #
 cmake_minimum_required(VERSION 3.24...4.4)
 
-project(rpiledconfig VERSION 0.5.2 LANGUAGES CXX)
+project(rpiledconfig VERSION 0.5.3 LANGUAGES CXX)
 
 option(RPILEDCONFIG_BUILD_TESTING "Build rpiledconfig_tests (GoogleTest)" OFF)
 option(RPILEDCONFIG_BUILD_FUZZING "Build the fuzzers in tests/fuzz: clang only" OFF)

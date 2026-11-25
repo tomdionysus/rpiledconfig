@@ -11,8 +11,8 @@
 #   cmake --build app/modules/led-reader/cpp/build && app/modules/led-reader/cpp/build/led_reader_tests
 cmake_minimum_required(VERSION 3.24...4.4)
 
-# The same number as daemon/CMakeLists.txt, which checks it against the app and the README.
-project(led_reader VERSION 0.5.2 LANGUAGES CXX)
+# The same number as daemon/CMakeLists.txt, set by hand at a release: nothing checks this one.
+project(led_reader VERSION 0.5.3 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

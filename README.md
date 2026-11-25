@@ -5,7 +5,7 @@
 
 # RPiLEDConfig
 
-*v0.5.2*
+*v0.5.3*
 
 | What it shows | Status |
 | --- | --- |
