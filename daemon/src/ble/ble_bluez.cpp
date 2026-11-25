@@ -746,14 +746,14 @@ void BleBluez::_power_then_register() {
                         auto set = self->_loop->method_call(bluez_service, self->adapter_path().c_str(), "org.freedesktop.DBus.Properties", "Set");
                         if (set && sd_bus_message_append(set.get(), "ssv", adapter_interface, "Powered", "b", 1) < 0) set.reset();
 
-                        self->_loop->call(std::move(set), [weak, generation](sd_bus_message*, const dbus::CallError* error) {
-                          auto self = weak.lock();
-                          if (!self || self->_generation != generation) return;
-                          if (error) {
-                            self->_logger->error("Cannot power the adapter on: " + error->describe() + " (rfkill?)");
+                        self->_loop->call(std::move(set), [weak, generation](sd_bus_message*, const dbus::CallError* set_error) {
+                          auto powering = weak.lock();
+                          if (!powering || powering->_generation != generation) return;
+                          if (set_error) {
+                            powering->_logger->error("Cannot power the adapter on: " + set_error->describe() + " (rfkill?)");
                             return;
                           }
-                          self->_set_alias_then_register();
+                          powering->_set_alias_then_register();
                         });
                       });
 }

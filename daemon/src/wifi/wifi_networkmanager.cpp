@@ -339,9 +339,9 @@ void WifiNetworkManager::_status_ssid(std::shared_ptr<StatusJob> job) {
                         if (error || dbus::read_variant(reply, access_point) <= 0 || no_object(access_point)) return self->_status_ip(job);
 
                         self->_loop->get_property(nm_service, access_point.c_str(), access_point_interface, "Ssid",
-                                                  [self, job](sd_bus_message* reply, const dbus::CallError* error) {
+                                                  [self, job](sd_bus_message* ssid_reply, const dbus::CallError* ssid_error) {
                                                     types::Bytes ssid;
-                                                    if (!error && dbus::read_variant(reply, ssid) > 0 && !ssid.empty()) {
+                                                    if (!ssid_error && dbus::read_variant(ssid_reply, ssid) > 0 && !ssid.empty()) {
                                                       job->status.ssid = util::to_string(ssid);
                                                     }
                                                     self->_status_ip(job);
@@ -698,12 +698,12 @@ void WifiNetworkManager::_own_connections(const std::string& keep, PathsHandler 
 
                   const auto path = listing->all[listing->index++];
                   self->_loop->call(self->_loop->method_call(nm_service, path.c_str(), connection_interface, "GetSettings"),
-                                    [self, keep, done, listing, path, next = weak_next.lock()](sd_bus_message* reply, const dbus::CallError* error) {
-                                      if (error && dbus::is_unavailable(*error))
-                                        return done(Out::failure(wifi_unavailable, "NetworkManager: " + error->describe()));
+                                    [self, keep, done, listing, path, next = weak_next.lock()](sd_bus_message* answer, const dbus::CallError* fault) {
+                                      if (fault && dbus::is_unavailable(*fault))
+                                        return done(Out::failure(wifi_unavailable, "NetworkManager: " + fault->describe()));
 
                                       std::string id;
-                                      if (!error && read_connection_id(reply, id) >= 0 && id.rfind(connection_id_prefix, 0) == 0 && path != keep) {
+                                      if (!fault && read_connection_id(answer, id) >= 0 && id.rfind(connection_id_prefix, 0) == 0 && path != keep) {
                                         listing->own.push_back(path);
                                       }
                                       if (next) (*next)();

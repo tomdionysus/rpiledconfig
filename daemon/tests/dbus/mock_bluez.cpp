@@ -593,7 +593,7 @@ MockBluez::Outcome MockBluez::_call_characteristic(const std::string& uuid, cons
       return out;
     }
 
-    sd_bus_error error = SD_BUS_ERROR_NULL;
+    sd_bus_error error{};
     sd_bus_message* reply = nullptr;
     r = sd_bus_call(bus(), call, 5 * 1000 * 1000, &error, &reply);
     sd_bus_message_unref(call);
@@ -682,7 +682,7 @@ std::optional<bool> MockBluez::characteristic_bool(const std::string& uuid, cons
     auto it = _application->characteristic_paths.find(uuid);
     if (it == _application->characteristic_paths.end()) return std::nullopt;
 
-    sd_bus_error error = SD_BUS_ERROR_NULL;
+    sd_bus_error error{};
     int value = 0;
     const int r =
         sd_bus_get_property_trivial(bus(), _application->owner.c_str(), it->second.c_str(), characteristic_interface, property.c_str(), &error, 'b', &value);

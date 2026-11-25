@@ -8,6 +8,8 @@
 
 #include <gtest/gtest.h>
 
+#include <initializer_list>
+
 #include "protocol/vectors.h"
 #include "util.h"
 
@@ -101,7 +103,7 @@ TEST(FragmentsTest, ReassemblyGivesTheMessageBackOnTheLastFragment) {
 
 TEST(FragmentsTest, UnknownFlagBitsAreRefused) {
   Reassembler reassembler;
-  for (const std::uint8_t flags : {0x02, 0x80, 0x03, 0xFF}) {
+  for (const std::uint8_t flags : std::initializer_list<std::uint8_t>{0x02, 0x80, 0x03, 0xFF}) {
     EXPECT_FALSE(reassembler.push(types::Bytes{flags, 0x01})) << "flags " << static_cast<int>(flags);
   }
   EXPECT_FALSE(reassembler.push({})) << "no flags byte at all";

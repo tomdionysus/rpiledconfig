@@ -515,9 +515,9 @@ std::string MockNetworkManager::_activate(const std::string& connection, const s
     ip4->owner = this;
     ip4->path = "/org/freedesktop/NetworkManager/IP4Config/" + std::to_string(_next++);
     ip4->address = ip;
-    sd_bus_slot* slot = nullptr;
-    if (sd_bus_add_object_vtable(bus(), &slot, ip4->path.c_str(), "org.freedesktop.NetworkManager.IP4Config", ip4_vtable, ip4.get()) >= 0)
-      ip4->slots.push_back(slot);
+    sd_bus_slot* ip4_slot = nullptr;
+    if (sd_bus_add_object_vtable(bus(), &ip4_slot, ip4->path.c_str(), "org.freedesktop.NetworkManager.IP4Config", ip4_vtable, ip4.get()) >= 0)
+      ip4->slots.push_back(ip4_slot);
     _wifi->ip4 = ip4->path;
     _ip4s[ip4->path] = std::move(ip4);
 

@@ -134,12 +134,12 @@ void EasyConnectWpaSupplicant::_exchange(Socket& socket, const std::string& comm
     return;
   }
 
-  socket.async_receive(boost::asio::buffer(exchange->buffer), [exchange](const boost::system::error_code& ec, std::size_t length) {
+  socket.async_receive(boost::asio::buffer(exchange->buffer), [exchange](const boost::system::error_code& received, std::size_t length) {
     if (exchange->done) return;
     exchange->done = true;
     if (exchange->timer) exchange->timer->cancel();
 
-    if (ec) return exchange->handler(types::Result<std::string>::failure(ec.message()));
+    if (received) return exchange->handler(types::Result<std::string>::failure(received.message()));
     exchange->handler(types::Result<std::string>::success(std::string(exchange->buffer.data(), length)));
   });
 
@@ -149,14 +149,14 @@ void EasyConnectWpaSupplicant::_exchange(Socket& socket, const std::string& comm
   // a leak on every request. The pending receive above is what keeps the exchange alive.
   exchange->timer =
       _timers->schedule(_options.reply_timeout, [weak = weak_from_this(), weak_exchange = std::weak_ptr<Exchange>(exchange), socket = &socket, word]() {
-        auto exchange = weak_exchange.lock();
-        if (!exchange || exchange->done) return;
-        exchange->done = true;
+        auto pending = weak_exchange.lock();
+        if (!pending || pending->done) return;
+        pending->done = true;
         if (auto self = weak.lock()) {
           boost::system::error_code ignored;
           socket->cancel(ignored);
         }
-        exchange->handler(types::Result<std::string>::failure("wpa_supplicant did not answer " + word));
+        pending->handler(types::Result<std::string>::failure("wpa_supplicant did not answer " + word));
       });
 }
 
@@ -189,8 +189,8 @@ void EasyConnectWpaSupplicant::start(types::Executor on, types::Handler<std::str
     _read_events();
 
     _exchange(_commands, "STATUS", [this, alive](types::Result<std::string> status) {
-      auto self = alive();
-      if (!self) return;
+      auto self_status = alive();
+      if (!self_status) return;
       if (!status) return _fail_start(status.error);
 
       const auto mac = wpa::status_mac(status.value);
@@ -207,16 +207,16 @@ void EasyConnectWpaSupplicant::start(types::Executor on, types::Handler<std::str
 
       const std::string generate = "DPP_BOOTSTRAP_GEN type=qrcode chan=" + channels + " mac=" + *mac;
       _exchange(_commands, generate, [this, alive, listen_frequency](types::Result<std::string> generated) {
-        auto self = alive();
-        if (!self) return;
+        auto self_generated = alive();
+        if (!self_generated) return;
         if (!generated) return _fail_start(generated.error);
         if (wpa::reply_text(generated.value) == "UNKNOWN COMMAND") return _fail_start("this wpa_supplicant was built without DPP");
         if (wpa::is_refusal(generated.value)) return _fail_start("wpa_supplicant refused DPP_BOOTSTRAP_GEN");
 
         _bootstrap_id = wpa::reply_text(generated.value);
         _exchange(_commands, "DPP_BOOTSTRAP_GET_URI " + _bootstrap_id, [this, alive, listen_frequency](types::Result<std::string> got) {
-          auto self = alive();
-          if (!self) return;
+          auto self_got = alive();
+          if (!self_got) return;
           if (!got) return _fail_start(got.error);
 
           const auto uri = wpa::reply_text(got.value);
@@ -224,8 +224,8 @@ void EasyConnectWpaSupplicant::start(types::Executor on, types::Handler<std::str
 
           const std::string listen = "DPP_LISTEN " + std::to_string(listen_frequency) + " role=enrollee";
           _exchange(_commands, listen, [this, alive, uri, listen_frequency](types::Result<std::string> listening) {
-            auto self = alive();
-            if (!self) return;
+            auto self_listening = alive();
+            if (!self_listening) return;
             if (!listening) return _fail_start(listening.error);
             if (wpa::is_refusal(listening.value)) return _fail_start("wpa_supplicant refused DPP_LISTEN");
 
@@ -233,16 +233,16 @@ void EasyConnectWpaSupplicant::start(types::Executor on, types::Handler<std::str
             _logger->info("Wi-Fi Easy Connect: listening on " + std::to_string(listen_frequency) + " MHz for " +
                           std::to_string(_options.listen_time.count() / 1000) + " s");
 
-            const auto generation = _generation;
-            _listen_timer = _timers->schedule(_options.listen_time, [weak = weak_from_this(), generation]() {
-              auto self = weak.lock();
-              if (!self || self->_generation != generation) return;
-              self->_finish(types::Result<EasyConnectCredentials>::failure("no phone sent a network within " +
-                                                                           std::to_string(self->_options.listen_time.count() / 1000) + " s"));
+            const auto listen_generation = _generation;
+            _listen_timer = _timers->schedule(_options.listen_time, [weak = weak_from_this(), listen_generation]() {
+              auto listener = weak.lock();
+              if (!listener || listener->_generation != listen_generation) return;
+              listener->_finish(types::Result<EasyConnectCredentials>::failure("no phone sent a network within " +
+                                                                               std::to_string(listener->_options.listen_time.count() / 1000) + " s"));
             });
 
-            auto started = std::move(_started);
-            types::complete(_on, std::move(started), types::Result<std::string>::success(uri));
+            auto answer = std::move(_started);
+            types::complete(_on, std::move(answer), types::Result<std::string>::success(uri));
           });
         });
       });

@@ -4,18 +4,19 @@
 # Copyright (C) 2026 Tom Cully <mail@tomcully.com>
 # Licensed under the Apache License, Version 2.0 - see LICENSE
 #
-cmake_minimum_required(VERSION 3.23...4.4)
+cmake_minimum_required(VERSION 3.24...4.4)
 
 project(rpiledconfig VERSION 0.5.2 LANGUAGES CXX)
 
-option(RPILEDCONFIG_BUILD_TESTING "Build test targets" OFF)
-option(RPILEDCONFIG_FUZZ "Build the fuzzers in tests/fuzz: clang only" OFF)
-if(RPILEDCONFIG_FUZZ)
+option(RPILEDCONFIG_BUILD_TESTING "Build rpiledconfig_tests (GoogleTest)" OFF)
+option(RPILEDCONFIG_BUILD_FUZZING "Build the fuzzers in tests/fuzz: clang only" OFF)
+option(RPILEDCONFIG_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
+if(RPILEDCONFIG_BUILD_FUZZING)
     add_compile_options(-fsanitize=fuzzer-no-link,address,undefined -fno-omit-frame-pointer -fno-sanitize-recover=all)
     add_link_options(-fsanitize=address,undefined)
 endif()
 
-# Coverage for the tests: scripts/ci.sh turns it into an lcov report, which CI sends to Codecov.
+# Coverage for the tests: tools/ci.sh coverage turns it into an lcov report, which CI sends to Codecov.
 option(RPILEDCONFIG_COVERAGE "Build with gcov instrumentation" OFF)
 if(RPILEDCONFIG_COVERAGE)
     add_compile_options(--coverage -O0)
@@ -27,10 +28,8 @@ set_property(CACHE RPILEDCONFIG_SANITIZE PROPERTY STRINGS none address thread)
 
 # Single-config generators leave CMAKE_BUILD_TYPE empty, which means no optimisation
 # and no debug info. The package passes RelWithDebInfo (debian/rules).
-get_property(RPILEDCONFIG_MULTI_CONFIG GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
-
-if(NOT RPILEDCONFIG_MULTI_CONFIG AND NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE "Debug" CACHE STRING "Build type" FORCE)
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_BUILD_TYPE "Release" CACHE STRING "Build type" FORCE)
     set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS Debug Release RelWithDebInfo MinSizeRel)
 endif()
 
@@ -51,10 +50,22 @@ elseif(NOT RPILEDCONFIG_SANITIZE STREQUAL "none")
     message(FATAL_ERROR "RPILEDCONFIG_SANITIZE must be one of: none, address, thread")
 endif()
 
-# What the daemon's own code is held to. Not -Werror: a new compiler's new warning
-# should not stop somebody building a release, and the presets are where "no warnings"
-# is checked.
-set(RPILEDCONFIG_WARNINGS -Wall -Wextra)
+# What the daemon's own code is held to. -Werror only on request: a new compiler's new
+# warning should not stop somebody building a release.
+add_library(rpiledconfig_warnings INTERFACE)
+target_compile_options(rpiledconfig_warnings INTERFACE -Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wno-sign-conversion)
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    target_compile_options(rpiledconfig_warnings INTERFACE -Wthread-safety)
+endif()
+if(RPILEDCONFIG_WARNINGS_AS_ERRORS)
+    target_compile_options(rpiledconfig_warnings INTERFACE -Werror)
+endif()
+
+# The package's version is this project()'s; the app and the README must agree, and a
+# configuration that finds they do not stops here.
+set(RPILEDCONFIG_VERSION "${PROJECT_VERSION}")
+set(RPILEDCONFIG_REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/..")
+include("${CMAKE_CURRENT_SOURCE_DIR}/packaging/check_version.cmake")
 
 configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/src/build_version.h.in"
@@ -174,7 +185,7 @@ endif()
 add_library(rpiledconfig_core STATIC ${RPILEDCONFIG_SOURCES})
 
 target_compile_features(rpiledconfig_core PUBLIC cxx_std_20)
-target_compile_options(rpiledconfig_core PRIVATE ${RPILEDCONFIG_WARNINGS})
+target_link_libraries(rpiledconfig_core PRIVATE rpiledconfig_warnings)
 
 target_include_directories(rpiledconfig_core
     PUBLIC
@@ -189,7 +200,7 @@ endif()
 
 # This program parses what strangers send it over a radio. Whatever gets past the code should find
 # as little to work with as the toolchain can leave it.
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT RPILEDCONFIG_FUZZ)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT RPILEDCONFIG_BUILD_FUZZING)
     target_compile_options(rpiledconfig_core PUBLIC
         -fstack-protector-strong
         -fstack-clash-protection
@@ -216,9 +227,8 @@ endif()
 
 add_executable(rpiledconfig "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp")
 
-target_link_libraries(rpiledconfig PRIVATE rpiledconfig_core)
+target_link_libraries(rpiledconfig PRIVATE rpiledconfig_core rpiledconfig_warnings)
 target_compile_features(rpiledconfig PRIVATE cxx_std_20)
-target_compile_options(rpiledconfig PRIVATE ${RPILEDCONFIG_WARNINGS})
 
 # --- Install layout --------------------------------------------------------------------
 #
@@ -274,9 +284,6 @@ configure_file(packaging/rpiledconfig.conf.in ${CMAKE_CURRENT_BINARY_DIR}/packag
 configure_file(packaging/rpiledconfig.service.in ${CMAKE_CURRENT_BINARY_DIR}/packaging/rpiledconfig.service @ONLY)
 
 if(RPILEDCONFIG_BUILD_TESTING)
-    include(CTest)
-    enable_testing()
-
     find_package(GTest REQUIRED)
 
     file(GLOB_RECURSE RPILEDCONFIG_TEST_SOURCES CONFIGURE_DEPENDS
@@ -285,7 +292,7 @@ if(RPILEDCONFIG_BUILD_TESTING)
 
     # The D-Bus tests (mock BlueZ and NetworkManager on a private bus, and the drivers
     # against them) need sd-bus to build at all. Built, they still skip at run time unless
-    # RPILEDCONFIG_TEST_DBUS_ADDRESS names a bus: scripts/linux-tests.sh starts one.
+    # RPILEDCONFIG_TEST_DBUS_ADDRESS names a bus: tools/linux-tests.sh starts one.
     if(NOT RPILEDCONFIG_HAVE_SD_BUS)
         list(FILTER RPILEDCONFIG_TEST_SOURCES EXCLUDE REGEX "/tests/dbus/")
     endif()
@@ -300,9 +307,8 @@ if(RPILEDCONFIG_BUILD_TESTING)
 
     add_executable(rpiledconfig_tests ${RPILEDCONFIG_TEST_SOURCES})
 
-    target_link_libraries(rpiledconfig_tests PRIVATE rpiledconfig_core)
+    target_link_libraries(rpiledconfig_tests PRIVATE rpiledconfig_core rpiledconfig_warnings)
     target_include_directories(rpiledconfig_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/tests")
-    target_compile_options(rpiledconfig_tests PRIVATE ${RPILEDCONFIG_WARNINGS})
 
     if(TARGET GTest::gtest_main)
         target_link_libraries(rpiledconfig_tests PRIVATE GTest::gtest_main)
@@ -321,16 +327,6 @@ if(RPILEDCONFIG_BUILD_TESTING)
     # So is the configuration a package installs, as generated for this build's prefix.
     target_compile_definitions(rpiledconfig_tests PRIVATE
         RPILEDCONFIG_TEST_PACKAGED_CONFIG="${CMAKE_CURRENT_BINARY_DIR}/packaging/rpiledconfig.conf")
-
-    include(GoogleTest)
-    gtest_discover_tests(rpiledconfig_tests DISCOVERY_TIMEOUT 60)
-
-    # The package's version is this project()'s; the app and the README must agree.
-    add_test(NAME version_agrees
-             COMMAND ${CMAKE_COMMAND}
-                     -DRPILEDCONFIG_VERSION=${PROJECT_VERSION}
-                     -DRPILEDCONFIG_REPO_ROOT=${CMAKE_CURRENT_SOURCE_DIR}/..
-                     -P ${CMAKE_CURRENT_SOURCE_DIR}/packaging/check_version.cmake)
 endif()
 
 # --- Install ---------------------------------------------------------------------------
@@ -387,10 +383,10 @@ endif()
 # what the editor sees. file(CREATE_LINK) falls back to a copy where links are refused.
 file(CREATE_LINK "${CMAKE_BINARY_DIR}/compile_commands.json" "${CMAKE_CURRENT_SOURCE_DIR}/compile_commands.json" COPY_ON_ERROR SYMBOLIC)
 
-if(RPILEDCONFIG_FUZZ)
+if(RPILEDCONFIG_BUILD_FUZZING)
     foreach(fuzzer fuzz_attacker fuzz_parsers)
         add_executable(${fuzzer} tests/fuzz/${fuzzer}.cpp)
-        target_link_libraries(${fuzzer} PRIVATE rpiledconfig_core)
+        target_link_libraries(${fuzzer} PRIVATE rpiledconfig_core rpiledconfig_warnings)
         target_include_directories(${fuzzer} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/tests")
         target_compile_features(${fuzzer} PRIVATE cxx_std_20)
         target_link_options(${fuzzer} PRIVATE -fsanitize=fuzzer)

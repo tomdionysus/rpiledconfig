@@ -10,6 +10,8 @@
 #include <openssl/ec.h>
 #include <openssl/obj_mac.h>
 
+#include <algorithm>
+#include <cstddef>
 #include <memory>
 
 #include "crypto.h"
@@ -98,13 +100,17 @@ Bytes scalar_bytes(const BIGNUM* big) {
 }
 
 // len(s) as RFC 9382 has it: eight bytes, little-endian, then s.
+// Resized and written in place: GCC 14 at -O3 reports push_back then insert here as an
+// overflow (-Wstringop-overflow).
 void append_with_length(Bytes& out, const Bytes& s) {
+  const std::size_t at = out.size();
+  out.resize(at + 8 + s.size());
   std::uint64_t length = s.size();
-  for (int i = 0; i < 8; ++i) {
-    out.push_back(static_cast<std::uint8_t>(length & 0xFF));
+  for (std::size_t i = 0; i < 8; ++i) {
+    out[at + i] = static_cast<std::uint8_t>(length & 0xFF);
     length >>= 8;
   }
-  out.insert(out.end(), s.begin(), s.end());
+  std::copy(s.begin(), s.end(), out.begin() + static_cast<std::ptrdiff_t>(at + 8));
 }
 
 }  // namespace
