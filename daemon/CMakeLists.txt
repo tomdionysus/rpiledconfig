@@ -36,6 +36,10 @@ endif()
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+# No C++20 modules here. Without this, CMake 3.28 and later with Ninja scan every source for
+# them, which with clang needs clang-scan-deps. Where it is missing (Debian's clang package
+# alone does not install it) the checks find_package(Threads) compiles fail.
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
 # clangd reads compile_commands.json from the source tree, and without it an editor
 # parses these files as whatever C++ it defaults to rather than C++20. The copy is made
