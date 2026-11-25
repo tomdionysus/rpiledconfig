@@ -7,13 +7,14 @@ The app is `com.tomcully.rpiledconfig`. That name is permanent once a build is u
 Google Play holds the key that signs what users install (Play App Signing). The project signs
 what it uploads with an upload key, which Play can replace if it is lost.
 
-- The key is a PKCS12 keystore outside the repository: `~/.android/rpiledconfig-upload.jks`.
+- The key is a PKCS12 keystore kept outside the repository, by convention
+  `~/.android/rpiledconfig-upload.jks`.
 - `app/android/keystore.properties`, which git ignores, names it and holds its password.
   `app/android/app/build.gradle` reads it. Without that file a release is signed with the
   debug key, which installs on a test phone and which Play refuses.
-- Both exist on one machine only. Back both up somewhere private.
+- Back both up somewhere private.
 
-To make one on another machine, write the properties file by hand:
+To make one, and write the properties file by hand:
 
     keytool -genkeypair -keystore ~/.android/rpiledconfig-upload.jks -storetype PKCS12 \
         -alias upload -keyalg RSA -keysize 4096 -validity 10000 \
@@ -35,7 +36,7 @@ React Native's native clean step fails once its generated code has gone. To star
 `app/.cxx`, `app/build`, and `.cxx` and `build` in `../modules/led-reader/android`.
 
 Every upload needs a higher `versionCode` (`app/android/app/build.gradle`, major * 10000 +
-minor * 100 + patch; `scripts/version-check.mjs` checks it against the version).
+minor * 100 + patch; `app/scripts/version-check.mjs` checks it against the version).
 
 Before uploading, check these on the bundle or an APK built with it:
 
@@ -46,7 +47,7 @@ Before uploading, check these on the bundle or an APK built with it:
 
 ## Store listing
 
-Graphics are in `app/store/`, made by `scripts/make-icons.sh`: `icon-512.png` and
+Graphics are in `app/store/`, made by `app/scripts/make-icons.sh`: `icon-512.png` and
 `feature-graphic.png`. Play also needs at least two phone screenshots, taken from the running
 app.
 
@@ -77,7 +78,7 @@ Full description:
 
 | Form | Answer |
 | --- | --- |
-| Privacy policy | The public URL of `docs/privacy.md`. |
+| Privacy policy | https://tomcully.com/articles/rpi-led-config-privacy-policy, which is `docs/privacy.md` published. A change to that file has to be made on the page too. |
 | Ads | None. |
 | App access | Some functionality is restricted: it needs a Raspberry Pi running the service. Give the reviewer the instructions below and a video of a whole pairing. |
 | Content rating | Utility. No user-generated content, no sharing between users. |

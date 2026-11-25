@@ -1,7 +1,7 @@
 # Installing the daemon
 
-The daemon ships as a Debian package, `rpiledconfig`, built on the Pi it is for (README.md,
-Installing the service). A Raspberry Pi on 64-bit Raspberry Pi OS (trixie) is the reference host. It needs
+The daemon ships as a Debian package, `rpiledconfig`, attached to each GitHub release or built
+from this repository (docs/packaging.md). A Raspberry Pi on 64-bit Raspberry Pi OS (trixie) is the reference host. It needs
 BlueZ (`bluetooth.service`), NetworkManager and polkit (`polkitd`), all of which Raspberry Pi OS
 ships and runs by default; the package depends on them.
 

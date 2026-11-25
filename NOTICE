@@ -13,4 +13,4 @@ Third-party components retain their own licenses:
 - OpenSSL, Apache License 2.0.
 - libsystemd (sd-bus), LGPL-2.1-or-later, linked dynamically on Linux.
 - GoogleTest, BSD 3-Clause, test builds only.
-- The app's dependencies are listed with their licences in app/package.json.
+- The app's dependencies are listed with their licences in docs/licensing.md.
