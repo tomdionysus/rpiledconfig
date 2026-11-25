@@ -1,10 +1,11 @@
 #
-# RPiLEDConfig
+# RPiLEDConfig - ci
 #
 # Copyright (C) 2026 Tom Cully <mail@tomcully.com>
 # Licensed under the Apache License, Version 2.0 - see LICENSE
 #
-# CodeQL security analysis: the daemon's C++, built as in CI, and the app's TypeScript.
+# CodeQL security analysis, security-and-quality: the daemon's and the LED reader's C++,
+# built as in CI, and the app's TypeScript.
 name: CodeQL
 
 on:
@@ -31,7 +32,7 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends \
             build-essential cmake ninja-build pkg-config libboost-dev libssl-dev libsystemd-dev \
-            git ca-certificates
+            libgtest-dev git ca-certificates
 
       - uses: actions/checkout@v4
 
@@ -42,11 +43,14 @@ jobs:
         with:
           languages: c-cpp
           build-mode: manual
+          queries: security-and-quality
 
       - name: Build
         run: |
-          cmake -S daemon -B daemon/build-codeql -G Ninja -DCMAKE_BUILD_TYPE=Release
-          cmake --build daemon/build-codeql -j "$(nproc)"
+          cmake -S daemon -B build-codeql/daemon -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-codeql/daemon -j "$(nproc)"
+          cmake -S app/modules/led-reader/cpp -B build-codeql/led-reader -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-codeql/led-reader -j "$(nproc)"
 
       - uses: github/codeql-action/analyze@v3
         with:
@@ -64,6 +68,7 @@ jobs:
         with:
           languages: javascript-typescript
           build-mode: none
+          queries: security-and-quality
 
       - uses: github/codeql-action/analyze@v3
         with:

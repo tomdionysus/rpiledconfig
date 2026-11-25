@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# RPiLEDConfig - daemon
+# RPiLEDConfig - tools
 #
 # Copyright (C) 2026 Tom Cully <mail@tomcully.com>
 # Licensed under the Apache License, Version 2.0 - see LICENSE
@@ -10,7 +10,7 @@
 # build-deb/ at the repository root.
 #
 #   sudo apt install dpkg-dev && sudo apt build-dep ./
-#   daemon/scripts/build-deb.sh [dpkg-buildpackage options]
+#   tools/build-deb.sh [dpkg-buildpackage options]
 #
 # The version comes from `git describe`: the tag 0.5.0 gives 0.5.0, and a build three
 # commits later 0.5.0+git3.gabc1234, which sorts after 0.5.0 and before 0.5.1. Uncommitted

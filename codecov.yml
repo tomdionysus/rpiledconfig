@@ -1,5 +1,12 @@
+#
+# RPiLEDConfig - ci
+#
+# Copyright (C) 2026 Tom Cully <mail@tomcully.com>
+# Licensed under the Apache License, Version 2.0 - see LICENSE
+#
 # Coverage per part of the project, each uploaded by .github/workflows/ci.yml under its flag.
-# Informational: coverage is reported, and does not fail a commit.
+# Informational: coverage is reported, and does not fail a commit. Tests, fuzz targets and
+# tools are not counted.
 coverage:
   status:
     project:
@@ -8,6 +15,13 @@ coverage:
     patch:
       default:
         informational: true
+
+ignore:
+  - "daemon/tests/"
+  - "app/modules/led-reader/cpp/tests/"
+  - "app/src/test/"
+  - "**/*.test.ts"
+  - "tools/"
 
 flags:
   daemon:

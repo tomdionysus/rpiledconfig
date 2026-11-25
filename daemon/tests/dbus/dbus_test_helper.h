@@ -31,7 +31,7 @@
 #include "types/status.h"
 
 // The D-Bus tests run against a private dbus-daemon whose address is in
-// RPILEDCONFIG_TEST_DBUS_ADDRESS (scripts/linux-tests.sh starts one), never the system
+// RPILEDCONFIG_TEST_DBUS_ADDRESS (tools/linux-tests.sh starts one), never the system
 // bus. Without it they skip, as the Redis tests in athenasip skip without a server.
 inline std::string test_bus_address() {
   const char* address = std::getenv("RPILEDCONFIG_TEST_DBUS_ADDRESS");

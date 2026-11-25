@@ -1,4 +1,7 @@
-# Daemon builds
+# Builds: tools/ci.sh writes build-ci/, the presets daemon/build-*/, and scratch goes under
+# build/
+/build/
+/build-*/
 daemon/build/
 daemon/build-*/
 daemon/compile_commands.json
@@ -8,7 +11,7 @@ daemon/.local/
 # Release builds kept locally: APKs, the Play bundle, older packages
 /dist/
 
-# The Debian package build (daemon/scripts/build-deb.sh)
+# The Debian package build (tools/build-deb.sh)
 /build-deb/
 debian/changelog
 debian/build/
@@ -39,6 +42,8 @@ CLAUDE.local.md
 .claude/worktrees/
 basemind.toml
 app/modules/*/cpp/build/
+app/modules/*/cpp/build-*/
+app/modules/*/cpp/.cache/
 app/modules/*/android/.cxx/
 app/modules/*/android/build/
 
