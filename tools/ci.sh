@@ -40,19 +40,29 @@ if command -v ninja >/dev/null 2>&1; then generator="-G Ninja"; fi
 
 # Warnings are errors in every build but the sanitizers' and coverage's: instrumented, g++
 # warns inside the standard library. The release and clang steps hold the warning gate.
+# Configures, and on failure prints CMake's own log of what it tried, which a CI runner's
+# output would not otherwise show.
+configure() {
+  build="$1"
+  shift
+  # shellcheck disable=SC2086
+  if ! cmake "$@" -B "$build" $generator; then
+    cat "$build/CMakeFiles/CMakeConfigureLog.yaml" 2>/dev/null || true
+    return 1
+  fi
+}
+
 daemon() {
   dir="$1"
   shift
-  # shellcheck disable=SC2086
-  cmake -S "$top/daemon" -B "$out/daemon-$dir" $generator -DRPILEDCONFIG_BUILD_TESTING=ON "$@"
+  configure "$out/daemon-$dir" -S "$top/daemon" -DRPILEDCONFIG_BUILD_TESTING=ON "$@"
   cmake --build "$out/daemon-$dir" -j "$jobs" --target rpiledconfig rpiledconfig_tests
 }
 
 led_reader() {
   dir="$1"
   shift
-  # shellcheck disable=SC2086
-  cmake -S "$reader" -B "$out/led-reader-$dir" $generator "$@"
+  configure "$out/led-reader-$dir" -S "$reader" "$@"
   cmake --build "$out/led-reader-$dir" -j "$jobs"
 }
 
@@ -137,8 +147,7 @@ case "$step" in
     lcov_report "$out/led-reader-coverage" "$reader" "$out/led-reader.info" '*/tests/*'
     ;;
   fuzz)
-    # shellcheck disable=SC2086
-    CXX=${CLANGXX:-clang++} cmake -S "$top/daemon" -B "$out/fuzz" $generator -DCMAKE_BUILD_TYPE=RelWithDebInfo -DRPILEDCONFIG_BUILD_FUZZING=ON
+    CXX=${CLANGXX:-clang++} configure "$out/fuzz" -S "$top/daemon" -DCMAKE_BUILD_TYPE=RelWithDebInfo -DRPILEDCONFIG_BUILD_FUZZING=ON
     cmake --build "$out/fuzz" -j "$jobs" --target fuzz_attacker fuzz_parsers
     for target in fuzz_attacker fuzz_parsers; do
       corpus="$out/fuzz/corpus/$target"
